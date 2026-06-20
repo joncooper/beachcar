@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.wrangler/
+.wrangler-logs/
+.home/
+.tmp/
+.dev.vars
+.env
+.env.local
+.env.*.local
+.publish.env
+coverage/
+outputs/
+npm-debug.log*

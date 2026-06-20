@@ -1,0 +1,63 @@
+{
+  "generatedAt": "2026-06-20T12:00:00.000Z",
+  "reportMarkdown": "Sample run for local setup.",
+  "sourceSummary": {
+    "profile": "Beach-town runabout starter example",
+    "sourcesChecked": ["Example Auctions"],
+    "publisher": "sample"
+  },
+  "listings": [
+    {
+      "section": "Strong fits",
+      "lane": "family",
+      "site": "Example Auctions",
+      "title": "1974 Volkswagen Thing",
+      "url": "https://example.com/auctions/1974-volkswagen-thing",
+      "bid": "$8,500",
+      "total": "$8,925",
+      "location": "Charleston, SC",
+      "endsAt": "2026-06-24T19:30:00.000Z",
+      "timeLeft": "4 days",
+      "bids": 12,
+      "bidders": 8,
+      "comments": 21,
+      "fair": "$16k-$20k fair hammer / about $16.8k-$21k with fee",
+      "ceiling": "Stop around $19k hammer / about $20k with fee",
+      "conf": "medium",
+      "why": "Open-air, charming, simple, and directly aligned with a beach-town family runabout profile.",
+      "concerns": "Verify rust, seat belts, weather gear, title status, and whether the rear seating works for the intended passengers.",
+      "currentTake": "cheap at the current bid",
+      "images": [
+        "https://placehold.co/1200x900/f7d24a/102018.png?text=Sample+Thing",
+        "https://placehold.co/1200x900/2f7d67/ffffff.png?text=Interior",
+        "https://placehold.co/1200x900/eae4d4/102018.png?text=Underside"
+      ]
+    },
+    {
+      "section": "Solo runabouts",
+      "lane": "solo",
+      "site": "Example Auctions",
+      "title": "1981 Honda CT110 Trail",
+      "url": "https://example.com/auctions/1981-honda-ct110",
+      "bid": "$3,200",
+      "total": "$3,360",
+      "location": "Portland, ME",
+      "endsAt": "2026-06-22T18:00:00.000Z",
+      "timeLeft": "2 days",
+      "bids": 7,
+      "bidders": 5,
+      "comments": 4,
+      "fair": "$3.5k-$5k fair hammer / about $3.7k-$5.25k with fee",
+      "ceiling": "Stop around $4.5k hammer / about $4.7k with fee",
+      "conf": "medium",
+      "why": "Small, approachable, useful for quick town errands, and much easier than a full-size ADV bike.",
+      "concerns": "Confirm title/registration, cold start, charging system, tire age, and local-road comfort.",
+      "currentTake": "fair early bid",
+      "images": [
+        "https://placehold.co/1200x900/c5462f/ffffff.png?text=Sample+CT110",
+        "https://placehold.co/1200x900/f0eee6/102018.png?text=Controls"
+      ]
+    }
+  ]
+}
+

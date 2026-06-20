@@ -1,0 +1,102 @@
+import type { AuctionListing, FeedbackAction, Lane } from "./types";
+
+export function normalizeLane(value: unknown): Lane {
+  if (value === "solo" || value === "curiosity") return value;
+  return "family";
+}
+
+export function normalizeAction(value: unknown): FeedbackAction | null {
+  if (value === "star" || value === "hide" || value === "avoid") return value;
+  return null;
+}
+
+export function normalizeListing(input: Partial<AuctionListing>): AuctionListing {
+  return {
+    section: String(input.section || "Worth a look"),
+    lane: normalizeLane(input.lane),
+    site: String(input.site || "Unknown"),
+    title: String(input.title || "Untitled listing"),
+    url: String(input.url || ""),
+    bid: String(input.bid || "Check listing"),
+    total: String(input.total || "Check listing"),
+    location: input.location ? String(input.location) : undefined,
+    bidNum: typeof input.bidNum === "number" ? input.bidNum : undefined,
+    endsAt: input.endsAt ? String(input.endsAt) : undefined,
+    ends: input.ends ? String(input.ends) : undefined,
+    timeLeft: input.timeLeft ? String(input.timeLeft) : undefined,
+    bids: input.bids ?? "check listing",
+    bidders: input.bidders ?? "check listing",
+    comments: input.comments ?? "check listing",
+    fair: input.fair ? String(input.fair) : undefined,
+    ceiling: input.ceiling ? String(input.ceiling) : undefined,
+    conf: input.conf ? String(input.conf) : undefined,
+    why: String(input.why || ""),
+    concerns: String(input.concerns || ""),
+    currentTake: input.currentTake ? String(input.currentTake) : undefined,
+    images: Array.isArray(input.images) ? input.images.filter(Boolean).map(String) : [],
+  };
+}
+
+export function inferTags(listing: Pick<AuctionListing, "title" | "why" | "concerns" | "lane" | "section">): string[] {
+  const text = `${listing.title} ${listing.why} ${listing.concerns} ${listing.section}`.toLowerCase();
+  const tags: string[] = [listing.lane];
+  const checks: Array<[RegExp, string]> = [
+    [/thing|moke|mehari|jolly/, "pure beach buggy"],
+    [/wrangler|\bcj[-\s]|\bcj\b|samurai|sidekick|tracker|bronco|fj40|land cruiser|4runner|willys/, "classic open 4x4"],
+    [/vespa|lambretta|scooter/, "scooter"],
+    [/bmw r|airhead|motorcycle|honda zb|monkey|grom|cub|trail/, "small motorcycle"],
+    [/isetta|midget|kei|microcar/, "tiny oddball"],
+    [/boxster|spider|convertible|beetle/, "convertible runabout"],
+    [/baja|wagoneer|subaru|suv/, "quirky practical utility"],
+    [/no bids|cheap\/early|still plausible/, "early value watch"],
+  ];
+
+  for (const [pattern, tag] of checks) {
+    if (pattern.test(text)) tags.push(tag);
+  }
+  return [...new Set(tags)];
+}
+
+export async function listingKeyFor(site: string, url: string, title: string): Promise<string> {
+  const slug = slugify(`${site}-${title}`).slice(0, 44) || "listing";
+  const hash = await sha256Hex(`${site}|${url || title}`);
+  return `${slug}-${hash.slice(0, 14)}`;
+}
+
+export async function imageKeyFor(listingKey: string, sourceUrl: string): Promise<string> {
+  const hash = await sha256Hex(`${listingKey}|${sourceUrl}`);
+  return `${listingKey}-${hash.slice(0, 16)}`;
+}
+
+export function r2KeyFor(imageKey: string, contentType?: string | null): string {
+  const ext = extensionForContentType(contentType) || extensionFromPath(imageKey) || "bin";
+  return `listing-images/${imageKey}.${ext}`;
+}
+
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function extensionFromPath(value: string): string | null {
+  const match = value.match(/\.([a-z0-9]{2,5})(?:$|\?)/i);
+  return match ? match[1].toLowerCase() : null;
+}
+
+function extensionForContentType(contentType?: string | null): string | null {
+  if (!contentType) return null;
+  const clean = contentType.toLowerCase().split(";")[0]?.trim();
+  if (clean === "image/jpeg") return "jpg";
+  if (clean === "image/png") return "png";
+  if (clean === "image/webp") return "webp";
+  if (clean === "image/gif") return "gif";
+  if (clean === "image/avif") return "avif";
+  return null;
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}

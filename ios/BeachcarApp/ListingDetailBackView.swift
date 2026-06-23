@@ -7,7 +7,7 @@ struct ListingDetailBackView: View {
   @Binding var selectedImage: Int
   let onFlip: () -> Void
   let onAction: (FeedbackAction) async -> Void
-  let onNote: (String) async -> Void
+  let onNote: (String) async -> PreferenceNoteResult
 
   @State private var note = ""
 
@@ -23,9 +23,7 @@ struct ListingDetailBackView: View {
           diligencePanel
           activityPanel
           VoiceFeedbackComposer(text: $note) {
-            let outgoing = note
-            note = ""
-            await onNote(outgoing)
+            await onNote(note)
           }
         }
         .padding(12)

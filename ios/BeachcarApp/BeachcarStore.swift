@@ -5,12 +5,14 @@ import SwiftUI
 final class BeachcarStore: ObservableObject {
   @Published private(set) var run: RunPayload?
   @Published private(set) var feedbackByKey: [String: FeedbackRecord] = [:]
+  @Published private(set) var pendingPreferenceNotes: [PendingPreferenceNote] = []
   @Published private(set) var isLoading = false
   @Published var errorMessage: String?
   @Published var lastUndo: UndoState?
 
   let api: AuctionAPI
   private let offlineMode: Bool
+  private static let pendingPreferenceNotesKey = "beachcar.pendingPreferenceNotes.v1"
 
   init(
     api: AuctionAPI = AuctionAPI(baseURL: AppConfig.auctionBaseURL),
@@ -22,6 +24,7 @@ final class BeachcarStore: ObservableObject {
     self.run = initialRun
     self.feedbackByKey = initialFeedback
     self.offlineMode = offlineMode
+    self.pendingPreferenceNotes = Self.loadPendingPreferenceNotes()
   }
 
   var generatedLabel: String {
@@ -73,6 +76,7 @@ final class BeachcarStore: ObservableObject {
         }
       }
       feedbackByKey = overlay
+      await retryPendingPreferenceNotes(authToken: token)
       errorMessage = nil
     } catch {
       errorMessage = error.localizedDescription
@@ -146,26 +150,89 @@ final class BeachcarStore: ObservableObject {
     }
   }
 
-  func submitPreferenceNote(_ note: String, listing: AuctionListing?, tokenProvider: AuctionAPI.TokenProvider) async {
+  func clearUndo(ifListingKey listingKey: String? = nil) {
+    guard let lastUndo else { return }
+    if listingKey == nil || lastUndo.listingKey == listingKey {
+      self.lastUndo = nil
+    }
+  }
+
+  func submitPreferenceNote(_ note: String, listing: AuctionListing?, tokenProvider: AuctionAPI.TokenProvider) async -> PreferenceNoteResult {
     let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { return }
+    guard !trimmed.isEmpty else { return .saved }
+    let pending = PendingPreferenceNote(
+      id: UUID().uuidString,
+      listingKey: listing?.key,
+      listingTitle: listing?.title,
+      note: trimmed,
+      tags: listing.map(tags(for:)) ?? [],
+      createdAt: Date().ISO8601Format()
+    )
     if offlineMode {
+      enqueuePreferenceNote(pending)
       errorMessage = nil
-      return
+      return .queued
     }
     do {
       let token = try await tokenProvider()
-      _ = try await api.preferenceEvent(
-        listingKey: listing?.key,
-        eventType: "voice_note",
-        note: trimmed,
-        transcript: trimmed,
-        tags: listing.map(tags(for:)) ?? [],
-        authToken: token
-      )
+      try await sendPreferenceNote(pending, authToken: token)
       errorMessage = nil
+      return .saved
     } catch {
-      errorMessage = error.localizedDescription
+      enqueuePreferenceNote(pending)
+      errorMessage = nil
+      return .queued
+    }
+  }
+
+  private func sendPreferenceNote(_ pending: PendingPreferenceNote, authToken: String?) async throws {
+    _ = try await api.preferenceEvent(
+      listingKey: pending.listingKey,
+      eventType: "voice_note",
+      note: pending.note,
+      transcript: pending.note,
+      tags: pending.tags,
+      authToken: authToken
+    )
+  }
+
+  private func enqueuePreferenceNote(_ note: PendingPreferenceNote) {
+    if pendingPreferenceNotes.contains(where: { $0.listingKey == note.listingKey && $0.note == note.note }) {
+      persistPendingPreferenceNotes()
+      return
+    }
+    pendingPreferenceNotes.append(note)
+    persistPendingPreferenceNotes()
+  }
+
+  private func retryPendingPreferenceNotes(authToken: String?) async {
+    guard !offlineMode, !pendingPreferenceNotes.isEmpty else { return }
+    var remaining: [PendingPreferenceNote] = []
+    for note in pendingPreferenceNotes {
+      do {
+        try await sendPreferenceNote(note, authToken: authToken)
+      } catch {
+        remaining.append(note)
+      }
+    }
+    if remaining.count != pendingPreferenceNotes.count {
+      pendingPreferenceNotes = remaining
+      persistPendingPreferenceNotes()
+    }
+  }
+
+  private static func loadPendingPreferenceNotes() -> [PendingPreferenceNote] {
+    guard let data = UserDefaults.standard.data(forKey: pendingPreferenceNotesKey) else { return [] }
+    return (try? JSONDecoder().decode([PendingPreferenceNote].self, from: data)) ?? []
+  }
+
+  private func persistPendingPreferenceNotes() {
+    if pendingPreferenceNotes.isEmpty {
+      UserDefaults.standard.removeObject(forKey: Self.pendingPreferenceNotesKey)
+      return
+    }
+    if let data = try? JSONEncoder().encode(pendingPreferenceNotes) {
+      UserDefaults.standard.set(data, forKey: Self.pendingPreferenceNotesKey)
     }
   }
 

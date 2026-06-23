@@ -153,6 +153,20 @@ struct PreferenceEvent: Decodable {
   let createdAt: String
 }
 
+struct PendingPreferenceNote: Codable, Identifiable, Equatable {
+  let id: String
+  let listingKey: String?
+  let listingTitle: String?
+  let note: String
+  let tags: [String]
+  let createdAt: String
+}
+
+enum PreferenceNoteResult: Equatable {
+  case saved
+  case queued
+}
+
 private extension KeyedDecodingContainer {
   func decodeLossyStringIfPresent(forKey key: Key) throws -> String? {
     if let value = try? decodeIfPresent(String.self, forKey: key) {

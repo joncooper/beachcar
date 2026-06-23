@@ -6,7 +6,7 @@ struct ListingCardView: View {
   let api: AuctionAPI
   let tokenProvider: AuctionAPI.TokenProvider
   let onAction: (FeedbackAction) async -> Void
-  let onNote: (String) async -> Void
+  let onNote: (String) async -> PreferenceNoteResult
 
   @State private var selectedImage = 0
   @State private var isFlipped = false
@@ -15,6 +15,7 @@ struct ListingCardView: View {
   @State private var hasCrossedCommit = false
   @State private var hasCrossedStrong = false
   @State private var isSaving = false
+  @State private var swipeIntent: CardSwipeIntent = .undecided
 
   var body: some View {
     GeometryReader { proxy in
@@ -36,7 +37,7 @@ struct ListingCardView: View {
           )
           .transition(.asymmetric(insertion: .scale(scale: 0.96).combined(with: .opacity), removal: .opacity))
         } else {
-          frontCard(availableHeight: contentHeight)
+          frontCard(availableWidth: contentWidth, availableHeight: contentHeight)
             .transition(.asymmetric(insertion: .opacity, removal: .scale(scale: 0.96).combined(with: .opacity)))
         }
       }
@@ -46,13 +47,15 @@ struct ListingCardView: View {
     }
   }
 
-  private func frontCard(availableHeight: CGFloat) -> some View {
+  private func frontCard(availableWidth: CGFloat, availableHeight: CGFloat) -> some View {
     let hasImages = !listing.images.isEmpty
     let bodyHeight = hasImages
       ? min(max(availableHeight * 0.34, 306), 382)
       : min(max(availableHeight * 0.50, 382), 452)
     let rawPhotoHeight = availableHeight - bodyHeight - 8
     let photoHeight = hasImages ? max(330, rawPhotoHeight) : min(max(rawPhotoHeight, 210), 285)
+    let commitDistance = SwipeDecision.commitDistance(for: availableWidth)
+    let strongDistance = SwipeDecision.strongDistance(for: availableWidth)
 
     return VStack(spacing: 8) {
       PhotoCarousel(
@@ -65,7 +68,7 @@ struct ListingCardView: View {
         .accessibilityIdentifier("photo-carousel")
 
       ZStack {
-        SwipeActionBackdrop(offset: cardDrag, strongHoldStartedAt: strongHoldStartedAt)
+        SwipeActionBackdrop(offset: cardDrag, strongHoldStartedAt: strongHoldStartedAt, commitDistance: commitDistance, strongDistance: strongDistance)
           .opacity(abs(cardDrag) > 18 ? 1 : 0)
           .animation(.snappy(duration: 0.18), value: abs(cardDrag) > 18)
 
@@ -73,13 +76,13 @@ struct ListingCardView: View {
           .offset(x: cardDrag * 0.58, y: abs(cardDrag) * 0.016)
           .rotationEffect(.degrees(clamped(cardDrag / 14, min: -18, max: 18)), anchor: UnitPoint(x: 0.5, y: 0.68))
           .scaleEffect(cardDrag == 0 ? 1 : 0.982)
-          .shadow(color: swipeColor.opacity(abs(cardDrag) > SwipeDecision.commitDistance ? 0.22 : 0.08), radius: abs(cardDrag) > 0 ? 18 : 8, y: 10)
+          .shadow(color: swipeColor.opacity(abs(cardDrag) > commitDistance ? 0.22 : 0.08), radius: abs(cardDrag) > 0 ? 18 : 8, y: 10)
           .overlay(alignment: cardDrag >= 0 ? .topTrailing : .topLeading) {
-            SwipeSignal(offset: cardDrag, strongHoldStartedAt: strongHoldStartedAt)
+            SwipeSignal(offset: cardDrag, strongHoldStartedAt: strongHoldStartedAt, commitDistance: commitDistance, strongDistance: strongDistance)
               .padding(14)
           }
           .contentShape(Rectangle())
-          .simultaneousGesture(cardDecisionGesture)
+          .simultaneousGesture(cardDecisionGesture(cardWidth: availableWidth))
           .accessibilityIdentifier("listing-card-body")
       }
       .frame(height: bodyHeight)
@@ -196,14 +199,34 @@ struct ListingCardView: View {
     }
   }
 
-  private var cardDecisionGesture: some Gesture {
-    DragGesture(minimumDistance: 18)
+  private func cardDecisionGesture(cardWidth: CGFloat) -> some Gesture {
+    DragGesture(minimumDistance: 24)
       .onChanged { value in
         let width = value.translation.width
+        let height = value.translation.height
         let distance = abs(width)
+        let verticalDistance = abs(height)
+        if swipeIntent == .undecided {
+          if verticalDistance > 16 && verticalDistance > distance * 0.72 {
+            swipeIntent = .vertical
+          } else if distance >= SwipeDecision.intentDistance && distance > verticalDistance * 1.9 {
+            swipeIntent = .horizontal
+          } else {
+            cardDrag = 0
+            return
+          }
+        }
+
+        guard swipeIntent == .horizontal else {
+          cardDrag = 0
+          return
+        }
+
         cardDrag = width
-        updateSwipeMilestones(distance: distance)
-        if distance >= SwipeDecision.strongDistance {
+        let commitDistance = SwipeDecision.commitDistance(for: cardWidth)
+        let strongDistance = SwipeDecision.strongDistance(for: cardWidth)
+        updateSwipeMilestones(distance: distance, commitDistance: commitDistance, strongDistance: strongDistance)
+        if distance >= strongDistance {
           if strongHoldStartedAt == nil {
             strongHoldStartedAt = Date()
             UIImpactFeedbackGenerator(style: .soft).impactOccurred()
@@ -213,9 +236,14 @@ struct ListingCardView: View {
         }
       }
       .onEnded { value in
+        guard swipeIntent == .horizontal else {
+          resetSwipeState()
+          return
+        }
         let width = value.translation.width
         let action = SwipeDecision.action(
           offset: width,
+          cardWidth: cardWidth,
           strongHoldStartedAt: strongHoldStartedAt,
           endedAt: Date()
         )
@@ -255,24 +283,25 @@ struct ListingCardView: View {
   }
 
   private func flip() {
+    guard abs(cardDrag) < 8, swipeIntent != .horizontal else { return }
     UIImpactFeedbackGenerator(style: .light).impactOccurred()
     withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
       isFlipped.toggle()
     }
   }
 
-  private func updateSwipeMilestones(distance: CGFloat) {
-    if distance >= SwipeDecision.commitDistance && !hasCrossedCommit {
+  private func updateSwipeMilestones(distance: CGFloat, commitDistance: CGFloat, strongDistance: CGFloat) {
+    if distance >= commitDistance && !hasCrossedCommit {
       UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.55)
       hasCrossedCommit = true
-    } else if distance < SwipeDecision.commitDistance {
+    } else if distance < commitDistance {
       hasCrossedCommit = false
     }
 
-    if distance >= SwipeDecision.strongDistance && !hasCrossedStrong {
+    if distance >= strongDistance && !hasCrossedStrong {
       UIImpactFeedbackGenerator(style: .heavy).impactOccurred(intensity: 0.72)
       hasCrossedStrong = true
-    } else if distance < SwipeDecision.strongDistance {
+    } else if distance < strongDistance {
       hasCrossedStrong = false
     }
   }
@@ -283,12 +312,14 @@ struct ListingCardView: View {
       strongHoldStartedAt = nil
     }
     clearSwipeMilestones()
+    swipeIntent = .undecided
   }
 
   private func clearSwipeMilestones() {
     strongHoldStartedAt = nil
     hasCrossedCommit = false
     hasCrossedStrong = false
+    swipeIntent = .undecided
   }
 
   private func clamped(_ value: CGFloat, min minimum: CGFloat, max maximum: CGFloat) -> CGFloat {
@@ -296,12 +327,27 @@ struct ListingCardView: View {
   }
 }
 
-enum SwipeDecision {
-  static let commitDistance: CGFloat = 136
-  static let strongDistance: CGFloat = 380
-  static let strongHoldDuration: TimeInterval = 1.1
+private enum CardSwipeIntent {
+  case undecided
+  case horizontal
+  case vertical
+}
 
-  static func action(offset: CGFloat, strongHoldStartedAt: Date?, endedAt: Date) -> FeedbackAction? {
+enum SwipeDecision {
+  static let intentDistance: CGFloat = 44
+  static let strongHoldDuration: TimeInterval = 1.2
+
+  static func commitDistance(for cardWidth: CGFloat) -> CGFloat {
+    min(max(cardWidth * 0.42, 168), 232)
+  }
+
+  static func strongDistance(for cardWidth: CGFloat) -> CGFloat {
+    min(max(cardWidth * 0.92, 340), cardWidth * 0.98)
+  }
+
+  static func action(offset: CGFloat, cardWidth: CGFloat, strongHoldStartedAt: Date?, endedAt: Date) -> FeedbackAction? {
+    let commitDistance = commitDistance(for: cardWidth)
+    let strongDistance = strongDistance(for: cardWidth)
     if offset >= strongDistance {
       if hasCompletedStrongHold(strongHoldStartedAt, endedAt: endedAt) {
         return .star

@@ -12,6 +12,7 @@ struct BeachcarDeckView: View {
   @State private var searchText = ""
   @State private var viewMode: DeckViewMode = .deck
   @State private var listDetailListing: AuctionListing?
+  @State private var undoDismissTask: Task<Void, Never>?
 
   var body: some View {
     VStack(spacing: 0) {
@@ -27,6 +28,16 @@ struct BeachcarDeckView: View {
           .padding(.horizontal, 14)
           .padding(.vertical, 9)
           .background(Color.red.opacity(0.88), in: Capsule())
+          .padding(.bottom, 8)
+      }
+
+      if !store.pendingPreferenceNotes.isEmpty {
+        Label("\(store.pendingPreferenceNotes.count) steering note\(store.pendingPreferenceNotes.count == 1 ? "" : "s") queued", systemImage: "arrow.clockwise.circle.fill")
+          .font(.footnote.weight(.bold))
+          .foregroundStyle(BeachcarColors.secondary)
+          .padding(.horizontal, 14)
+          .padding(.vertical, 8)
+          .background(.white.opacity(0.76), in: Capsule())
           .padding(.bottom, 8)
       }
 
@@ -70,6 +81,22 @@ struct BeachcarDeckView: View {
       )
       .presentationDetents([.large])
       .presentationDragIndicator(.visible)
+    }
+    .onChange(of: store.lastUndo?.listingKey) { _, listingKey in
+      undoDismissTask?.cancel()
+      guard let listingKey else { return }
+      undoDismissTask = Task {
+        try? await Task.sleep(for: .seconds(4.5))
+        guard !Task.isCancelled else { return }
+        await MainActor.run {
+          withAnimation(.snappy(duration: 0.22)) {
+            store.clearUndo(ifListingKey: listingKey)
+          }
+        }
+      }
+    }
+    .onDisappear {
+      undoDismissTask?.cancel()
     }
   }
 
@@ -513,7 +540,7 @@ private struct ListingDetailSheet: View {
   let api: AuctionAPI
   let tokenProvider: AuctionAPI.TokenProvider
   let onAction: (FeedbackAction) async -> Void
-  let onNote: (String) async -> Void
+  let onNote: (String) async -> PreferenceNoteResult
 
   @Environment(\.dismiss) private var dismiss
   @State private var selectedImage = 0

@@ -11,12 +11,14 @@ export function normalizeAction(value: unknown): FeedbackAction | null {
 }
 
 export function normalizeListing(input: Partial<AuctionListing>): AuctionListing {
+  const site = String(input.site || "Unknown");
+  const url = String(input.url || "");
   return {
     section: String(input.section || "Worth a look"),
     lane: normalizeLane(input.lane),
-    site: String(input.site || "Unknown"),
+    site,
     title: String(input.title || "Untitled listing"),
-    url: String(input.url || ""),
+    url,
     bid: String(input.bid || "Check listing"),
     total: String(input.total || "Check listing"),
     location: input.location ? String(input.location) : undefined,
@@ -33,8 +35,30 @@ export function normalizeListing(input: Partial<AuctionListing>): AuctionListing
     why: String(input.why || ""),
     concerns: String(input.concerns || ""),
     currentTake: input.currentTake ? String(input.currentTake) : undefined,
-    images: Array.isArray(input.images) ? input.images.filter(Boolean).map(String) : [],
+    images: normalizeImages(input.images, { site, url }),
   };
+}
+
+export function normalizeImages(input: unknown, listing: { site?: string; url?: string } = {}): string[] {
+  if (!Array.isArray(input)) return [];
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of input) {
+    if (!raw) continue;
+    const imageUrl = String(raw);
+    const canonical = canonicalImageUrl(imageUrl);
+    if (seen.has(canonical)) continue;
+    seen.add(canonical);
+    unique.push(imageUrl);
+  }
+
+  if (!isCarsAndBidsListing(listing)) return unique;
+  const firstRoot = unique.map(carsAndBidsMediaRoot).find(Boolean);
+  if (!firstRoot) return unique;
+  const roots = new Set(unique.map(carsAndBidsMediaRoot).filter(Boolean));
+  if (roots.size <= 1) return unique;
+
+  return unique.filter((imageUrl) => carsAndBidsMediaRoot(imageUrl) === firstRoot);
 }
 
 export function inferTags(listing: Pick<AuctionListing, "title" | "why" | "concerns" | "lane" | "section">): string[] {
@@ -94,6 +118,44 @@ function extensionForContentType(contentType?: string | null): string | null {
   if (clean === "image/gif") return "gif";
   if (clean === "image/avif") return "avif";
   return null;
+}
+
+function isCarsAndBidsListing(listing: { site?: string; url?: string }): boolean {
+  const site = (listing.site || "").toLowerCase();
+  const url = (listing.url || "").toLowerCase();
+  return site.includes("cars") && site.includes("bids") || url.includes("carsandbids.com");
+}
+
+function canonicalImageUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    url.search = "";
+    url.hash = "";
+    if (url.hostname === "media.carsandbids.com") {
+      const parts = url.pathname.split("/").filter(Boolean);
+      const photosIndex = parts.indexOf("photos");
+      if (photosIndex > 0) {
+        const root = parts[photosIndex - 1];
+        return `${url.origin}/${root}/${parts.slice(photosIndex).join("/")}`;
+      }
+    }
+    return url.toString();
+  } catch {
+    return value;
+  }
+}
+
+function carsAndBidsMediaRoot(value: string): string | null {
+  try {
+    const url = new URL(value);
+    if (url.hostname !== "media.carsandbids.com") return null;
+    const parts = url.pathname.split("/").filter(Boolean);
+    const photosIndex = parts.indexOf("photos");
+    if (photosIndex <= 0) return null;
+    return parts[photosIndex - 1] || null;
+  } catch {
+    return null;
+  }
 }
 
 async function sha256Hex(value: string): Promise<string> {

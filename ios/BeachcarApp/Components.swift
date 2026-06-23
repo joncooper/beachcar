@@ -66,9 +66,11 @@ struct PhotoCarousel: View {
                 Color.clear
               }
             }
+            .id("\(listing.key)-photo-\(index)-\(image)")
             .tag(index)
           }
         }
+        .id("\(listing.key)-carousel")
         .tabViewStyle(.page(indexDisplayMode: .never))
       }
 
@@ -95,7 +97,7 @@ struct PhotoCarousel: View {
     .overlay(alignment: .bottomLeading) {
       if showsThumbnails && listing.images.count > 1 {
         HStack(spacing: 7) {
-          ForEach(Array(listing.images.prefix(5).enumerated()), id: \.offset) { index, image in
+          ForEach(Array(listing.images.prefix(5).enumerated()), id: \.element) { index, image in
             AsyncImage(url: api.resolvedImageURL(image)) { phase in
               switch phase {
               case .success(let image):
@@ -119,6 +121,16 @@ struct PhotoCarousel: View {
       }
     }
     .shadow(color: .black.opacity(0.08), radius: 14, y: 8)
+    .onChange(of: listing.key) { _, _ in
+      selectedImage = 0
+    }
+    .onChange(of: listing.images.count) { _, count in
+      if count == 0 {
+        selectedImage = 0
+      } else if selectedImage >= count {
+        selectedImage = count - 1
+      }
+    }
   }
 }
 
@@ -243,6 +255,8 @@ struct StatPill: View {
 struct SwipeActionBackdrop: View {
   let offset: CGFloat
   let strongHoldStartedAt: Date?
+  let commitDistance: CGFloat
+  let strongDistance: CGFloat
 
   var body: some View {
     TimelineView(.animation) { context in
@@ -289,10 +303,10 @@ struct SwipeActionBackdrop: View {
     let distance = abs(offset)
     let isRight = offset >= 0
     let holdProgress = SwipeDecision.strongHoldProgress(startedAt: strongHoldStartedAt, now: now)
-    let commitProgress = min(1, distance / SwipeDecision.commitDistance)
-    let strongProgress = min(1, max(0, (distance - SwipeDecision.commitDistance) / (SwipeDecision.strongDistance - SwipeDecision.commitDistance)))
+    let commitProgress = min(1, distance / commitDistance)
+    let strongProgress = min(1, max(0, (distance - commitDistance) / (strongDistance - commitDistance)))
 
-    if distance >= SwipeDecision.strongDistance {
+    if distance >= strongDistance {
       if holdProgress >= 1 {
         return SwipeSignalState(
           title: isRight ? "Star" : "Avoid",
@@ -315,7 +329,7 @@ struct SwipeActionBackdrop: View {
 
     return SwipeSignalState(
       title: isRight ? "Like" : "Hide",
-      subtitle: distance >= SwipeDecision.commitDistance ? "release to mark" : "keep swiping",
+      subtitle: distance >= commitDistance ? "release to mark" : "keep swiping",
       symbol: isRight ? "heart.fill" : "xmark",
       color: isRight ? BeachcarColors.teal : BeachcarColors.stop,
       progress: commitProgress,
@@ -327,6 +341,8 @@ struct SwipeActionBackdrop: View {
 struct SwipeSignal: View {
   let offset: CGFloat
   let strongHoldStartedAt: Date?
+  let commitDistance: CGFloat
+  let strongDistance: CGFloat
 
   var body: some View {
     if abs(offset) > 34 {
@@ -371,11 +387,11 @@ struct SwipeSignal: View {
   private func signal(now: Date) -> SwipeSignalState {
     let distance = abs(offset)
     let isRight = offset >= 0
-    let commitProgress = min(1, distance / SwipeDecision.commitDistance)
-    let strongProgress = min(1, max(0, (distance - SwipeDecision.commitDistance) / (SwipeDecision.strongDistance - SwipeDecision.commitDistance)))
+    let commitProgress = min(1, distance / commitDistance)
+    let strongProgress = min(1, max(0, (distance - commitDistance) / (strongDistance - commitDistance)))
     let holdProgress = SwipeDecision.strongHoldProgress(startedAt: strongHoldStartedAt, now: now)
 
-    if distance >= SwipeDecision.strongDistance {
+    if distance >= strongDistance {
       if holdProgress >= 1 {
         return SwipeSignalState(
           title: isRight ? "Star" : "Avoid",
@@ -398,7 +414,7 @@ struct SwipeSignal: View {
 
     return SwipeSignalState(
       title: isRight ? "Like" : "Hide",
-      subtitle: distance >= SwipeDecision.commitDistance ? "release to mark" : "keep swiping",
+      subtitle: distance >= commitDistance ? "release to mark" : "keep swiping",
       symbol: isRight ? "heart.fill" : "xmark",
       color: isRight ? BeachcarColors.teal : BeachcarColors.stop,
       progress: commitProgress,
@@ -548,8 +564,10 @@ struct RailButton: View {
 
 struct VoiceFeedbackComposer: View {
   @Binding var text: String
-  let onSubmit: () async -> Void
+  let onSubmit: () async -> PreferenceNoteResult
   @StateObject private var recorder = SpeechFeedbackRecorder()
+  @State private var sendState: VoiceSendState = .idle
+  @State private var isSubmitting = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
@@ -560,6 +578,7 @@ struct VoiceFeedbackComposer: View {
             if !recorder.transcript.isEmpty {
               text = recorder.transcript
             }
+            sendState = .idle
           }
         } label: {
           Image(systemName: recorder.isRecording ? "stop.fill" : "mic.fill")
@@ -575,32 +594,89 @@ struct VoiceFeedbackComposer: View {
           .padding(.vertical, 11)
           .background(.white.opacity(0.82), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         Button {
-          Task { await onSubmit() }
+          Task { await submit() }
         } label: {
-          Image(systemName: "paperplane.fill")
+          Image(systemName: isSubmitting ? "hourglass" : "paperplane.fill")
             .font(.system(size: 17, weight: .bold))
             .frame(width: 42, height: 42)
             .background(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? BeachcarColors.hairline : BeachcarColors.ink, in: Circle())
             .foregroundStyle(.white)
         }
-        .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSubmitting)
       }
-      if recorder.isRecording || recorder.errorMessage != nil {
+      if recorder.isRecording || recorder.errorMessage != nil || sendState != .idle {
         HStack(spacing: 8) {
           if recorder.isRecording {
             Image(systemName: "waveform")
               .symbolEffect(.variableColor.iterative)
             Text("Listening...")
+          } else if let error = recorder.errorMessage {
+            Image(systemName: "exclamationmark.triangle.fill")
+            Text(error)
           } else {
-            Text(recorder.errorMessage ?? "")
+            Image(systemName: sendState.systemImage)
+            Text(sendState.message)
           }
         }
         .font(.caption.weight(.semibold))
-        .foregroundStyle(recorder.errorMessage == nil ? BeachcarColors.teal : BeachcarColors.stop)
+        .foregroundStyle(statusColor)
       }
     }
     .padding(12)
     .background(BeachcarColors.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    .onChange(of: recorder.transcript) { _, transcript in
+      if !transcript.isEmpty {
+        text = transcript
+        sendState = .idle
+      }
+    }
+  }
+
+  private var statusColor: Color {
+    if recorder.errorMessage != nil {
+      return BeachcarColors.stop
+    }
+    switch sendState {
+    case .idle, .saved:
+      return BeachcarColors.teal
+    case .queued:
+      return BeachcarColors.secondary
+    }
+  }
+
+  private func submit() async {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return }
+    isSubmitting = true
+    let result = await onSubmit()
+    text = ""
+    recorder.transcript = ""
+    isSubmitting = false
+    withAnimation(.snappy(duration: 0.18)) {
+      sendState = result == .saved ? .saved : .queued
+    }
+  }
+}
+
+private enum VoiceSendState: Equatable {
+  case idle
+  case saved
+  case queued
+
+  var message: String {
+    switch self {
+    case .idle: ""
+    case .saved: "Saved for the next run"
+    case .queued: "Queued locally; will retry"
+    }
+  }
+
+  var systemImage: String {
+    switch self {
+    case .idle: "circle"
+    case .saved: "checkmark.circle.fill"
+    case .queued: "arrow.clockwise.circle.fill"
+    }
   }
 }
 

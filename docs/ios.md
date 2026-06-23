@@ -123,7 +123,7 @@ npm run ios:release
 
 The scripts write outputs under `build/ios/` and record the latest archive path in `build/ios/latest-archive-path`.
 
-By default, `ios:testflight` also assigns the uploaded build to `TESTFLIGHT_BETA_GROUP_NAME` so internal testers see the new build after Apple processing completes. If App Store Connect already grants the group access to all builds, the assignment step is a no-op.
+By default, `ios:testflight` also assigns the uploaded build to `TESTFLIGHT_BETA_GROUP_NAME` so internal testers see the new build after Apple processing completes. App Store Connect can lag after accepting an upload, so the assignment script polls for the new build before attaching it. If App Store Connect already grants the group access to all builds, the assignment step is a no-op.
 
 ### Build Numbers
 

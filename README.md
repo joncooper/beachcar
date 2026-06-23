@@ -83,6 +83,8 @@ npm run ios:archive
 npm run ios:testflight
 ```
 
+Use `npm run ios:release` when shipping app changes; it archives, uploads to App Store Connect, waits for the new build to appear, and assigns it to the configured internal TestFlight group.
+
 See `docs/ios.md` for the native UX model, Clerk setup, and simulator/device notes.
 
 ## Cloudflare Setup

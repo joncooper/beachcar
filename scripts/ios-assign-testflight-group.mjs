@@ -15,6 +15,8 @@ const bundleId = process.env.IOS_BUNDLE_ID || "com.joncooper.beachcar";
 const groupName = process.env.TESTFLIGHT_BETA_GROUP_NAME || "Beachcar Internal";
 const archivePath = resolveArchivePath();
 const buildNumber = process.env.IOS_BUILD_NUMBER || readArchiveValue(archivePath, "CFBundleVersion");
+const lookupTimeoutSeconds = Number(process.env.TESTFLIGHT_BUILD_LOOKUP_TIMEOUT_SECONDS || 15 * 60);
+const lookupIntervalSeconds = Number(process.env.TESTFLIGHT_BUILD_LOOKUP_INTERVAL_SECONDS || 20);
 
 if (!fs.existsSync(keyPath)) {
   throw new Error(`App Store Connect key not found: ${keyPath}`);
@@ -106,14 +108,21 @@ async function findApp({ token, bundleId }) {
 }
 
 async function findBuild({ token, appId, buildNumber }) {
-  const response = await ascFetch(token, `/builds?filter[app]=${encodeURIComponent(appId)}&sort=-uploadedDate&limit=50`);
-  const builds = response.data || [];
-  const build = builds.find((candidate) => candidate.attributes?.version === buildNumber);
-  if (!build) {
-    const seen = builds.map((candidate) => candidate.attributes?.version).filter(Boolean).join(", ") || "none";
-    throw new Error(`No uploaded build ${buildNumber} found for app ${appId}. Recent builds: ${seen}.`);
+  const deadline = Date.now() + lookupTimeoutSeconds * 1000;
+  let seen = "none";
+  while (Date.now() <= deadline) {
+    const response = await ascFetch(token, `/builds?filter[app]=${encodeURIComponent(appId)}&sort=-uploadedDate&limit=50`);
+    const builds = response.data || [];
+    const build = builds.find((candidate) => candidate.attributes?.version === buildNumber);
+    if (build) return build;
+
+    seen = builds.map((candidate) => candidate.attributes?.version).filter(Boolean).join(", ") || "none";
+    const remainingSeconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    if (remainingSeconds === 0) break;
+    console.log(`Build ${buildNumber} is not visible in App Store Connect yet. Retrying in ${lookupIntervalSeconds}s...`);
+    await sleep(Math.min(lookupIntervalSeconds, remainingSeconds) * 1000);
   }
-  return build;
+  throw new Error(`No uploaded build ${buildNumber} found for app ${appId}. Recent builds: ${seen}.`);
 }
 
 async function findBetaGroup({ token, appId, groupName }) {
@@ -161,4 +170,8 @@ async function ascFetch(token, pathname) {
     throw new Error(`App Store Connect request failed (${response.status}): ${await response.text()}`);
   }
   return response.json();
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

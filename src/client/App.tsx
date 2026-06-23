@@ -35,12 +35,14 @@ const laneLabels: Record<Lane, string> = {
 };
 
 const actionLabels: Record<FeedbackAction, string> = {
+  like: "Liked",
   star: "Starred",
   hide: "Hidden",
   avoid: "Avoid similar",
 };
 
 const actionClasses: Record<FeedbackAction, string> = {
+  like: "is-liked",
   star: "is-starred",
   hide: "is-hidden",
   avoid: "is-avoid",

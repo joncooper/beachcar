@@ -10,6 +10,7 @@ import {
   importRun,
   markImageCopied,
   markImageFailed,
+  createPreferenceEvent,
   upsertFeedback,
 } from "./db";
 import { errorResponse, jsonResponse, readJson } from "./http";
@@ -61,6 +62,11 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url:
 
   if (request.method === "GET" && url.pathname === "/api/feedback/export") {
     return jsonResponse(await exportFeedback(env.DB));
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/preference-events") {
+    const body = await readJson<{ listingKey?: unknown; eventType?: unknown; note?: unknown; transcript?: unknown; tags?: unknown }>(request);
+    return jsonResponse(await createPreferenceEvent(env.DB, body), { status: 201 });
   }
 
   const feedbackMatch = url.pathname.match(/^\/api\/feedback\/([^/]+)$/);

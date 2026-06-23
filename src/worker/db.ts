@@ -1,5 +1,5 @@
 import { imageKeyFor, inferTags, listingKeyFor, normalizeAction, normalizeListing, r2KeyFor } from "../shared/normalize";
-import type { AuctionListing, FeedbackExport, FeedbackRecord, ImageStatus, ImportPayload, RunPayload } from "../shared/types";
+import type { AuctionListing, FeedbackExport, FeedbackRecord, ImageStatus, ImportPayload, PreferenceEvent, RunPayload } from "../shared/types";
 
 interface ImageRow {
   image_key: string;
@@ -14,10 +14,20 @@ interface ImageRow {
 
 interface FeedbackRow {
   listing_key: string;
-  action: "star" | "hide" | "avoid";
+  action: FeedbackRecord["action"];
   tags_json: string;
   note: string | null;
   updated_at: string;
+}
+
+interface PreferenceEventRow {
+  id: string;
+  listing_key: string | null;
+  event_type: PreferenceEvent["eventType"];
+  note: string | null;
+  transcript: string | null;
+  tags_json: string;
+  created_at: string;
 }
 
 interface RunRow {
@@ -90,8 +100,10 @@ export async function importRun(db: D1Database, payload: ImportPayload | Auction
         .prepare(
           `INSERT INTO images (image_key, listing_key, source_url, r2_key, status)
            VALUES (?, ?, ?, ?, 'pending')
-           ON CONFLICT(source_url) DO UPDATE SET
+           ON CONFLICT(image_key) DO UPDATE SET
              listing_key = excluded.listing_key,
+             source_url = excluded.source_url,
+             r2_key = excluded.r2_key,
              updated_at = CURRENT_TIMESTAMP`,
         )
         .bind(imageKey, listingKey, sourceUrl, r2Key)
@@ -189,7 +201,7 @@ export async function upsertFeedback(
   input: { action: unknown; note?: unknown; tags?: unknown },
 ): Promise<FeedbackRecord> {
   const action = normalizeAction(input.action);
-  if (!action) throw new Error("Feedback action must be star, hide, or avoid");
+  if (!action) throw new Error("Feedback action must be like, star, hide, or avoid");
 
   const listing = await db
     .prepare("SELECT last_payload_json FROM listings WHERE listing_key = ?")
@@ -218,6 +230,49 @@ export async function upsertFeedback(
   return { listingKey, action, tags, note, updatedAt };
 }
 
+export async function createPreferenceEvent(
+  db: D1Database,
+  input: { listingKey?: unknown; eventType?: unknown; note?: unknown; transcript?: unknown; tags?: unknown },
+): Promise<PreferenceEvent> {
+  const eventType = input.eventType === "voice_note" || input.eventType === "text_note" || input.eventType === "viewed" ? input.eventType : null;
+  if (!eventType) throw new Error("Preference event type must be voice_note, text_note, or viewed");
+
+  const listingKey = typeof input.listingKey === "string" && input.listingKey.trim() ? input.listingKey.trim() : null;
+  let listing: AuctionListing | null = null;
+  if (listingKey) {
+    const row = await db
+      .prepare("SELECT last_payload_json FROM listings WHERE listing_key = ?")
+      .bind(listingKey)
+      .first<{ last_payload_json: string }>();
+    if (!row) throw new Error("Unknown listing");
+    listing = JSON.parse(row.last_payload_json) as AuctionListing;
+  }
+
+  const note = typeof input.note === "string" && input.note.trim() ? input.note.trim() : null;
+  const transcript = typeof input.transcript === "string" && input.transcript.trim() ? input.transcript.trim() : null;
+  if ((eventType === "voice_note" || eventType === "text_note") && !note && !transcript) {
+    throw new Error("Preference note cannot be empty");
+  }
+
+  const tags = Array.isArray(input.tags)
+    ? input.tags.filter(Boolean).map(String)
+    : listing
+      ? inferTags(listing)
+      : [];
+  const createdAt = new Date().toISOString();
+  const id = `pref-${createdAt.replace(/[^0-9a-z]/gi, "-").toLowerCase()}-${crypto.randomUUID().slice(0, 8)}`;
+
+  await db
+    .prepare(
+      `INSERT INTO preference_events (id, listing_key, event_type, note, transcript, tags_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(id, listingKey, eventType, note, transcript, JSON.stringify([...new Set(tags)]), createdAt)
+    .run();
+
+  return { id, listingKey, eventType, note, transcript, tags: [...new Set(tags)], createdAt };
+}
+
 export async function deleteFeedback(db: D1Database, listingKey: string): Promise<void> {
   await db.prepare("DELETE FROM feedback WHERE listing_key = ?").bind(listingKey).run();
 }
@@ -235,8 +290,10 @@ export async function exportFeedback(db: D1Database): Promise<FeedbackExport> {
       listing: listingRow ? (JSON.parse(listingRow.last_payload_json) as AuctionListing) : null,
     });
   }
+  const preferenceEvents = await getPreferenceEventsWithListings(db);
 
   const counts = {
+    like: feedback.filter((entry) => entry.action === "like").length,
     star: feedback.filter((entry) => entry.action === "star").length,
     hide: feedback.filter((entry) => entry.action === "hide").length,
     avoid: feedback.filter((entry) => entry.action === "avoid").length,
@@ -249,16 +306,44 @@ export async function exportFeedback(db: D1Database): Promise<FeedbackExport> {
     generatedAt: new Date().toISOString(),
     counts,
     entries,
+    preferenceEvents,
     steering: {
       prioritizeSimilarTo: entries
-        .filter((entry) => entry.action === "star" && entry.listing)
+        .filter((entry) => (entry.action === "star" || entry.action === "like") && entry.listing)
         .map((entry) => ({ title: entry.listing!.title, url: entry.listing!.url, tags: entry.tags })),
       suppressExactUrls: entries.filter((entry) => entry.action === "hide" && entry.listing).map((entry) => entry.listing!.url),
       avoidSimilarTo: entries
         .filter((entry) => entry.action === "avoid" && entry.listing)
         .map((entry) => ({ title: entry.listing!.title, url: entry.listing!.url, tags: entry.tags, why: entry.listing!.why })),
+      notes: preferenceEvents
+        .filter((event) => event.note || event.transcript)
+        .map((event) => ({
+          title: event.listing?.title,
+          url: event.listing?.url,
+          note: event.note || event.transcript || "",
+          tags: event.tags,
+        })),
     },
   };
+}
+
+async function getPreferenceEventsWithListings(db: D1Database): Promise<Array<PreferenceEvent & { listing?: AuctionListing | null }>> {
+  const { results } = await db
+    .prepare("SELECT * FROM preference_events ORDER BY created_at DESC LIMIT 200")
+    .all<PreferenceEventRow>();
+  const events = [];
+  for (const row of results) {
+    let listing: AuctionListing | null = null;
+    if (row.listing_key) {
+      const listingRow = await db
+        .prepare("SELECT last_payload_json FROM listings WHERE listing_key = ?")
+        .bind(row.listing_key)
+        .first<{ last_payload_json: string }>();
+      listing = listingRow ? (JSON.parse(listingRow.last_payload_json) as AuctionListing) : null;
+    }
+    events.push({ ...preferenceEventFromRow(row), listing });
+  }
+  return events;
 }
 
 async function getImagesByListing(db: D1Database, listingKeys: string[]): Promise<Map<string, ImageRow[]>> {
@@ -304,5 +389,17 @@ function feedbackFromRow(row: FeedbackRow): FeedbackRecord {
     tags: JSON.parse(row.tags_json || "[]") as string[],
     note: row.note,
     updatedAt: row.updated_at,
+  };
+}
+
+function preferenceEventFromRow(row: PreferenceEventRow): PreferenceEvent {
+  return {
+    id: row.id,
+    listingKey: row.listing_key,
+    eventType: row.event_type,
+    note: row.note,
+    transcript: row.transcript,
+    tags: JSON.parse(row.tags_json || "[]") as string[],
+    createdAt: row.created_at,
   };
 }

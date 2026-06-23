@@ -7,8 +7,13 @@ dist/
 .dev.vars
 .env
 .env.local
+.env.apple.local
 .env.*.local
 .publish.env
 coverage/
+build/
 outputs/
 npm-debug.log*
+ios/Beachcar.xcodeproj/
+ios/DerivedData*/
+ios/build/

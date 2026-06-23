@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { imageKeyFor, inferTags, listingKeyFor, normalizeListing, r2KeyFor } from "../src/shared/normalize";
+import { imageKeyFor, inferTags, listingKeyFor, normalizeAction, normalizeListing, r2KeyFor } from "../src/shared/normalize";
 
 describe("listing normalization", () => {
   it("defaults sparse imported listings safely", () => {
@@ -40,5 +40,13 @@ describe("listing normalization", () => {
     expect(r2KeyFor("abc", "image/jpeg")).toBe("listing-images/abc.jpg");
     expect(r2KeyFor("abc", "image/webp; charset=utf-8")).toBe("listing-images/abc.webp");
     expect(r2KeyFor("abc")).toBe("listing-images/abc.bin");
+  });
+
+  it("accepts the full feedback action set", () => {
+    expect(normalizeAction("like")).toBe("like");
+    expect(normalizeAction("star")).toBe("star");
+    expect(normalizeAction("hide")).toBe("hide");
+    expect(normalizeAction("avoid")).toBe("avoid");
+    expect(normalizeAction("pass")).toBeNull();
   });
 });

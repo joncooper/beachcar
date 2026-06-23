@@ -34,7 +34,7 @@ CREATE INDEX IF NOT EXISTS idx_run_listings_run_order ON run_listings(run_id, so
 
 CREATE TABLE IF NOT EXISTS feedback (
   listing_key TEXT PRIMARY KEY,
-  action TEXT NOT NULL CHECK (action IN ('star', 'hide', 'avoid')),
+  action TEXT NOT NULL CHECK (action IN ('like', 'star', 'hide', 'avoid')),
   tags_json TEXT NOT NULL DEFAULT '[]',
   note TEXT,
   updated_at TEXT NOT NULL,
@@ -56,5 +56,5 @@ CREATE TABLE IF NOT EXISTS images (
   FOREIGN KEY (listing_key) REFERENCES listings(listing_key) ON DELETE CASCADE
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_images_source_url ON images(source_url);
+CREATE INDEX IF NOT EXISTS idx_images_source_url ON images(source_url);
 CREATE INDEX IF NOT EXISTS idx_images_listing ON images(listing_key);

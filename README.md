@@ -10,12 +10,27 @@ The default example is a beach-car/runabout watchlist, but the app is intentiona
 - D1 database for daily runs, listings, image metadata, and feedback memory.
 - R2 image cache so listing photos keep working on mobile.
 - Clerk authentication restricted to one configured email.
+- Native SwiftUI iOS app scaffold for an image-first swipe/deck review flow.
 - Feedback actions:
+  - Like: show more like this without pinning it as a favorite.
   - Star: prioritize this listing and similar future finds.
   - Hide: remove this exact listing from the default view.
   - Avoid: suppress similar listings unless unusually compelling.
 - Admin import API for an AI daily automation.
 - Agent playbooks for Codex, Claude, or another browser-capable AI operator.
+
+## Native iOS Preview
+
+The native app is an image-first review surface for daily auction finds. The primary mode is a one-listing deck: swipe photos horizontally, move through vehicles vertically, like/hide/star/avoid with card gestures, tap for the back-of-card detail view, or jump into list and filter modes when scanning.
+
+These are actual iPhone simulator screenshots from the current SwiftUI app:
+
+<p>
+  <img src="docs/screenshots/ios-deck.png" alt="Beachcar iOS deck view" width="220">
+  <img src="docs/screenshots/ios-list.png" alt="Beachcar iOS list view" width="220">
+  <img src="docs/screenshots/ios-filters.png" alt="Beachcar iOS filters view" width="220">
+  <img src="docs/screenshots/ios-details.png" alt="Beachcar iOS detail back view" width="220">
+</p>
 
 ## Operating Model
 
@@ -45,8 +60,30 @@ Fill in `.env.local` with your Clerk keys and desired app name.
 ```bash
 npm run typecheck
 npm test
+set -a; source .env.local; set +a
 npm run build
 ```
+
+## Native iOS App
+
+The native app lives in `ios/` and is generated from `ios/project.yml` with XcodeGen, so you can work without opening Xcode. It uses Clerk with Google auth, talks to the same Worker API as the PWA, and supports TestFlight builds from the command line.
+
+```bash
+npm run ios:generate
+npm run ios:resolve
+npm run ios:build
+```
+
+Useful commands:
+
+```bash
+npm run ios:sim
+npm run ios:test-ui
+npm run ios:archive
+npm run ios:testflight
+```
+
+See `docs/ios.md` for the native UX model, Clerk setup, and simulator/device notes.
 
 ## Cloudflare Setup
 

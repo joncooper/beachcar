@@ -6,7 +6,7 @@ export function normalizeLane(value: unknown): Lane {
 }
 
 export function normalizeAction(value: unknown): FeedbackAction | null {
-  if (value === "star" || value === "hide" || value === "avoid") return value;
+  if (value === "like" || value === "star" || value === "hide" || value === "avoid") return value;
   return null;
 }
 

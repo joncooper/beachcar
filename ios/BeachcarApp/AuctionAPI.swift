@@ -1,0 +1,157 @@
+import Foundation
+
+struct AuctionAPI {
+  typealias TokenProvider = () async throws -> String?
+
+  let baseURL: URL
+
+  func latestRun(authToken: String?) async throws -> RunPayload {
+    try await request(path: "/api/runs/latest", authToken: authToken)
+  }
+
+  func putFeedback(
+    listingKey: String,
+    action: FeedbackAction,
+    note: String? = nil,
+    tags: [String] = [],
+    authToken: String?
+  ) async throws -> FeedbackRecord {
+    try await request(
+      path: "/api/feedback/\(listingKey.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? listingKey)",
+      method: "PUT",
+      body: FeedbackRequest(action: action.rawValue, note: note, tags: tags),
+      authToken: authToken
+    )
+  }
+
+  func deleteFeedback(listingKey: String, authToken: String?) async throws {
+    let _: EmptyResponse = try await request(
+      path: "/api/feedback/\(listingKey.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? listingKey)",
+      method: "DELETE",
+      authToken: authToken
+    )
+  }
+
+  func preferenceEvent(
+    listingKey: String?,
+    eventType: String,
+    note: String?,
+    transcript: String?,
+    tags: [String],
+    authToken: String?
+  ) async throws -> PreferenceEvent {
+    try await request(
+      path: "/api/preference-events",
+      method: "POST",
+      body: PreferenceEventRequest(listingKey: listingKey, eventType: eventType, note: note, transcript: transcript, tags: tags),
+      authToken: authToken
+    )
+  }
+
+  func resolvedImageURL(_ value: String) -> URL? {
+    if value.hasPrefix("/") {
+      return URL(string: value, relativeTo: baseURL)?.absoluteURL
+    }
+    return URL(string: value)
+  }
+
+  private func request<T: Decodable, Body: Encodable>(
+    path: String,
+    method: String = "GET",
+    body: Body?,
+    authToken: String?
+  ) async throws -> T {
+    var request = URLRequest(url: URL(string: path, relativeTo: baseURL)!.absoluteURL)
+    request.httpMethod = method
+    request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+    if let token = authToken {
+      request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    }
+
+    if let body {
+      request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+      request.httpBody = try JSONEncoder().encode(body)
+    }
+
+    let (data, response) = try await URLSession.shared.data(for: request)
+    guard let http = response as? HTTPURLResponse else {
+      throw APIError.transport("No HTTP response")
+    }
+    guard (200..<300).contains(http.statusCode) else {
+      let message = (try? JSONDecoder().decode(ErrorResponse.self, from: data).error) ?? HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
+      throw APIError.http(status: http.statusCode, message: message)
+    }
+    if T.self == EmptyResponse.self {
+      return EmptyResponse() as! T
+    }
+    do {
+      return try JSONDecoder().decode(T.self, from: data)
+    } catch {
+      throw APIError.transport(Self.describeDecodeError(error))
+    }
+  }
+
+  private func request<T: Decodable>(
+    path: String,
+    method: String = "GET",
+    authToken: String?
+  ) async throws -> T {
+    try await request(path: path, method: method, body: Optional<EmptyBody>.none, authToken: authToken)
+  }
+}
+
+private extension AuctionAPI {
+  static func describeDecodeError(_ error: Error) -> String {
+    switch error {
+    case let DecodingError.typeMismatch(type, context):
+      "Could not decode \(type) at \(codingPath(context.codingPath)): \(context.debugDescription)"
+    case let DecodingError.valueNotFound(type, context):
+      "Missing \(type) at \(codingPath(context.codingPath)): \(context.debugDescription)"
+    case let DecodingError.keyNotFound(key, context):
+      "Missing key \(key.stringValue) at \(codingPath(context.codingPath)): \(context.debugDescription)"
+    case let DecodingError.dataCorrupted(context):
+      "Corrupt data at \(codingPath(context.codingPath)): \(context.debugDescription)"
+    default:
+      error.localizedDescription
+    }
+  }
+
+  static func codingPath(_ path: [CodingKey]) -> String {
+    let value = path.map(\.stringValue).joined(separator: ".")
+    return value.isEmpty ? "<root>" : value
+  }
+}
+
+enum APIError: LocalizedError {
+  case http(status: Int, message: String)
+  case transport(String)
+
+  var errorDescription: String? {
+    switch self {
+    case .http(_, let message): message
+    case .transport(let message): message
+    }
+  }
+}
+
+private struct FeedbackRequest: Encodable {
+  let action: String
+  let note: String?
+  let tags: [String]
+}
+
+private struct PreferenceEventRequest: Encodable {
+  let listingKey: String?
+  let eventType: String
+  let note: String?
+  let transcript: String?
+  let tags: [String]
+}
+
+private struct ErrorResponse: Decodable {
+  let error: String
+}
+
+private struct EmptyBody: Encodable {}
+private struct EmptyResponse: Decodable {}

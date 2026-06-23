@@ -1,4 +1,4 @@
-import type { FeedbackAction, FeedbackRecord, RunPayload, UserPayload } from "../shared/types";
+import type { FeedbackAction, FeedbackRecord, PreferenceEvent, RunPayload, UserPayload } from "../shared/types";
 
 const latestRunCacheKey = "beachcar-watch:last-run";
 let tokenGetter: (() => Promise<string | null>) | null = null;
@@ -46,6 +46,20 @@ export async function putFeedback(
 
 export async function clearFeedback(listingKey: string): Promise<void> {
   await requestJson<{ ok: true }>(`/api/feedback/${encodeURIComponent(listingKey)}`, { method: "DELETE" });
+}
+
+export async function postPreferenceEvent(input: {
+  listingKey?: string | null;
+  eventType: "voice_note" | "text_note" | "viewed";
+  note?: string;
+  transcript?: string;
+  tags?: string[];
+}): Promise<PreferenceEvent> {
+  return requestJson<PreferenceEvent>("/api/preference-events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
 }
 
 async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {

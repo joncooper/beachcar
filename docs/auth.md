@@ -19,3 +19,12 @@ The Worker verifies the session JWT, fetches the Clerk user with `CLERK_SECRET_K
 
 For local development without Clerk secrets, non-production localhost requests may fall back to `ALLOWED_EMAIL`.
 
+## Native iOS
+
+The SwiftUI app uses ClerkKit and ClerkKitUI with the prebuilt `AuthView()` sheet and `UserButton(signedOutContent:)`. It sends the native Clerk session token as `Authorization: Bearer <token>` to the same Worker API used by the PWA.
+
+Native setup also requires Clerk Native API and an Associated Domains entitlement:
+
+```text
+webcredentials:{YOUR_FRONTEND_API_URL}
+```

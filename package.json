@@ -20,7 +20,18 @@
     "db:migrate:local": "wrangler d1 migrations apply beachcar-watch --local",
     "db:migrate:remote": "wrangler d1 migrations apply beachcar-watch --remote",
     "publish:daily": "node scripts/publish-daily-run.mjs",
-    "images:audit": "node scripts/audit-image-cache.mjs"
+    "images:audit": "node scripts/audit-image-cache.mjs",
+    "ios:generate": "xcodegen generate --spec ios/project.yml",
+    "ios:resolve": "xcodebuild -resolvePackageDependencies -project ios/Beachcar.xcodeproj -scheme Beachcar",
+    "ios:build": "scripts/ios-build.sh",
+    "ios:sim": "scripts/ios-run-sim.sh",
+    "ios:test-ui": "scripts/ios-test-ui.sh",
+    "ios:icons": "scripts/ios-generate-icons.sh",
+    "ios:archive": "scripts/ios-archive.sh",
+    "ios:testflight": "scripts/ios-upload-testflight.sh",
+    "ios:testflight:assign": "node scripts/ios-assign-testflight-group.mjs",
+    "ios:release": "scripts/ios-archive.sh && scripts/ios-upload-testflight.sh",
+    "ios:asc:check": "scripts/ios-appstore-check.sh"
   },
   "dependencies": {
     "@clerk/react": "^6.10.4",

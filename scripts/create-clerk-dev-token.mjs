@@ -6,7 +6,7 @@ const root = process.cwd();
 const envPath = path.join(root, ".env.local");
 const apiBase = "https://api.clerk.com/v1";
 const env = await loadEnv(envPath);
-const secretKey = env.CLERK_SECRET_KEY;
+const secretKey = process.env.CLERK_SECRET_KEY || env.CLERK_SECRET_KEY;
 const email = process.env.CLERK_DEV_EMAIL || process.env.ALLOWED_EMAIL || env.CLERK_DEV_EMAIL || env.ALLOWED_EMAIL;
 const appUrl =
   process.env.CLERK_DEV_APP_URL || process.env.AUCTION_WATCH_URL || env.CLERK_DEV_APP_URL || env.AUCTION_WATCH_URL || "http://127.0.0.1:8787/";

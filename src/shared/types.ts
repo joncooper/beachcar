@@ -1,5 +1,5 @@
 export type Lane = "family" | "solo" | "curiosity";
-export type FeedbackAction = "star" | "hide" | "avoid";
+export type FeedbackAction = "like" | "star" | "hide" | "avoid";
 
 export interface AuctionListing {
   listingKey?: string;
@@ -47,6 +47,16 @@ export interface FeedbackRecord {
   updatedAt: string;
 }
 
+export interface PreferenceEvent {
+  id: string;
+  listingKey?: string | null;
+  eventType: "voice_note" | "text_note" | "viewed";
+  note?: string | null;
+  transcript?: string | null;
+  tags: string[];
+  createdAt: string;
+}
+
 export interface RunPayload {
   id: string;
   generatedAt: string;
@@ -70,10 +80,12 @@ export interface FeedbackExport {
   generatedAt: string;
   counts: Record<FeedbackAction, number> & { total: number };
   entries: Array<FeedbackRecord & { listing?: AuctionListing | null }>;
+  preferenceEvents?: Array<PreferenceEvent & { listing?: AuctionListing | null }>;
   steering: {
     prioritizeSimilarTo: Array<{ title: string; url: string; tags: string[] }>;
     suppressExactUrls: string[];
     avoidSimilarTo: Array<{ title: string; url: string; tags: string[]; why?: string }>;
+    notes: Array<{ title?: string; url?: string; note: string; tags: string[] }>;
   };
 }
 

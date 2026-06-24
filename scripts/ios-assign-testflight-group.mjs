@@ -15,14 +15,16 @@ const bundleId = process.env.IOS_BUNDLE_ID || "com.joncooper.beachcar";
 const groupName = process.env.TESTFLIGHT_BETA_GROUP_NAME || "Beachcar Internal";
 const archivePath = resolveArchivePath();
 const buildNumber = process.env.IOS_BUILD_NUMBER || readArchiveValue(archivePath, "CFBundleVersion");
-const lookupTimeoutSeconds = Number(process.env.TESTFLIGHT_BUILD_LOOKUP_TIMEOUT_SECONDS || 15 * 60);
+const lookupTimeoutSeconds = Number(process.env.TESTFLIGHT_BUILD_LOOKUP_TIMEOUT_SECONDS || 45 * 60);
 const lookupIntervalSeconds = Number(process.env.TESTFLIGHT_BUILD_LOOKUP_INTERVAL_SECONDS || 20);
 
 if (!fs.existsSync(keyPath)) {
   throw new Error(`App Store Connect key not found: ${keyPath}`);
 }
 
-const token = createJwt({ keyId, issuerId, keyPath });
+const token = { toString: () => currentToken() };
+let cachedToken = "";
+let cachedTokenExpiresAt = 0;
 const app = await findApp({ token, bundleId });
 const build = await findBuild({ token, appId: app.id, buildNumber });
 const group = await findBetaGroup({ token, appId: app.id, groupName });
@@ -82,6 +84,16 @@ function readArchiveValue(archive, key) {
   return execFileSync("/usr/libexec/PlistBuddy", ["-c", `Print :ApplicationProperties:${key}`, infoPath], {
     encoding: "utf8",
   }).trim();
+}
+
+
+function currentToken() {
+  const now = Math.floor(Date.now() / 1000);
+  if (!cachedToken || now >= cachedTokenExpiresAt - 60) {
+    cachedToken = createJwt({ keyId, issuerId, keyPath });
+    cachedTokenExpiresAt = now + 20 * 60;
+  }
+  return cachedToken;
 }
 
 function createJwt({ keyId, issuerId, keyPath }) {

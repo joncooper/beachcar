@@ -53,12 +53,10 @@ export function normalizeImages(input: unknown, listing: { site?: string; url?: 
   }
 
   if (!isCarsAndBidsListing(listing)) return unique;
-  const firstRoot = unique.map(carsAndBidsMediaRoot).find(Boolean);
-  if (!firstRoot) return unique;
-  const roots = new Set(unique.map(carsAndBidsMediaRoot).filter(Boolean));
-  if (roots.size <= 1) return unique;
+  const firstGroup = unique.map(carsAndBidsPhotoGroup).find(Boolean);
+  if (!firstGroup) return unique;
 
-  return unique.filter((imageUrl) => carsAndBidsMediaRoot(imageUrl) === firstRoot);
+  return unique.filter((imageUrl) => carsAndBidsPhotoGroup(imageUrl) === firstGroup);
 }
 
 export function inferTags(listing: Pick<AuctionListing, "title" | "why" | "concerns" | "lane" | "section">): string[] {
@@ -145,14 +143,14 @@ function canonicalImageUrl(value: string): string {
   }
 }
 
-function carsAndBidsMediaRoot(value: string): string | null {
+function carsAndBidsPhotoGroup(value: string): string | null {
   try {
     const url = new URL(value);
     if (url.hostname !== "media.carsandbids.com") return null;
     const parts = url.pathname.split("/").filter(Boolean);
     const photosIndex = parts.indexOf("photos");
-    if (photosIndex <= 0) return null;
-    return parts[photosIndex - 1] || null;
+    if (photosIndex <= 0 || !parts[photosIndex + 1]) return null;
+    return `${parts[photosIndex - 1]}/${parts[photosIndex + 1]}`;
   } catch {
     return null;
   }

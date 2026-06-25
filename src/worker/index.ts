@@ -6,6 +6,7 @@ import { AuthError, requirePublisher, requireUser, userIdForEmail } from "./auth
 import {
   acceptInvite,
   assertAiBudgetAvailable,
+  createAutomationToken,
   claimAgentRun,
   claimNextAgentRun,
   claimRunnerTask,
@@ -16,9 +17,11 @@ import {
   ensureUser,
   exportAccount,
   exportFeedback,
+  defaultAutomationScopes,
   getAiUsageEvents,
   getAiUsageSummary,
   getAgentRunById,
+  getAutomationEvents,
   getFeedback,
   getLatestAgentRun,
   getLatestRun,
@@ -31,8 +34,11 @@ import {
   failRunnerTask,
   markAgentRunFailed,
   markAgentRunPublished,
+  listAutomationTokens,
   recordAiUsageEvent,
+  recordAutomationEvent,
   createPreferenceEvent,
+  revokeAutomationToken,
   type UserScope,
   upsertAiSettings,
   upsertProfile,
@@ -41,6 +47,8 @@ import {
 } from "./db";
 import { errorResponse, jsonResponse, readJson } from "./http";
 import { mirrorImage, prewarmImportedImages, serveImage, uploadImage } from "./image-cache";
+import { automationBundleMarkdown } from "./automation-bundle";
+import { handleMcpRequest } from "./mcp";
 export { BeachcarAgent } from "./agents/beachcar-agent";
 export { BeachcarRunnerContainer } from "./containers/beachcar-runner-container";
 export { BeachcarRunWorkflow } from "./workflows/beachcar-run-workflow";
@@ -49,6 +57,9 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     try {
+      if (url.pathname === "/mcp") {
+        return await handleMcpRequest(request, env, ctx);
+      }
       if (url.pathname.startsWith("/api/")) {
         return await handleApi(request, env, ctx, url);
       }
@@ -135,6 +146,59 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url:
     return jsonResponse({
       summary: await getAiUsageSummary(env.DB, authUser.id),
       events: await getAiUsageEvents(env.DB, authUser.id, limitFromUrl(url, 50)),
+    });
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/automation/status") {
+    return jsonResponse({
+      ...automationEndpoints(request),
+      oauth: {
+        status: "planned",
+        message: "Remote MCP OAuth is the target production handshake; this preview uses revocable scoped automation tokens.",
+      },
+      defaultScopes: defaultAutomationScopes,
+      tokens: await listAutomationTokens(env.DB, authUser.id),
+      recentEvents: await getAutomationEvents(env.DB, authUser.id, 20),
+    });
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/automation/tokens") {
+    const body = await readJson<{ label?: unknown; scopes?: unknown }>(request);
+    const created = await createAutomationToken(env.DB, { userId: authUser.id, label: body.label, scopes: body.scopes });
+    await recordAutomationEvent(env.DB, {
+      userId: authUser.id,
+      tokenId: created.record.id,
+      actor: "user",
+      eventType: "automation_token.created",
+      metadata: { label: created.record.label, scopes: created.record.scopes },
+    });
+    return jsonResponse(created, { status: 201 });
+  }
+
+  const automationTokenMatch = url.pathname.match(/^\/api\/automation\/tokens\/([^/]+)$/);
+  if (automationTokenMatch && request.method === "DELETE") {
+    const token = await revokeAutomationToken(env.DB, authUser.id, decodeURIComponent(automationTokenMatch[1]));
+    await recordAutomationEvent(env.DB, {
+      userId: authUser.id,
+      tokenId: token.id,
+      actor: "user",
+      eventType: "automation_token.revoked",
+      metadata: { label: token.label },
+    });
+    return jsonResponse(token);
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/automation/events") {
+    return jsonResponse({ events: await getAutomationEvents(env.DB, authUser.id, limitFromUrl(url, 50)) });
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/automation/bundle") {
+    const endpoints = automationEndpoints(request);
+    return jsonResponse({
+      filename: "beachcar-daily-run.SKILL.md",
+      contentType: "text/markdown",
+      mcpEndpoint: endpoints.mcpEndpoint,
+      markdown: automationBundleMarkdown(endpoints.mcpEndpoint),
     });
   }
 
@@ -406,6 +470,14 @@ function adminScope(url: URL, env: Env, userId?: string): UserScope {
     return { userId: requestedUserId.trim(), includeLegacyData: false };
   }
   return { userId: userIdForEmail(env.ALLOWED_EMAIL || ""), includeLegacyData: true };
+}
+
+function automationEndpoints(request: Request): { mcpEndpoint: string; bundleEndpoint: string } {
+  const url = new URL(request.url);
+  return {
+    mcpEndpoint: new URL("/mcp", url.origin).toString(),
+    bundleEndpoint: new URL("/api/automation/bundle", url.origin).toString(),
+  };
 }
 
 async function runRunnerTaskInContainer(env: Env, taskId: string): Promise<unknown> {

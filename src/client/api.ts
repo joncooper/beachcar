@@ -4,6 +4,10 @@ import type {
   AdminUserSummary,
   AiUsageEventRecord,
   AiUsageSummary,
+  AutomationBundle,
+  AutomationStatus,
+  AutomationTokenCreateResult,
+  AutomationTokenRecord,
   AgentRunRecord,
   FeedbackAction,
   FeedbackRecord,
@@ -82,6 +86,26 @@ export async function putSourceSettings(input: {
 
 export async function getAiUsage(): Promise<{ summary: AiUsageSummary; events: AiUsageEventRecord[] }> {
   return requestJson<{ summary: AiUsageSummary; events: AiUsageEventRecord[] }>("/api/ai-usage");
+}
+
+export async function getAutomationStatus(): Promise<AutomationStatus> {
+  return requestJson<AutomationStatus>("/api/automation/status");
+}
+
+export async function createAutomationToken(label: string): Promise<AutomationTokenCreateResult> {
+  return requestJson<AutomationTokenCreateResult>("/api/automation/tokens", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ label }),
+  });
+}
+
+export async function revokeAutomationToken(id: string): Promise<AutomationTokenRecord> {
+  return requestJson<AutomationTokenRecord>(`/api/automation/tokens/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function getAutomationBundle(): Promise<AutomationBundle> {
+  return requestJson<AutomationBundle>("/api/automation/bundle");
 }
 
 export async function exportAccount(): Promise<AccountExport> {

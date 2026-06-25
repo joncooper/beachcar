@@ -190,7 +190,8 @@ img {
 
 .ai-settings,
 .notification-settings,
-.source-settings {
+.source-settings,
+.automation-settings {
   display: grid;
   gap: 12px;
   border: 1px solid rgba(20, 32, 28, 0.12);
@@ -227,6 +228,144 @@ img {
   color: #14201c;
   font-size: 1rem;
   font-weight: 900;
+}
+
+.automation-endpoint {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  border: 1px solid rgba(20, 32, 28, 0.1);
+  border-radius: 10px;
+  background: #fff;
+  padding: 8px 10px;
+  color: #35443f;
+}
+
+.automation-endpoint span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: none;
+}
+
+.automation-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.automation-actions button,
+.automation-token-reveal button,
+.automation-token-list button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid rgba(20, 32, 28, 0.14);
+  border-radius: 10px;
+  background: #fff;
+  color: #14201c;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.automation-token-reveal {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(30, 95, 82, 0.2);
+  border-radius: 10px;
+  background: #f2fbf7;
+  padding: 10px;
+}
+
+.automation-token-reveal div,
+.automation-token-list article,
+.automation-events {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.automation-token-reveal strong,
+.automation-token-list strong,
+.automation-events strong {
+  display: block;
+  color: #14201c;
+  font-size: 0.83rem;
+  font-weight: 900;
+}
+
+.automation-token-reveal small,
+.automation-token-list small,
+.automation-events small {
+  display: block;
+  color: #65736d;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.automation-token-reveal textarea {
+  width: 100%;
+  min-height: 72px;
+  border: 1px solid rgba(20, 32, 28, 0.14);
+  border-radius: 10px;
+  background: #fff;
+  color: #14201c;
+  padding: 9px 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.78rem;
+  font-weight: 650;
+  resize: vertical;
+}
+
+.automation-token-list {
+  display: grid;
+  gap: 8px;
+}
+
+.automation-token-list article {
+  min-height: 44px;
+  border: 1px solid rgba(20, 32, 28, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 8px 10px;
+}
+
+.automation-token-list span {
+  min-width: 0;
+}
+
+.automation-token-list em {
+  color: #8f5b2f;
+  font-size: 0.76rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.automation-events {
+  align-items: stretch;
+  overflow-x: auto;
+}
+
+.automation-events span {
+  min-width: 150px;
+  border: 1px solid rgba(20, 32, 28, 0.1);
+  border-radius: 10px;
+  background: #fff;
+  padding: 8px 10px;
+}
+
+.automation-note {
+  margin: 0;
+  color: #58665f;
+  font-size: 0.78rem;
+  font-weight: 750;
+  line-height: 1.35;
 }
 
 .source-toggle-list {
@@ -1891,6 +2030,7 @@ h2 {
 
   .ai-budget-grid,
   .ai-usage-strip,
+  .automation-actions,
   .run-status-strip,
   .run-detail-hero,
   .run-ai-row,

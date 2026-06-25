@@ -179,6 +179,52 @@ export interface AiUsageEventRecord {
   createdAt: string;
 }
 
+export type AutomationScope = "setup:read" | "sources:read" | "runs:publish" | "usage:write" | "events:read";
+
+export interface AutomationTokenRecord {
+  id: string;
+  userId: string;
+  label: string;
+  scopes: AutomationScope[];
+  lastUsedAt?: string | null;
+  revokedAt?: string | null;
+  createdAt: string;
+}
+
+export interface AutomationTokenCreateResult {
+  token: string;
+  record: AutomationTokenRecord;
+}
+
+export interface AutomationEventRecord {
+  id: string;
+  userId: string;
+  tokenId?: string | null;
+  actor: string;
+  eventType: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface AutomationStatus {
+  mcpEndpoint: string;
+  bundleEndpoint: string;
+  oauth: {
+    status: "planned";
+    message: string;
+  };
+  defaultScopes: AutomationScope[];
+  tokens: AutomationTokenRecord[];
+  recentEvents: AutomationEventRecord[];
+}
+
+export interface AutomationBundle {
+  filename: string;
+  contentType: "text/markdown";
+  mcpEndpoint: string;
+  markdown: string;
+}
+
 export interface RunnerTaskRecord {
   id: string;
   userId: string;
@@ -231,6 +277,8 @@ export interface AccountExport {
   agentRuns: AgentRunRecord[];
   aiUsageEvents: AiUsageEventRecord[];
   runnerTasks: RunnerTaskRecord[];
+  automationTokens: AutomationTokenRecord[];
+  automationEvents: AutomationEventRecord[];
 }
 
 export interface AccountDeletionResult {
@@ -247,6 +295,8 @@ export interface AccountDeletionResult {
     preferenceEvents: number;
     runs: number;
     agentRuns: number;
+    automationTokens: number;
+    automationEvents: number;
   };
 }
 

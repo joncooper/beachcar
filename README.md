@@ -19,6 +19,7 @@ The default example is a beach-car/runabout watchlist, but the app is intentiona
   - Hide: remove this exact listing from the default view.
   - Avoid: suppress similar listings unless unusually compelling.
 - Admin import, invite, user, AI usage, Agent run, and runner-task APIs for the daily automation and friend beta.
+- Hosted remote MCP preview with scoped automation tokens, user-visible events, and a downloadable friend skill for cloud agents.
 - Agent playbooks for Codex, Claude, or another browser-capable AI operator.
 
 ## Native iOS Preview
@@ -186,16 +187,32 @@ The publish script imports the run first, then copies queued listing images to R
 3. Friend signs in with Clerk, enters the invite code, and completes onboarding.
 4. Friend configures profile, source toggles, schedule, AI mode, and budget caps.
 5. Friend reviews their own latest run in the PWA or iOS app.
-6. Feedback, preference events, AI usage, Agent runs, and account export/delete stay scoped to that user.
+6. Friend can open Preferences > Connect automation, create a scoped token, download the Beachcar skill, and give both to a cloud agent.
+7. Feedback, preference events, AI usage, Agent runs, remote automation events, and account export/delete stay scoped to that user.
 
 Friends do not need to paste raw OpenAI keys for the first beta. Prefer managed Cloudflare AI Gateway budgets. If BYOK is enabled, store the provider key in Cloudflare AI Gateway/Secrets Store and save only the gateway key reference in Beachcar.
 
 The Container runner stays deterministic unless explicitly configured. To test a deployed Codex-backed runner intentionally, set `BEACHCAR_RUNNER_MODE=codex`, optionally set `BEACHCAR_CODEX_MODEL`, and provide the runner credential as a Worker secret such as `OPENAI_API_KEY`. Do not store friend-provided raw keys in D1.
 
+## Remote MCP Friend Automation
+
+The hosted MCP preview lets a friend use Codex, Claude, or another cloud agent without running a local MCP server:
+
+1. Complete onboarding and source preferences.
+2. Open Preferences > Connect automation.
+3. Create a token and download the Beachcar skill.
+4. Configure the cloud agent to use `/mcp` with the token as Bearer auth.
+5. Have the agent call `get_setup_context`, gather candidates, `publish_run`, `record_usage`, and `verify_latest_run`.
+
+The preview stores only token hashes in D1, supports revocation, and logs automation events. Production should replace manual token creation with MCP OAuth while keeping the same tool contracts.
+
+See `docs/remote-mcp-friend-automation.md`.
+
 ## AI Automation
 
 Start with:
 
+- `.agents/skills/beachcar-daily-run/SKILL.md`
 - `automation/codex-daily-run.md`
 - `automation/claude-daily-run.md`
 - `automation/auction-source-playbook.md`

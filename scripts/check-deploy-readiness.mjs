@@ -43,6 +43,7 @@ check("Production environment var is set", wrangler?.vars?.ENVIRONMENT === "prod
 check("Multi-user migration is present", migrationFiles.includes("0005_multi_user_beta.sql"), "Add/apply 0005_multi_user_beta.sql.");
 check("AI usage migration is present", migrationFiles.includes("0006_ai_usage.sql"), "Add/apply 0006_ai_usage.sql.");
 check("Runner tasks migration is present", migrationFiles.includes("0007_runner_tasks.sql"), "Add/apply 0007_runner_tasks.sql.");
+check("Remote MCP automation migration is present", migrationFiles.includes("0008_remote_mcp_automation.sql"), "Add/apply 0008_remote_mcp_automation.sql.");
 check("Preflight script is available", !!packageJson?.scripts?.preflight, "Add npm run preflight.");
 check("Local Worker preflight script is available", !!packageJson?.scripts?.["preflight:local"], "Add npm run preflight:local.");
 check("Full preflight script is available", !!packageJson?.scripts?.["preflight:full"], "Add npm run preflight:full.");

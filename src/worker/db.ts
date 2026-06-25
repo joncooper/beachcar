@@ -3,6 +3,9 @@ import { imageKeyFor, inferTags, listingKeyFor, normalizeAction, normalizeListin
 import type {
   AccountDeletionResult,
   AccountExport,
+  AutomationEventRecord,
+  AutomationScope,
+  AutomationTokenRecord,
   AiUsageEventRecord,
   AiUsageSummary,
   AgentRunRecord,
@@ -120,6 +123,26 @@ interface RunnerTaskRow {
   updated_at: string;
 }
 
+interface AutomationTokenRow {
+  id: string;
+  user_id: string;
+  label: string;
+  scopes_json: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+}
+
+interface AutomationEventRow {
+  id: string;
+  user_id: string;
+  token_id: string | null;
+  actor: string;
+  event_type: string;
+  metadata_json: string;
+  created_at: string;
+}
+
 interface ImageRow {
   image_key: string;
   listing_key: string;
@@ -199,6 +222,16 @@ export interface ImportResult {
   imageCount: number;
   images: Array<{ listingKey: string; imageKey: string; sourceUrl: string; r2Key: string }>;
 }
+
+export interface AuthenticatedAutomationToken {
+  id: string;
+  userId: string;
+  label: string;
+  scopes: AutomationScope[];
+  createdAt: string;
+}
+
+export const defaultAutomationScopes: AutomationScope[] = ["setup:read", "sources:read", "runs:publish", "usage:write", "events:read"];
 
 export async function ensureUser(db: D1Database, authUser: AuthUser, input: { isOwner?: boolean } = {}): Promise<UserPayload> {
   const now = new Date().toISOString();
@@ -634,6 +667,109 @@ export async function getAiUsageEvents(db: D1Database, userId: string, limit = 1
   return results.map(aiUsageEventFromRow);
 }
 
+export async function listAutomationTokens(db: D1Database, userId: string, limit = 20): Promise<AutomationTokenRecord[]> {
+  const { results } = await db
+    .prepare("SELECT id, user_id, label, scopes_json, last_used_at, revoked_at, created_at FROM automation_tokens WHERE user_id = ? ORDER BY created_at DESC LIMIT ?")
+    .bind(userId, Math.max(1, Math.min(100, Math.floor(limit))))
+    .all<AutomationTokenRow>();
+  return results.map(automationTokenFromRow);
+}
+
+export async function createAutomationToken(
+  db: D1Database,
+  input: { userId: string; label?: unknown; scopes?: unknown },
+): Promise<{ token: string; record: AutomationTokenRecord }> {
+  const now = new Date().toISOString();
+  const id = `automation-token-${now.replace(/[^0-9a-z]/gi, "-").toLowerCase()}-${crypto.randomUUID().slice(0, 8)}`;
+  const label = stringOrDefault(input.label, "Remote automation");
+  const scopes = normalizeAutomationScopes(input.scopes);
+  const token = `bcauto_${id}.${randomBase64Url(32)}`;
+  const tokenHash = await sha256Hex(token);
+
+  await db
+    .prepare(
+      `INSERT INTO automation_tokens (id, user_id, label, token_hash, scopes_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(id, input.userId, label.slice(0, 120), tokenHash, JSON.stringify(scopes), now)
+    .run();
+
+  const record = await getAutomationToken(db, input.userId, id);
+  if (!record) throw new Error("Could not create automation token");
+  return { token, record };
+}
+
+export async function revokeAutomationToken(db: D1Database, userId: string, id: string): Promise<AutomationTokenRecord> {
+  const now = new Date().toISOString();
+  await db
+    .prepare("UPDATE automation_tokens SET revoked_at = COALESCE(revoked_at, ?) WHERE id = ? AND user_id = ?")
+    .bind(now, id, userId)
+    .run();
+  const record = await getAutomationToken(db, userId, id);
+  if (!record) throw new Error("Automation token not found");
+  return record;
+}
+
+export async function authenticateAutomationToken(db: D1Database, rawToken: string): Promise<AuthenticatedAutomationToken | null> {
+  const token = rawToken.trim();
+  if (!token.startsWith("bcauto_") || token.length < 80) return null;
+  const tokenHash = await sha256Hex(token);
+  const row = await db
+    .prepare(
+      `SELECT id, user_id, label, scopes_json, last_used_at, revoked_at, created_at
+       FROM automation_tokens
+       WHERE token_hash = ? AND revoked_at IS NULL`,
+    )
+    .bind(tokenHash)
+    .first<AutomationTokenRow>();
+  if (!row) return null;
+  return {
+    id: row.id,
+    userId: row.user_id,
+    label: row.label,
+    scopes: parseAutomationScopes(row.scopes_json),
+    createdAt: row.created_at,
+  };
+}
+
+export async function touchAutomationToken(db: D1Database, tokenId: string): Promise<void> {
+  await db.prepare("UPDATE automation_tokens SET last_used_at = ? WHERE id = ?").bind(new Date().toISOString(), tokenId).run();
+}
+
+export async function recordAutomationEvent(
+  db: D1Database,
+  input: { userId: string; tokenId?: string | null; actor: string; eventType: string; metadata?: Record<string, unknown> },
+): Promise<AutomationEventRecord> {
+  const createdAt = new Date().toISOString();
+  const id = `automation-event-${createdAt.replace(/[^0-9a-z]/gi, "-").toLowerCase()}-${crypto.randomUUID().slice(0, 8)}`;
+  await db
+    .prepare(
+      `INSERT INTO automation_events (id, user_id, token_id, actor, event_type, metadata_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(id, input.userId, input.tokenId || null, input.actor.slice(0, 120), input.eventType.slice(0, 160), JSON.stringify(input.metadata || {}), createdAt)
+    .run();
+  const row = await db.prepare("SELECT * FROM automation_events WHERE id = ?").bind(id).first<AutomationEventRow>();
+  if (!row) throw new Error("Could not record automation event");
+  return automationEventFromRow(row);
+}
+
+export async function getAutomationEvents(db: D1Database, userId: string, limit = 50): Promise<AutomationEventRecord[]> {
+  const { results } = await db
+    .prepare("SELECT * FROM automation_events WHERE user_id = ? ORDER BY created_at DESC LIMIT ?")
+    .bind(userId, Math.max(1, Math.min(200, Math.floor(limit))))
+    .all<AutomationEventRow>();
+  return results.map(automationEventFromRow);
+}
+
+async function getAutomationToken(db: D1Database, userId: string, id: string): Promise<AutomationTokenRecord | null> {
+  const row = await db
+    .prepare("SELECT id, user_id, label, scopes_json, last_used_at, revoked_at, created_at FROM automation_tokens WHERE id = ? AND user_id = ?")
+    .bind(id, userId)
+    .first<AutomationTokenRow>();
+  return row ? automationTokenFromRow(row) : null;
+}
+
 export async function createRunnerTask(
   db: D1Database,
   input: {
@@ -969,13 +1105,15 @@ export async function getLatestRun(db: D1Database, scope: UserScope): Promise<Ru
 }
 
 export async function exportAccount(db: D1Database, scope: UserScope): Promise<AccountExport> {
-  const [user, feedback, runs, agentRuns, aiUsageEvents, runnerTasks] = await Promise.all([
+  const [user, feedback, runs, agentRuns, aiUsageEvents, runnerTasks, automationTokens, automationEvents] = await Promise.all([
     getUserPayload(db, scope.userId),
     exportFeedback(db, scope),
     getRuns(db, scope),
     getAgentRuns(db, scope.userId),
     getAiUsageEvents(db, scope.userId, 500),
     getRunnerTasks(db, scope.userId, 500),
+    listAutomationTokens(db, scope.userId, 100),
+    getAutomationEvents(db, scope.userId, 500),
   ]);
   return {
     version: 1,
@@ -987,6 +1125,8 @@ export async function exportAccount(db: D1Database, scope: UserScope): Promise<A
     agentRuns,
     aiUsageEvents,
     runnerTasks,
+    automationTokens,
+    automationEvents,
   };
 }
 
@@ -1002,8 +1142,12 @@ export async function deleteAccountData(db: D1Database, userId: string): Promise
     preferenceEvents: await countRows(db, "SELECT COUNT(*) AS count FROM preference_events WHERE user_id = ?", userId),
     runs: await countRows(db, "SELECT COUNT(*) AS count FROM runs WHERE user_id = ?", userId),
     agentRuns: await countRows(db, "SELECT COUNT(*) AS count FROM agent_runs WHERE user_id = ?", userId),
+    automationTokens: await countRows(db, "SELECT COUNT(*) AS count FROM automation_tokens WHERE user_id = ?", userId),
+    automationEvents: await countRows(db, "SELECT COUNT(*) AS count FROM automation_events WHERE user_id = ?", userId),
   };
 
+  await db.prepare("DELETE FROM automation_events WHERE user_id = ?").bind(userId).run();
+  await db.prepare("DELETE FROM automation_tokens WHERE user_id = ?").bind(userId).run();
   await db.prepare("DELETE FROM run_listings WHERE run_id IN (SELECT id FROM runs WHERE user_id = ?)").bind(userId).run();
   await db.prepare("DELETE FROM runs WHERE user_id = ?").bind(userId).run();
   await db.prepare("DELETE FROM feedback WHERE user_id = ?").bind(userId).run();
@@ -1565,6 +1709,30 @@ function aiUsageEventFromRow(row: AiUsageEventRow): AiUsageEventRecord {
   };
 }
 
+function automationTokenFromRow(row: AutomationTokenRow): AutomationTokenRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    label: row.label,
+    scopes: parseAutomationScopes(row.scopes_json),
+    lastUsedAt: row.last_used_at,
+    revokedAt: row.revoked_at,
+    createdAt: row.created_at,
+  };
+}
+
+function automationEventFromRow(row: AutomationEventRow): AutomationEventRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    tokenId: row.token_id,
+    actor: row.actor,
+    eventType: row.event_type,
+    metadata: parseObject(row.metadata_json),
+    createdAt: row.created_at,
+  };
+}
+
 function runnerTaskFromRow(row: RunnerTaskRow): RunnerTaskRecord {
   return {
     id: row.id,
@@ -1623,6 +1791,25 @@ function normalizeSourceSettings(value: unknown): SourceSetting[] {
     });
   }
   return sources;
+}
+
+function normalizeAutomationScopes(value: unknown): AutomationScope[] {
+  if (!Array.isArray(value)) return defaultAutomationScopes;
+  const scopes = value.filter(isAutomationScope);
+  return scopes.length ? [...new Set(scopes)] : defaultAutomationScopes;
+}
+
+function parseAutomationScopes(value: string): AutomationScope[] {
+  try {
+    const parsed = JSON.parse(value || "[]") as unknown;
+    return normalizeAutomationScopes(parsed);
+  } catch {
+    return defaultAutomationScopes;
+  }
+}
+
+function isAutomationScope(value: unknown): value is AutomationScope {
+  return value === "setup:read" || value === "sources:read" || value === "runs:publish" || value === "usage:write" || value === "events:read";
 }
 
 function parseObject(value: string): Record<string, unknown> {
@@ -1688,6 +1875,14 @@ async function recordAuditEvent(
 async function sha256Hex(value: string): Promise<string> {
   const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function randomBase64Url(byteLength: number): string {
+  const bytes = new Uint8Array(byteLength);
+  crypto.getRandomValues(bytes);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
 function withImageOverlay(listing: AuctionListing, imageRows: ImageRow[]): AuctionListing {

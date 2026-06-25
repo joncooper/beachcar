@@ -50,6 +50,7 @@ The repo now has the first local friend-beta slice implemented:
 - SwiftUI iOS app using ClerkKit and the same Worker API, with invite/onboarding gates, per-user latest-run cache, image prefetching, and run-status UI.
 - Cloudflare Agents SDK Durable Object plus Workflow binding for per-user run requests and schedule state.
 - Cloudflare Container runner scaffold and runner-task queue for Codex SDK/browser-heavy follow-up work.
+- Hosted remote MCP preview at `/mcp`, with revocable scoped automation tokens, user-visible automation events, and a downloadable friend skill for cloud agents.
 - Daily AI/publisher compatibility flow that imports normalized JSON and mirrors listing images.
 
 The remaining gaps before real friend use are deployment and remote-account validation: deployed D1 migrations, deployed Container runner, real AI Gateway budget/BYOK policy, remote image transform behavior, and live screenshots/UI tests in an environment where browser and CoreSimulator automation are available.
@@ -241,6 +242,10 @@ User routes:
 - `PUT /api/feedback/:listingKey` -> signed-in user's listing feedback.
 - `DELETE /api/feedback/:listingKey` -> clear signed-in user's listing feedback.
 - `POST /api/preference-events` -> signed-in user's note/view event.
+- `GET /api/automation/status` -> signed-in user's MCP endpoint, token status, OAuth preview status, and recent automation events.
+- `POST /api/automation/tokens` -> create a revocable scoped automation token and return the secret once.
+- `DELETE /api/automation/tokens/:id` -> revoke one signed-in user's automation token.
+- `GET /api/automation/bundle` -> generate the friend cloud-agent skill with the current `/mcp` endpoint.
 - `GET /api/images/:imageKey/:variant?` -> cached image variant; auth can be required for beta.
 
 Admin routes:
@@ -251,6 +256,17 @@ Admin routes:
 - `POST /api/admin/users/:userId/runs/import` -> import one user's run.
 - `GET /api/admin/users/:userId/feedback/export` -> export one user's steering memory for the runner.
 - `PUT /api/admin/images/:listingKey/:imageKey` -> compatibility image upload route.
+
+Remote MCP tools:
+
+- `get_setup_context` -> user profile/source/feedback/latest-run/AI-budget context.
+- `plan_daily_research` -> source checklist and publish contract for a cloud agent.
+- `search_bat_cache` -> current preview reads the public Bring a Trailer auctions RSS feed; D1 cache ingestion can replace the internals later.
+- `submit_candidates` -> validate/normalize listings before publishing.
+- `publish_run` -> user-scoped run import plus image warmup.
+- `record_usage` -> AI/token/cost usage events for the external agent.
+- `verify_latest_run` -> read back the published user-scoped run.
+- `list_automation_events` -> user-visible automation activity log.
 
 Migration sequence:
 

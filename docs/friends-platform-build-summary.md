@@ -220,6 +220,14 @@ Verification: `node --check scripts/smoke-local-worker.mjs`, `npm run typecheck`
 
 ### App/architecture pass 19
 
+Review: Friends should be able to drive their own cloud agent without running a local MCP server, but the app only exposed admin/runner APIs and repo playbooks.
+
+Improvement: Added a hosted remote MCP preview at `/mcp`, backed by revocable user-scoped automation tokens and an `automation_events` activity log. Added Preferences > Connect automation for creating/revoking tokens, downloading a Beachcar daily-run skill, seeing the MCP endpoint, and reviewing recent automation activity. Added MCP tools for setup context, daily research planning, BaT public RSS search, candidate validation, run publishing, usage recording, latest-run verification, and event listing. Account export/delete now includes automation tokens/events.
+
+Verification: `npm run typecheck` passed. The skill scaffold was created with the skill-creator initializer; the validator script could not run because both available Python runtimes are missing `yaml`.
+
+### App/architecture pass 19
+
 Review: Users could configure managed/BYOK AI settings and caps, but there was no usage ledger, budget summary, or ingestion endpoint for Gateway/runner spend. That meant caps were advisory UI state rather than enforceable per-user controls.
 
 Improvement: Added `ai_usage_events` with Gateway request ids, provider/model metadata, token counts, cost in microusd, and per-user indexes. `/api/me`, `/api/ai-usage`, account export, account deletion, and the admin users list now include daily/monthly AI usage summaries. Added admin-only `POST /api/admin/ai-usage` for Gateway/runner ingestion and `GET /api/admin/users/:id/ai-usage` for inspection. Agent run creation now checks the usage summary and returns `402` when the user's AI budget is already exceeded. The Preferences AI panel and admin user table show daily/monthly spend against caps.

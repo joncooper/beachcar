@@ -1,16 +1,20 @@
 import {
   BadgeDollarSign,
+  Bot,
   ChevronLeft,
   ChevronRight,
   CircleSlash,
   Clock3,
+  Copy,
   Download,
   ExternalLink,
   Gavel,
   ImageOff,
+  KeyRound,
   List,
   MapPin,
   MessageCircle,
+  RefreshCw,
   Search,
   ShieldCheck,
   SlidersHorizontal,
@@ -25,9 +29,12 @@ import type { ReactNode } from "react";
 import {
   acceptInvite,
   clearFeedback,
+  createAutomationToken,
   createAdminInvite,
   deleteAccount as deleteAccountRequest,
   exportAccount,
+  getAutomationBundle,
+  getAutomationStatus,
   getLatestAgentRun,
   getLatestRun,
   getMe,
@@ -37,6 +44,7 @@ import {
   putProfile,
   putSourceSettings,
   requestAgentRun,
+  revokeAutomationToken,
   setAuthTokenGetter,
 } from "./api";
 import { signInWithGoogle, useClerkBrowser } from "./clerk-browser";
@@ -45,6 +53,8 @@ import { looksLikeRawProviderKey } from "../shared/ai-keys";
 import type {
   AdminUserSummary,
   AiUsageSummary,
+  AutomationStatus,
+  AutomationTokenCreateResult,
   AgentRunRecord,
   AuctionListing,
   FeedbackAction,
@@ -1743,6 +1753,7 @@ function SettingsSheet(props: {
           />
           <NotificationSettingsFields value={notifications} onChange={setNotifications} />
           <SourceSettingsFields preferences={sourcePreferences} setPreferences={setSourcePreferences} />
+          <AutomationSettingsPanel />
           {localError || props.error ? <p className="auth-error setup-span">{localError || props.error}</p> : null}
           <button className="source-link setup-span" disabled={props.isPending} type="submit">
             {props.isPending ? "Saving..." : "Save preferences"}
@@ -1775,6 +1786,152 @@ function SettingsSheet(props: {
         </section>
       </section>
     </div>
+  );
+}
+
+function AutomationSettingsPanel() {
+  const [status, setStatus] = useState<AutomationStatus | null>(null);
+  const [created, setCreated] = useState<AutomationTokenCreateResult | null>(null);
+  const [pending, setPending] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setPending("refresh");
+    try {
+      setStatus(await getAutomationStatus());
+      setMessage(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not load automation status");
+    } finally {
+      setPending(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  async function createToken() {
+    setPending("create");
+    try {
+      const token = await createAutomationToken("Friend cloud agent");
+      setCreated(token);
+      setStatus(await getAutomationStatus());
+      setMessage("Token created. Store it in your cloud agent now; Beachcar will not show it again.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not create automation token");
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function revokeToken(id: string) {
+    setPending(id);
+    try {
+      await revokeAutomationToken(id);
+      setStatus(await getAutomationStatus());
+      if (created?.record.id === id) setCreated(null);
+      setMessage("Automation token revoked.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not revoke automation token");
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function copyToken() {
+    if (!created?.token) return;
+    try {
+      await navigator.clipboard.writeText(created.token);
+      setMessage("Token copied.");
+    } catch {
+      setMessage("Copy failed. Select the token text and copy it manually.");
+    }
+  }
+
+  async function downloadSkill() {
+    setPending("bundle");
+    try {
+      const bundle = await getAutomationBundle();
+      downloadText(bundle.markdown, bundle.filename, bundle.contentType);
+      setMessage("Skill downloaded.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not download skill");
+    } finally {
+      setPending(null);
+    }
+  }
+
+  const activeTokens = (status?.tokens || []).filter((token) => !token.revokedAt);
+  const revokedTokens = (status?.tokens || []).filter((token) => token.revokedAt);
+
+  return (
+    <section className="automation-settings setup-span" aria-label="Connect automation">
+      <div className="setup-section-title">
+        <span>Connect automation</span>
+        <small>{activeTokens.length ? `${activeTokens.length} active` : "none active"}</small>
+      </div>
+      <div className="automation-endpoint">
+        <Bot size={18} aria-hidden="true" />
+        <span>{status?.mcpEndpoint || "Loading MCP endpoint..."}</span>
+      </div>
+      <div className="automation-actions">
+        <button disabled={pending !== null} type="button" onClick={createToken}>
+          <KeyRound size={16} aria-hidden="true" />
+          <span>{pending === "create" ? "Creating..." : "Create token"}</span>
+        </button>
+        <button disabled={pending !== null} type="button" onClick={downloadSkill}>
+          <Download size={16} aria-hidden="true" />
+          <span>{pending === "bundle" ? "Preparing..." : "Download skill"}</span>
+        </button>
+        <button disabled={pending !== null} type="button" onClick={() => void refresh()}>
+          <RefreshCw size={16} aria-hidden="true" />
+          <span>Refresh</span>
+        </button>
+      </div>
+      {created ? (
+        <div className="automation-token-reveal">
+          <div>
+            <strong>New token</strong>
+            <small>Shown once</small>
+          </div>
+          <textarea readOnly value={created.token} />
+          <button type="button" onClick={copyToken}>
+            <Copy size={16} aria-hidden="true" />
+            <span>Copy token</span>
+          </button>
+        </div>
+      ) : null}
+      {status?.oauth ? <p className="automation-note">{status.oauth.message}</p> : null}
+      <div className="automation-token-list">
+        {[...activeTokens, ...revokedTokens].slice(0, 5).map((token) => (
+          <article key={token.id}>
+            <span>
+              <strong>{token.label}</strong>
+              <small>{token.lastUsedAt ? `Used ${shortDateTime(token.lastUsedAt)}` : `Created ${shortDateTime(token.createdAt)}`}</small>
+            </span>
+            {token.revokedAt ? (
+              <em>revoked</em>
+            ) : (
+              <button disabled={pending !== null} type="button" onClick={() => void revokeToken(token.id)}>
+                Revoke
+              </button>
+            )}
+          </article>
+        ))}
+      </div>
+      {status?.recentEvents.length ? (
+        <div className="automation-events">
+          {status.recentEvents.slice(0, 4).map((event) => (
+            <span key={event.id}>
+              <strong>{event.eventType}</strong>
+              <small>{shortDateTime(event.createdAt)}</small>
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {message ? <p className="automation-note">{message}</p> : null}
+    </section>
   );
 }
 
@@ -2590,6 +2747,15 @@ function stringSetting(settings: Record<string, unknown>, key: string, fallback:
 
 function downloadJson(value: unknown, filename: string): void {
   const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json" });
+  downloadBlob(blob, filename);
+}
+
+function downloadText(value: string, filename: string, contentType: string): void {
+  const blob = new Blob([value], { type: contentType });
+  downloadBlob(blob, filename);
+}
+
+function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -2598,6 +2764,12 @@ function downloadJson(value: unknown, filename: string): void {
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
+}
+
+function shortDateTime(value: string): string {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return value;
+  return date.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 function FilterChip(props: { active: boolean; label: string; onClick: () => void }) {

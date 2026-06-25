@@ -311,6 +311,8 @@ async function smokeAccountExportAndDeletion() {
   const friendPublished = await pollLatestAgentRun(friendRun.id, friendEmail);
   assert(friendPublished.status === "published", "Expected temporary friend Workflow run to publish.");
 
+  const mcpRun = await smokeRemoteMcp(friendEmail);
+
   const account = await requestJson("/api/account/export", { email: friendEmail });
   assert(account.kind === "beachcar-account-export", "Expected account export kind.");
   assert(account.user?.email === friendEmail, "Expected account export to include the temporary friend.");
@@ -322,7 +324,11 @@ async function smokeAccountExportAndDeletion() {
   assert(account.user?.profile?.profile?.notifications?.digestTime === "09:00", "Expected account export to include notification preferences.");
   assert(account.user?.aiUsage?.daily?.spendMicros >= 170000, "Expected account export user payload to include AI usage summary.");
   assert(Array.isArray(account.aiUsageEvents) && account.aiUsageEvents.some((event) => event.gatewayId === "local-smoke-gateway"), "Expected account export to include AI usage events.");
+  assert(Array.isArray(account.aiUsageEvents) && account.aiUsageEvents.some((event) => event.gatewayRequestId === mcpRun.gatewayRequestId), "Expected account export to include MCP-recorded AI usage events.");
   assert(Array.isArray(account.runs) && account.runs.some((run) => run.id === friendPublished.progress.publishedRunId), "Expected account export to include the Workflow-published run.");
+  assert(Array.isArray(account.runs) && account.runs.some((run) => run.id === mcpRun.runId), "Expected account export to include the MCP-published run.");
+  assert(Array.isArray(account.automationTokens) && account.automationTokens.some((token) => token.id === mcpRun.tokenId && token.revokedAt), "Expected account export to include revoked automation tokens.");
+  assert(Array.isArray(account.automationEvents) && account.automationEvents.some((event) => event.eventType === "tool.publish_run"), "Expected account export to include automation events.");
   assert(account.feedback?.kind === "auction-watch-feedback", "Expected account export to include feedback export payload.");
   assert(Array.isArray(account.agentRuns) && account.agentRuns.some((run) => run.id === friendRun.id), "Expected account export to include agent run history.");
 
@@ -338,6 +344,8 @@ async function smokeAccountExportAndDeletion() {
   assert(deleted.deleted.aiUsageEvents >= 1, "Expected account deletion to remove AI usage events.");
   assert(deleted.deleted.runs >= 1, "Expected account deletion to remove user-scoped runs.");
   assert(deleted.deleted.agentRuns >= 1, "Expected account deletion to remove agent runs.");
+  assert(deleted.deleted.automationTokens >= 1, "Expected account deletion to remove automation tokens.");
+  assert(deleted.deleted.automationEvents >= 1, "Expected account deletion to remove automation events.");
 
   const deletedMe = await requestJson("/api/me", { email: friendEmail });
   assert(deletedMe.status === "disabled", "Expected deleted account to be disabled.");
@@ -350,6 +358,96 @@ async function smokeAccountExportAndDeletion() {
   assert(deletedUser?.status === "disabled", "Expected admin users list to show the deleted account as disabled.");
 
   return { email: friendEmail, deleted: deleted.deleted };
+}
+
+async function smokeRemoteMcp(friendEmail) {
+  const status = await requestJson("/api/automation/status", { email: friendEmail });
+  assert(typeof status.mcpEndpoint === "string" && status.mcpEndpoint.endsWith("/mcp"), "Expected automation status to include the MCP endpoint.");
+  assert(status.oauth?.status === "planned", "Expected automation status to describe the OAuth follow-up.");
+
+  const created = await requestJson("/api/automation/tokens", {
+    email: friendEmail,
+    method: "POST",
+    body: { label: "Local smoke cloud agent" },
+  });
+  assert(created.token?.startsWith("bcauto_"), "Expected automation token secret to be returned once.");
+  assert(created.record?.id, "Expected automation token creation to return a redacted record.");
+
+  const tools = await mcpRequest(created.token, "tools/list");
+  assert(Array.isArray(tools.tools) && tools.tools.some((tool) => tool.name === "publish_run"), "Expected MCP tools/list to expose publish_run.");
+
+  const setup = await mcpTool(created.token, "get_setup_context", {});
+  assert(setup.user?.email === friendEmail, "Expected MCP setup context to be scoped to the friend.");
+
+  const runId = `mcp-smoke-${Date.now()}`;
+  const published = await mcpTool(created.token, "publish_run", {
+    runId,
+    reportMarkdown: "Local smoke MCP run.",
+    sourceSummary: { smoke: true, source: "remote-mcp-smoke" },
+    listings: [
+      {
+        section: "Strong fits",
+        lane: "family",
+        site: "Local MCP Smoke",
+        title: "Smoke Test Beach Runabout",
+        url: `https://example.com/beachcar-mcp-smoke/${runId}`,
+        bid: "$10,500",
+        total: "$11,025 incl. buyer fee estimate",
+        location: "Northeast",
+        timeLeft: "manual smoke",
+        why: "Exercises remote MCP publish_run without a live source fetch.",
+        concerns: "Synthetic smoke listing; do not treat as a real auction.",
+        images: [],
+      },
+    ],
+  });
+  assert(published.import?.runId === runId, "Expected MCP publish_run to import the requested run id.");
+  const latestAfterMcp = await requestJson("/api/runs/latest", { email: friendEmail });
+  assert(latestAfterMcp.id === runId, "Expected MCP-published run to become the friend's latest run.");
+
+  const gatewayRequestId = `mcp-smoke-usage-${Date.now()}`;
+  const usage = await mcpTool(created.token, "record_usage", {
+    provider: "local-smoke",
+    model: "none",
+    operation: "remote-mcp-smoke",
+    status: "cached",
+    gatewayRequestId,
+    inputTokens: 12,
+    outputTokens: 4,
+    costMicros: 0,
+    metadata: { smoke: true },
+  });
+  assert(usage.event?.gatewayRequestId === gatewayRequestId, "Expected MCP record_usage to write an AI usage event.");
+
+  const events = await requestJson("/api/automation/events", { email: friendEmail });
+  assert(Array.isArray(events.events) && events.events.some((event) => event.eventType === "tool.publish_run"), "Expected automation events to include publish_run.");
+
+  await requestJson(`/api/automation/tokens/${encodeURIComponent(created.record.id)}`, {
+    email: friendEmail,
+    method: "DELETE",
+  });
+  const revokedStatus = await requestJson("/api/automation/status", { email: friendEmail });
+  assert(revokedStatus.tokens.some((token) => token.id === created.record.id && token.revokedAt), "Expected automation status to show the revoked token.");
+
+  return { runId, tokenId: created.record.id, gatewayRequestId };
+}
+
+async function mcpTool(token, name, args) {
+  const result = await mcpRequest(token, "tools/call", { name, arguments: args });
+  assert(result && result.isError !== true, `Expected MCP tool ${name} to succeed.`);
+  return result.structuredContent;
+}
+
+async function mcpRequest(token, method, params = {}) {
+  const response = await rawRequest("/mcp", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: { jsonrpc: "2.0", id: `smoke-${Date.now()}`, method, params },
+  });
+  if (response.status < 200 || response.status >= 300 || response.body?.error) {
+    fail(`MCP ${method} failed: HTTP ${response.status} ${formatBody(response.body)}`);
+  }
+  return response.body.result;
 }
 
 async function pollLatestAgentRun(expectedId, email = smokeEmail) {

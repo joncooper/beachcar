@@ -1,0 +1,4 @@
+interface:
+  display_name: "Beachcar Daily Run"
+  short_description: "Run Beachcar research through hosted MCP"
+  default_prompt: "Use $beachcar-daily-run to gather, publish, verify, and record usage for today's Beachcar auction run."

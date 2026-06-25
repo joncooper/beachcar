@@ -7,16 +7,18 @@ The default example is a beach-car/runabout watchlist, but the app is intentiona
 ## What It Includes
 
 - Cloudflare Worker serving a React PWA and JSON API.
-- D1 database for daily runs, listings, image metadata, and feedback memory.
-- R2 image cache so listing photos keep working on mobile.
-- Clerk authentication restricted to one configured email.
-- Native SwiftUI iOS app scaffold for an image-first swipe/deck review flow.
+- D1 database for invited users, profiles, source settings, AI settings, daily runs, listings, image metadata, usage events, runner tasks, and per-user feedback memory.
+- R2 image cache with generated `thumb`, `deck`, and `full` variant URLs so listing photos stay fast on mobile.
+- Clerk authentication with an `ALLOWED_EMAIL` bootstrap owner and invite-only friend access.
+- Cloudflare Agents and Workflows for per-user run requests, schedule state, source discovery, image warmup, and run-status reporting.
+- Cloudflare Container runner scaffold for Codex SDK/browser-heavy source work that should not run inside a Worker.
+- Native SwiftUI iOS app for invite/onboarding states, cached image-first review, and run-status visibility.
 - Feedback actions:
   - Like: show more like this without pinning it as a favorite.
   - Star: prioritize this listing and similar future finds.
   - Hide: remove this exact listing from the default view.
   - Avoid: suppress similar listings unless unusually compelling.
-- Admin import API for an AI daily automation.
+- Admin import, invite, user, AI usage, Agent run, and runner-task APIs for the daily automation and friend beta.
 - Agent playbooks for Codex, Claude, or another browser-capable AI operator.
 
 ## Native iOS Preview
@@ -34,7 +36,12 @@ These are actual iPhone simulator screenshots from the current SwiftUI app:
 
 ## Operating Model
 
-Beachcar expects a daily AI automation to do the research work:
+Beachcar supports two run paths:
+
+1. A local/hosted AI automation can still publish normalized daily data through the admin import API.
+2. A signed-in user can request an Agent-backed run. The per-user Cloudflare Agent starts a Workflow, loads that user's profile/source/feedback context, discovers public candidates, scores them through AI Gateway when configured, imports a user-scoped run, warms image variants, and queues blocked source work for the runner-task/Container boundary.
+
+For the external daily automation path:
 
 1. Fetch feedback memory from `GET /api/admin/feedback/export`.
 2. Search/scrape auction sites using the user's own browser/session/API access.
@@ -42,7 +49,7 @@ Beachcar expects a daily AI automation to do the research work:
 4. Estimate fair value and a practical bid ceiling.
 5. Collect useful image URLs.
 6. Emit normalized JSON.
-7. Publish to `POST /api/admin/import`.
+7. Publish to `POST /api/admin/import` or `POST /api/admin/users/:userId/runs/import`.
 8. Copy images into R2 through the publish flow.
 
 The app is the hosted review and memory surface. The agent is the collector, analyst, and publisher.
@@ -63,6 +70,36 @@ npm test
 set -a; source .env.local; set +a
 npm run build
 ```
+
+Run the repeatable local preflight:
+
+```bash
+npm run preflight
+```
+
+The quick preflight includes the non-deploying readiness report below, but leaves known rollout todos non-fatal.
+
+To exercise the Agent/Workflow/D1/R2 path locally, make sure `.dev.vars` or `.publish.env` has `PUBLISH_TOKEN`, then run:
+
+```bash
+npm run preflight:local
+```
+
+The local preflight starts `wrangler dev --local`, waits for it to become ready, runs `npm run smoke:local-worker`, and stops the local Worker afterward.
+
+For the larger local gate that also builds the native app:
+
+```bash
+npm run preflight:full
+```
+
+Before any intentional deploy rehearsal, run the non-deploying readiness check:
+
+```bash
+npm run deploy:check
+```
+
+It inspects local config, migrations, script wiring, and env hints without contacting Cloudflare or printing secret values. Add `-- --strict` when you want missing deploy/friend-rollout items to fail CI.
 
 ## Native iOS App
 
@@ -96,7 +133,7 @@ npx wrangler d1 create beachcar-watch
 npx wrangler r2 bucket create beachcar-watch-images
 ```
 
-Copy the D1 `database_id` into `wrangler.jsonc`, then set your allowed email:
+Copy the D1 `database_id` into `wrangler.jsonc`, then set the bootstrap owner email:
 
 ```jsonc
 "vars": {
@@ -105,7 +142,9 @@ Copy the D1 `database_id` into `wrangler.jsonc`, then set your allowed email:
 }
 ```
 
-Apply migrations and set Worker secrets:
+`ALLOWED_EMAIL` is not the only allowed account anymore. It identifies the first active owner; other signed-in users are created as `invited` and must accept an invite code before they can load runs or save feedback.
+
+Apply migrations and set Worker secrets when you are ready to deploy:
 
 ```bash
 npm run db:migrate:remote
@@ -140,6 +179,19 @@ DAILY_JSON=outputs/daily-run-2026-06-20.json npm run publish:daily
 
 The publish script imports the run first, then copies queued listing images to R2 through the admin image API.
 
+## Friend Beta Flow
+
+1. Sign in as the bootstrap owner.
+2. Open the admin console from the PWA and create an invite.
+3. Friend signs in with Clerk, enters the invite code, and completes onboarding.
+4. Friend configures profile, source toggles, schedule, AI mode, and budget caps.
+5. Friend reviews their own latest run in the PWA or iOS app.
+6. Feedback, preference events, AI usage, Agent runs, and account export/delete stay scoped to that user.
+
+Friends do not need to paste raw OpenAI keys for the first beta. Prefer managed Cloudflare AI Gateway budgets. If BYOK is enabled, store the provider key in Cloudflare AI Gateway/Secrets Store and save only the gateway key reference in Beachcar.
+
+The Container runner stays deterministic unless explicitly configured. To test a deployed Codex-backed runner intentionally, set `BEACHCAR_RUNNER_MODE=codex`, optionally set `BEACHCAR_CODEX_MODEL`, and provide the runner credential as a Worker secret such as `OPENAI_API_KEY`. Do not store friend-provided raw keys in D1.
+
 ## AI Automation
 
 Start with:
@@ -159,4 +211,4 @@ You are responsible for how your automation accesses third-party sites. Use your
 
 ## Project Status
 
-This is a starter repo extracted from a working personal deployment. Expect to tailor the profile, sources, valuation logic, and UI language to your niche.
+This worktree contains a local friend-beta implementation. No production deploy is implied by the local preflight. Before inviting real friends, run `npm run preflight:full`, deploy intentionally, then verify the remote Worker, D1 migrations, AI Gateway budget policy, image variant creation, and Container runner against the deployed Cloudflare account.

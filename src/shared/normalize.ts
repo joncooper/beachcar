@@ -95,6 +95,11 @@ export function r2KeyFor(imageKey: string, contentType?: string | null): string 
   return `listing-images/${imageKey}.${ext}`;
 }
 
+export function imageVariantR2KeyFor(imageKey: string, variant: string, contentType?: string | null): string {
+  const ext = extensionForContentType(contentType) || extensionFromPath(imageKey) || "bin";
+  return `listing-images/variants/${variant}/${imageKey}.${ext}`;
+}
+
 function slugify(value: string): string {
   return value
     .toLowerCase()

@@ -4,14 +4,18 @@ const jwksByDomain = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 const userEmailById = new Map<string, string>();
 
 export interface AuthUser {
+  id: string;
   email: string;
+  provider: "local" | "clerk" | "cloudflare-access";
+  subject: string;
 }
 
 export async function requireUser(request: Request, env: Env): Promise<AuthUser> {
   const host = new URL(request.url).hostname;
   const isLocalRequest = host === "localhost" || host === "127.0.0.1" || host === "::1";
-  if ((env.ENVIRONMENT !== "production" || isLocalRequest) && !env.CLERK_SECRET_KEY && !env.TEAM_DOMAIN && !env.POLICY_AUD) {
-    return { email: env.ALLOWED_EMAIL };
+  if (isLocalRequest && !env.CLERK_SECRET_KEY && !env.TEAM_DOMAIN && !env.POLICY_AUD) {
+    const email = normalizeEmail(request.headers.get("x-beachcar-test-email") || env.ALLOWED_EMAIL);
+    return { id: userIdForEmail(email), email, provider: "local", subject: email };
   }
 
   const clerkToken = bearerToken(request);
@@ -45,11 +49,9 @@ async function requireCloudflareAccessUser(request: Request, env: Env): Promise<
   });
 
   const email = typeof payload.email === "string" ? payload.email.toLowerCase() : "";
-  if (!email || email !== env.ALLOWED_EMAIL.toLowerCase()) {
-    throw new AuthError("Account is not allowed", 403);
-  }
+  if (!email) throw new AuthError("Cloudflare Access token is missing email", 403);
 
-  return { email };
+  return { id: userIdForEmail(email), email, provider: "cloudflare-access", subject: email };
 }
 
 async function requireClerkUser(token: string, env: Env): Promise<AuthUser> {
@@ -62,11 +64,18 @@ async function requireClerkUser(token: string, env: Env): Promise<AuthUser> {
   if (!userId) throw new AuthError("Clerk token is missing a user id", 403);
 
   const email = await getClerkPrimaryEmail(userId, env.CLERK_SECRET_KEY || "");
-  if (!email || email.toLowerCase() !== env.ALLOWED_EMAIL.toLowerCase()) {
-    throw new AuthError("Account is not allowed", 403);
-  }
+  if (!email) throw new AuthError("Clerk user is missing primary email", 403);
 
-  return { email };
+  const normalizedEmail = normalizeEmail(email);
+  return { id: userIdForEmail(normalizedEmail), email: normalizedEmail, provider: "clerk", subject: userId };
+}
+
+export function userIdForEmail(email: string): string {
+  return `email:${normalizeEmail(email)}`;
+}
+
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
 }
 
 export async function requirePublisher(request: Request, env: Env): Promise<void> {

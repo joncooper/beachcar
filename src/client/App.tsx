@@ -4,6 +4,7 @@ import {
   ChevronRight,
   CircleSlash,
   Clock3,
+  Download,
   ExternalLink,
   Gavel,
   ImageOff,
@@ -15,18 +16,117 @@ import {
   SlidersHorizontal,
   Sparkles,
   Star,
+  Trash2,
   Users,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { clearFeedback, getLatestRun, getMe, putFeedback, setAuthTokenGetter } from "./api";
+import {
+  acceptInvite,
+  clearFeedback,
+  createAdminInvite,
+  deleteAccount as deleteAccountRequest,
+  exportAccount,
+  getLatestAgentRun,
+  getLatestRun,
+  getMe,
+  listAdminUsers,
+  putAiSettings,
+  putFeedback,
+  putProfile,
+  putSourceSettings,
+  requestAgentRun,
+  setAuthTokenGetter,
+} from "./api";
 import { signInWithGoogle, useClerkBrowser } from "./clerk-browser";
 import type { BrowserClerk } from "./clerk-browser";
-import type { AuctionListing, FeedbackAction, FeedbackRecord, Lane, RunPayload, UserPayload } from "../shared/types";
+import { looksLikeRawProviderKey } from "../shared/ai-keys";
+import type {
+  AdminUserSummary,
+  AiUsageSummary,
+  AgentRunRecord,
+  AuctionListing,
+  FeedbackAction,
+  FeedbackRecord,
+  InvitePayload,
+  Lane,
+  RunPayload,
+  SourceSetting,
+  UserAiSettings,
+  UserPayload,
+} from "../shared/types";
 
 type ViewFilter = "all" | Lane | "starred" | "ending";
 type ViewMode = "deck" | "list";
+type AiSettingsInput = {
+  mode: UserAiSettings["mode"];
+  gatewayKeyRef?: string | null;
+  monthlyBudgetCents?: number | null;
+  dailyBudgetCents?: number | null;
+};
+const rawProviderKeyMessage = "Store provider keys in AI Gateway BYOK, then paste the gateway alias here.";
+type SourceSettingsInput = Array<{ source: string; enabled: boolean; settings?: Record<string, unknown> }>;
+type NotificationChannel = "email" | "none";
+type NotificationSettingsState = {
+  channel: NotificationChannel;
+  runDigest: boolean;
+  strongFitAlerts: boolean;
+  digestTime: string;
+};
+type SourcePreferenceState = {
+  source: string;
+  enabled: boolean;
+  maxDistanceMiles: string;
+  maxBudget: string;
+  noReserveOnly: boolean;
+  browserRunner: boolean;
+  searchNotes: string;
+};
+type SourceCheckView = {
+  source: string;
+  site: string;
+  status: string;
+  label?: string;
+  url?: string;
+  candidateCount: number;
+  message?: string;
+};
+type RunnerTaskSummaryView = {
+  id: string;
+  source: string;
+  kind: string;
+  status: string;
+};
+type AiScoringView = {
+  status: string;
+  provider: string;
+  model?: string;
+  gatewayId?: string;
+  totalTokens?: number | null;
+  costMicros?: number;
+  message?: string;
+};
+type SourceSummaryView = {
+  publisher?: string;
+  agentRunId?: string;
+  workflowInstanceId?: string;
+  source?: string;
+  reason?: string | null;
+  enabledSources: string[];
+  checkedSources: SourceCheckView[];
+  blockedSources: SourceCheckView[];
+  runnerTasks: RunnerTaskSummaryView[];
+  rawCandidateCount: number;
+  feedbackCount: number;
+  fallbackUsed: boolean;
+  aiScoring?: AiScoringView | null;
+};
+type TimelineItemView = {
+  label: string;
+  detail: string;
+  status: "done" | "running" | "waiting" | "failed";
+};
 
 const laneLabels: Record<Lane, string> = {
   family: "Family",
@@ -48,10 +148,53 @@ const actionClasses: Record<FeedbackAction, string> = {
   avoid: "is-avoid",
 };
 
+const sourceOptions = [
+  {
+    source: "bringatrailer",
+    label: "Bring a Trailer",
+    enabledByDefault: true,
+    defaultMaxDistanceMiles: "750",
+    defaultMaxBudget: "",
+    supportsNoReserve: true,
+    supportsBrowserRunner: false,
+    defaultBrowserRunner: false,
+    searchPlaceholder: "VW Thing, Samurai, Tracker, Moke...",
+  },
+  {
+    source: "carsandbids",
+    label: "Cars & Bids",
+    enabledByDefault: true,
+    defaultMaxDistanceMiles: "750",
+    defaultMaxBudget: "",
+    supportsNoReserve: false,
+    supportsBrowserRunner: true,
+    defaultBrowserRunner: true,
+    searchPlaceholder: "Small 4x4, convertible, beach-town oddballs...",
+  },
+  {
+    source: "marketplace",
+    label: "Marketplace",
+    enabledByDefault: false,
+    defaultMaxDistanceMiles: "150",
+    defaultMaxBudget: "",
+    supportsNoReserve: false,
+    supportsBrowserRunner: true,
+    defaultBrowserRunner: true,
+    searchPlaceholder: "Local scooters, runabouts, golf carts, projects to avoid...",
+  },
+];
+
 const appName = import.meta.env.VITE_APP_NAME || "Beach Car Watch";
 
 function listingKey(listing: AuctionListing): string {
   return listing.listingKey || listing.url || listing.title;
+}
+
+function imageVariantUrl(url: string, variant: "thumb" | "deck" | "full"): string {
+  if (!url.startsWith("/api/images/")) return url;
+  const parsed = new URL(url, window.location.origin);
+  parsed.searchParams.set("variant", variant);
+  return `${parsed.pathname}${parsed.search}`;
 }
 
 function isHiddenAction(action?: FeedbackAction | null): boolean {
@@ -104,6 +247,201 @@ function generatedTime(run: RunPayload | null): string {
   return new Date(run.generatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+function agentRunLabel(run: AgentRunRecord | null): string {
+  if (!run) return "Run";
+  if (run.status === "queued") return "Queued";
+  if (run.status === "running") return "Running";
+  if (run.status === "failed") return "Failed";
+  return "Run";
+}
+
+function runButtonTitle(user: UserPayload, run: AgentRunRecord | null, canQueueRun: boolean): string {
+  if (!canQueueRun) {
+    if (user.aiUsage?.budgetExceeded) return "AI budget reached. Raise the cap in Preferences before running again.";
+    return "Finish setup before running.";
+  }
+  return run ? `Latest agent run: ${run.status}` : "Queue a fresh run";
+}
+
+function sourceSummaryView(value: unknown): SourceSummaryView {
+  const record = normalizeRecord(value);
+  return {
+    publisher: stringValue(record.publisher),
+    agentRunId: stringValue(record.agentRunId),
+    workflowInstanceId: stringValue(record.workflowInstanceId),
+    source: stringValue(record.source),
+    reason: nullableStringValue(record.reason),
+    enabledSources: stringArrayValue(record.enabledSources),
+    checkedSources: sourceCheckViews(record.checkedSources),
+    blockedSources: sourceCheckViews(record.blockedSources),
+    runnerTasks: runnerTaskSummaryViews(record.runnerTasks),
+    rawCandidateCount: numberValue(record.rawCandidateCount, 0),
+    feedbackCount: numberValue(record.feedbackCount, 0),
+    fallbackUsed: record.fallbackUsed === true,
+    aiScoring: aiScoringView(record.aiScoring),
+  };
+}
+
+function sourceCheckViews(value: unknown): SourceCheckView[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => {
+    const record = normalizeRecord(item);
+    return {
+      source: stringValue(record.source) || "source",
+      site: stringValue(record.site) || stringValue(record.source) || "Source",
+      status: stringValue(record.status) || "unknown",
+      label: stringValue(record.label),
+      url: stringValue(record.url),
+      candidateCount: numberValue(record.candidateCount, 0),
+      message: stringValue(record.message),
+    };
+  });
+}
+
+function runnerTaskSummaryViews(value: unknown): RunnerTaskSummaryView[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => {
+    const record = normalizeRecord(item);
+    return {
+      id: stringValue(record.id) || "runner-task",
+      source: stringValue(record.source) || "source",
+      kind: stringValue(record.kind) || "source_discovery",
+      status: stringValue(record.status) || "queued",
+    };
+  });
+}
+
+function aiScoringView(value: unknown): AiScoringView | null {
+  const record = normalizeRecord(value);
+  const status = stringValue(record.status);
+  if (!status) return null;
+  return {
+    status,
+    provider: stringValue(record.provider) || "ai-gateway",
+    model: stringValue(record.model),
+    gatewayId: stringValue(record.gatewayId),
+    totalTokens: nullableNumberValue(record.totalTokens),
+    costMicros: numberValue(record.costMicros, 0),
+    message: stringValue(record.message),
+  };
+}
+
+function timelineItems(run: RunPayload | null, agentRun: AgentRunRecord | null, summary: SourceSummaryView): TimelineItemView[] {
+  const progress = normalizeRecord(agentRun?.progress);
+  const items: TimelineItemView[] = [
+    {
+      label: "Queued",
+      detail: stringValue(progress.requestedAt) ? `Requested ${formatDateTime(stringValue(progress.requestedAt))}` : "Waiting for a run request",
+      status: agentRun ? "done" : "waiting",
+    },
+    {
+      label: "Workflow",
+      detail: agentRun?.workflowInstanceId ? `Workflow ${shortId(agentRun.workflowInstanceId)}` : stringValue(progress.handoff) || "Cloudflare Agent handoff",
+      status: agentRun?.status === "running" ? "running" : agentRun ? "done" : "waiting",
+    },
+    {
+      label: "Source discovery",
+      detail: summary.checkedSources.length
+        ? `${summary.rawCandidateCount} raw candidates from ${summary.checkedSources.length} checks`
+        : "Source checks pending",
+      status: summary.checkedSources.length ? "done" : agentRun?.status === "running" ? "running" : "waiting",
+    },
+    {
+      label: "Runner handoff",
+      detail: summary.runnerTasks.length
+        ? `${summary.runnerTasks.length} browser/container task${summary.runnerTasks.length === 1 ? "" : "s"} queued`
+        : summary.blockedSources.length
+          ? `${summary.blockedSources.length} blocked source${summary.blockedSources.length === 1 ? "" : "s"}`
+          : "No browser-heavy follow-up",
+      status: summary.runnerTasks.length || summary.blockedSources.length ? "done" : summary.checkedSources.length ? "done" : "waiting",
+    },
+    {
+      label: "Published",
+      detail: run?.id ? `${run.listings.length} picks in ${shortId(run.id)}` : "No published run yet",
+      status: run?.id ? "done" : agentRun?.status === "failed" ? "failed" : "waiting",
+    },
+  ];
+  if (agentRun?.status === "failed") {
+    items.push({
+      label: "Failure",
+      detail: agentRun.error || "Agent run failed",
+      status: "failed",
+    });
+  }
+  return items;
+}
+
+function runStatusText(run: RunPayload | null, agentRun: AgentRunRecord | null): string {
+  if (agentRun?.status === "running") return "Workflow running";
+  if (agentRun?.status === "queued") return "Run queued";
+  if (agentRun?.status === "failed") return "Run failed";
+  if (run?.id) return "Latest run published";
+  return "No run yet";
+}
+
+function runStatusMeta(run: RunPayload | null, agentRun: AgentRunRecord | null, summary: SourceSummaryView): string {
+  if (agentRun?.status === "running") return "Cloudflare Workflow is processing";
+  if (agentRun?.status === "queued") return "Waiting for the per-user Agent";
+  if (agentRun?.status === "failed") return agentRun.error || "Open details for the failure";
+  if (run?.id) {
+    const runnerText = summary.runnerTasks.length ? ` · ${summary.runnerTasks.length} runner task${summary.runnerTasks.length === 1 ? "" : "s"}` : "";
+    return `${run.listings.length} picks · ${summary.checkedSources.length} source checks${runnerText}`;
+  }
+  return "Queue the first discovery run";
+}
+
+function sourceStatusClass(status: string): string {
+  if (status === "ok" || status === "fallback" || status === "completed" || status === "published") return "is-ok";
+  if (status === "blocked" || status === "failed") return "is-warn";
+  if (status === "running" || status === "queued") return "is-running";
+  return "is-muted";
+}
+
+function timelineStatusClass(status: TimelineItemView["status"]): string {
+  if (status === "done") return "is-ok";
+  if (status === "running") return "is-running";
+  if (status === "failed") return "is-warn";
+  return "is-muted";
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function nullableStringValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function stringArrayValue(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
+}
+
+function numberValue(value: unknown, fallback: number): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+function nullableNumberValue(value: unknown): number | null {
+  const parsed = numberValue(value, Number.NaN);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function shortId(value: string | null | undefined): string {
+  if (!value) return "run";
+  return value.length <= 18 ? value : `${value.slice(0, 10)}...${value.slice(-6)}`;
+}
+
+function formatDateTime(value: string | undefined): string {
+  if (!value) return "check";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
 function shortText(value?: string, fallback = "check"): string {
   return value?.trim() || fallback;
 }
@@ -134,14 +472,282 @@ function splitConcernText(value?: string): string[] {
 }
 
 export function App(props: { clerkPublishableKey: string }) {
+  const searchParams = new URLSearchParams(window.location.search);
+  const demoMode = import.meta.env.DEV ? searchParams.get("demo") : null;
+  if (searchParams.get("admin") === "1") {
+    return <AdminConsole demo={false} />;
+  }
+  if (demoMode === "admin") {
+    return <AdminConsole demo />;
+  }
+  if (demoMode === "settings") {
+    return (
+      <main className="shell is-deck">
+        <SettingsSheet
+          error={null}
+          isPending={false}
+          onClose={() => undefined}
+          onDelete={() => undefined}
+          onExport={() => undefined}
+          onSubmit={() => undefined}
+          user={demoSettingsUser()}
+        />
+      </main>
+    );
+  }
+  if (demoMode === "run") {
+    return <RunDetailDemo />;
+  }
+  if (demoMode === "invite") {
+    return <InviteGate email="friend@example.com" error={null} isPending={false} onSubmit={() => undefined} />;
+  }
+  if (demoMode === "onboarding") {
+    return <OnboardingGate email="friend@example.com" error={null} isPending={false} onSubmit={() => undefined} />;
+  }
+  return <AuthenticatedApp clerkPublishableKey={props.clerkPublishableKey} />;
+}
+
+function demoSettingsUser(): UserPayload {
+  return {
+    id: "email:friend@example.com",
+    email: "friend@example.com",
+    displayName: "Friend",
+    status: "active",
+    profile: {
+      userId: "email:friend@example.com",
+      displayName: "Friend",
+      niche: "Beach cars and runabouts",
+      budgetMax: 30000,
+      stretchBudget: 2000,
+      homeRegion: "Northeast",
+      timezone: "America/New_York",
+      scheduleCron: "0 8 * * *",
+      profile: {
+        tasteNotes: "Open-air, charming, beach-town practical, kid-plausible when possible.",
+        avoidNotes: "Major rust, salvage titles, huge lifts, fragile projects, or over-budget icons.",
+        notifications: {
+          channel: "email",
+          runDigest: true,
+          strongFitAlerts: true,
+          digestTime: "08:00",
+        },
+      },
+      onboardingCompletedAt: "2026-06-25T12:00:00.000Z",
+      updatedAt: "2026-06-25T12:00:00.000Z",
+    },
+    sourceSettings: [
+      {
+        source: "bringatrailer",
+        enabled: true,
+        settings: { maxDistanceMiles: 750, noReserveOnly: false, searchNotes: "VW Thing, Samurai, Tracker" },
+        updatedAt: "2026-06-25T12:00:00.000Z",
+      },
+      {
+        source: "carsandbids",
+        enabled: true,
+        settings: { maxDistanceMiles: 750, browserRunner: true },
+        updatedAt: "2026-06-25T12:00:00.000Z",
+      },
+      {
+        source: "marketplace",
+        enabled: false,
+        settings: { maxDistanceMiles: 150, browserRunner: true },
+        updatedAt: "2026-06-25T12:00:00.000Z",
+      },
+    ],
+    aiSettings: {
+      mode: "managed",
+      dailyBudgetCents: 250,
+      monthlyBudgetCents: 2500,
+      gatewayKeyRef: null,
+      status: "active",
+      updatedAt: "2026-06-25T12:00:00.000Z",
+    },
+    onboarding: { completed: true, completedAt: "2026-06-25T12:00:00.000Z" },
+    capabilities: { canUseManagedAi: true, canUseByok: true, canRunNow: false },
+  };
+}
+
+function RunDetailDemo() {
+  const [open, setOpen] = useState(true);
+  const user = demoSettingsUser();
+  const run = demoRunPayload();
+  const agentRun = demoAgentRunRecord();
+  const sourceSummary = sourceSummaryView(run.sourceSummary);
+
+  return (
+    <main className="shell is-deck">
+      <header className="app-header">
+        <div className="brand-line">
+          <strong>{appName}</strong>
+          <span>{generatedTime(run)}</span>
+        </div>
+        <div className="header-actions">
+          <button className="icon-toggle is-active" type="button">
+            <span>Deck</span>
+          </button>
+          <button className="icon-toggle" type="button">
+            <List size={17} aria-hidden="true" />
+            <span>List</span>
+          </button>
+        </div>
+      </header>
+      <RunStatusStrip
+        agentRun={agentRun}
+        canQueueRun
+        onOpen={() => setOpen(true)}
+        onQueue={() => undefined}
+        pending={false}
+        run={run}
+        sourceSummary={sourceSummary}
+        user={user}
+      />
+      <section className="empty-state">
+        <Clock3 size={34} aria-hidden="true" />
+        <h2>Run detail demo</h2>
+        <p>{runStatusMeta(run, agentRun, sourceSummary)}</p>
+        <button className="source-link" type="button" onClick={() => setOpen(true)}>
+          Open run detail
+        </button>
+      </section>
+      {open ? (
+        <RunDetailSheet
+          agentRun={agentRun}
+          canQueueRun
+          onClose={() => setOpen(false)}
+          onQueue={() => undefined}
+          pending={false}
+          run={run}
+          sourceSummary={sourceSummary}
+          user={user}
+        />
+      ) : null}
+    </main>
+  );
+}
+
+function demoRunPayload(): RunPayload {
+  return {
+    id: "run-from-agent-run-demo",
+    generatedAt: "2026-06-25T13:45:00.000Z",
+    reportMarkdown: "Demo source discovery report.",
+    feedback: [],
+    listings: [
+      {
+        listingKey: "demo-thing",
+        section: "Strong fits",
+        lane: "family",
+        site: "Bring a Trailer",
+        title: "1974 Volkswagen Thing",
+        url: "https://bringatrailer.com/listing/1974-volkswagen-thing/",
+        bid: "$8,295",
+        total: "$8,710 incl. buyer fee estimate",
+        location: "Northeast",
+        timeLeft: "2 days",
+        bids: 12,
+        comments: 18,
+        fair: "$7,500-$9,800 current comp screen",
+        ceiling: "Keep total under $32,000 unless unusually clean.",
+        conf: "source-score-43",
+        why: "Found on Bring a Trailer via Volkswagen Thing; matched VW Thing, no reserve, inside current budget screen.",
+        concerns: "Verify title, rust, underside, driving video, seating/restraint practicality, and final buyer-fee total.",
+        currentTake: "source-discovery candidate from public source data",
+        images: [],
+      },
+    ],
+    sourceSummary: {
+      publisher: "cloudflare-workflow-source-discovery",
+      agentRunId: "agent-run-demo",
+      workflowInstanceId: "workflow-agent-run-demo",
+      source: "manual",
+      reason: "demo",
+      feedbackCount: 9,
+      enabledSources: ["bringatrailer", "carsandbids"],
+      checkedSources: [
+        {
+          source: "bringatrailer",
+          site: "Bring a Trailer",
+          status: "ok",
+          label: "Volkswagen Thing",
+          candidateCount: 1,
+          message: "Parsed live keyword-page listing cards.",
+        },
+        {
+          source: "bringatrailer",
+          site: "Bring a Trailer",
+          status: "ok",
+          label: "Auctions RSS",
+          candidateCount: 34,
+          message: "Parsed public RSS items as a broad source sweep.",
+        },
+        {
+          source: "carsandbids",
+          site: "Cars & Bids",
+          status: "blocked",
+          candidateCount: 0,
+          message: "Fetch reached a bot/access challenge; use a logged-in browser or container runner for this source.",
+        },
+      ],
+      blockedSources: [
+        {
+          source: "carsandbids",
+          site: "Cars & Bids",
+          status: "blocked",
+          candidateCount: 0,
+          message: "Fetch reached a bot/access challenge; use a logged-in browser or container runner for this source.",
+        },
+      ],
+      fallbackUsed: false,
+      rawCandidateCount: 35,
+      aiScoring: {
+        status: "ok",
+        provider: "cloudflare-ai-gateway",
+        model: "openai/gpt-4.1",
+        totalTokens: 140,
+        costMicros: 280,
+        message: "AI rerank applied to source candidates.",
+      },
+      runnerTasks: [{ id: "runner-task-browser-source-carsandbids-demo", source: "carsandbids", kind: "browser_source", status: "queued" }],
+    },
+  };
+}
+
+function demoAgentRunRecord(): AgentRunRecord {
+  return {
+    id: "agent-run-demo",
+    userId: "email:friend@example.com",
+    workflowInstanceId: "workflow-agent-run-demo",
+    status: "published",
+    progress: {
+      source: "manual",
+      reason: "demo",
+      requestedAt: "2026-06-25T13:43:00.000Z",
+      handoff: "cloudflare_workflow",
+      publishedRunId: "run-from-agent-run-demo",
+      listingCount: 1,
+      imageCount: 0,
+      publishedAt: "2026-06-25T13:45:00.000Z",
+    },
+    error: null,
+    startedAt: "2026-06-25T13:43:05.000Z",
+    finishedAt: "2026-06-25T13:45:00.000Z",
+    createdAt: "2026-06-25T13:43:00.000Z",
+    updatedAt: "2026-06-25T13:45:00.000Z",
+  };
+}
+
+function AuthenticatedApp(props: { clerkPublishableKey: string }) {
   const auth = useClerkBrowser(props.clerkPublishableKey);
   const [run, setRun] = useState<RunPayload | null>(null);
   const [user, setUser] = useState<UserPayload | null>(null);
+  const [agentRun, setAgentRun] = useState<AgentRunRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<ViewMode>("deck");
   const [filter, setFilter] = useState<ViewFilter>("all");
   const [filterOpen, setFilterOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [runDetailOpen, setRunDetailOpen] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -149,6 +755,8 @@ export function App(props: { clerkPublishableKey: string }) {
   const [feedbackByKey, setFeedbackByKey] = useState<Map<string, FeedbackRecord>>(new Map());
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [photoTouchStart, setPhotoTouchStart] = useState<{ x: number; y: number } | null>(null);
+  const [accountActionPending, setAccountActionPending] = useState(false);
+  const [runRequestPending, setRunRequestPending] = useState(false);
 
   useEffect(() => {
     if (!auth.isLoaded || !auth.isSignedIn || !auth.clerk) return;
@@ -157,10 +765,20 @@ export function App(props: { clerkPublishableKey: string }) {
     let cancelled = false;
     async function load() {
       try {
-        const [nextRun, nextUser] = await Promise.all([getLatestRun(), getMe().catch(() => null)]);
+        const nextUser = await getMe();
+        if (cancelled) return;
+        setUser(nextUser);
+        if (nextUser.status !== "active" || !nextUser.onboarding?.completed) {
+          setRun(null);
+          setAgentRun(null);
+          setFeedbackByKey(new Map());
+          setError(null);
+          return;
+        }
+        const [nextRun, nextAgentRun] = await Promise.all([getLatestRun(nextUser.id), getLatestAgentRun().catch(() => null)]);
         if (cancelled) return;
         setRun(nextRun);
-        setUser(nextUser);
+        setAgentRun(nextAgentRun);
         setFeedbackByKey(mergedFeedback(nextRun));
         setError(null);
       } catch (loadError) {
@@ -174,6 +792,139 @@ export function App(props: { clerkPublishableKey: string }) {
       cancelled = true;
     };
   }, [auth.clerk, auth.isLoaded, auth.isSignedIn]);
+
+  const loadRunForUser = useCallback(async (userId?: string) => {
+    const nextRun = await getLatestRun(userId);
+    setRun(nextRun);
+    setFeedbackByKey(mergedFeedback(nextRun));
+  }, []);
+
+  async function submitInviteCode(code: string) {
+    setAccountActionPending(true);
+    try {
+      const nextUser = await acceptInvite(code);
+      setUser(nextUser);
+      setError(null);
+    } catch (inviteError) {
+      setError(inviteError instanceof Error ? inviteError.message : "Could not accept invite");
+    } finally {
+      setAccountActionPending(false);
+    }
+  }
+
+  async function completeProfile(input: {
+    displayName?: string;
+    niche: string;
+    budgetMax?: number | null;
+    stretchBudget?: number | null;
+    homeRegion?: string | null;
+    timezone: string;
+    profile: Record<string, unknown>;
+    aiSettings?: AiSettingsInput;
+    sourceSettings?: SourceSettingsInput;
+  }) {
+    setAccountActionPending(true);
+    try {
+      const { aiSettings, sourceSettings, ...profileInput } = input;
+      let nextUser = await putProfile({ ...profileInput, completeOnboarding: true });
+      if (sourceSettings) nextUser = await putSourceSettings({ sources: sourceSettings });
+      if (aiSettings) nextUser = await putAiSettings(aiSettings);
+      setUser(nextUser);
+      await loadRunForUser(nextUser.id).catch(() => {
+        setRun({ id: null, generatedAt: null, listings: [], feedback: [] });
+        setFeedbackByKey(new Map());
+      });
+      setError(null);
+    } catch (profileError) {
+      setError(profileError instanceof Error ? profileError.message : "Could not save profile");
+    } finally {
+      setAccountActionPending(false);
+    }
+  }
+
+  async function saveSettings(input: {
+    displayName?: string;
+    niche: string;
+    budgetMax?: number | null;
+    stretchBudget?: number | null;
+    homeRegion?: string | null;
+    timezone: string;
+    profile: Record<string, unknown>;
+    aiSettings?: AiSettingsInput;
+    sourceSettings?: SourceSettingsInput;
+  }) {
+    setAccountActionPending(true);
+    try {
+      const { aiSettings, sourceSettings, ...profileInput } = input;
+      let nextUser = await putProfile({ ...profileInput, completeOnboarding: true });
+      if (sourceSettings) nextUser = await putSourceSettings({ sources: sourceSettings });
+      if (aiSettings) nextUser = await putAiSettings(aiSettings);
+      setUser(nextUser);
+      setSettingsOpen(false);
+      setError(null);
+    } catch (profileError) {
+      setError(profileError instanceof Error ? profileError.message : "Could not save profile");
+    } finally {
+      setAccountActionPending(false);
+    }
+  }
+
+  async function exportAccountData() {
+    setAccountActionPending(true);
+    try {
+      const account = await exportAccount();
+      downloadJson(account, `beachcar-account-${account.user.email}-${new Date().toISOString().slice(0, 10)}.json`);
+      setError(null);
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : "Could not export account");
+    } finally {
+      setAccountActionPending(false);
+    }
+  }
+
+  async function deleteAccount(confirmEmail: string) {
+    setAccountActionPending(true);
+    try {
+      await deleteAccountRequest(confirmEmail);
+      setUser(
+        user
+          ? {
+              ...user,
+              status: "disabled",
+              displayName: null,
+              profile: null,
+              sourceSettings: [],
+              aiSettings: null,
+              aiUsage: null,
+              onboarding: { completed: false, completedAt: null },
+              capabilities: { canUseManagedAi: false, canUseByok: false, canRunNow: false },
+            }
+          : null,
+      );
+      setRun(null);
+      setAgentRun(null);
+      setFeedbackByKey(new Map());
+      setSettingsOpen(false);
+      setError(null);
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Could not delete account");
+    } finally {
+      setAccountActionPending(false);
+    }
+  }
+
+  async function queueAgentRun() {
+    setRunRequestPending(true);
+    try {
+      const nextAgentRun = await requestAgentRun("manual_web");
+      setAgentRun(nextAgentRun);
+      setError(null);
+    } catch (runError) {
+      setError(runError instanceof Error ? runError.message : "Could not queue run");
+    } finally {
+      setRunRequestPending(false);
+    }
+  }
 
   const visibleListings = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -196,6 +947,21 @@ export function App(props: { clerkPublishableKey: string }) {
   const selectedFeedback = selectedListing ? feedbackByKey.get(selectedKey) || null : null;
   const selectedImages = selectedListing?.images?.length ? selectedListing.images : [];
   const currentImage = selectedImages[imageIndex] || selectedImages[0] || "";
+
+  useEffect(() => {
+    const urls = new Set<string>();
+    for (const url of selectedImages.slice(imageIndex + 1, imageIndex + 3)) {
+      if (url) urls.add(url);
+    }
+    for (const listing of visibleListings.slice(selectedIndex + 1, selectedIndex + 3)) {
+      if (listing.images[0]) urls.add(listing.images[0]);
+    }
+    for (const url of urls) {
+      const image = new Image();
+      image.decoding = "async";
+      image.src = url;
+    }
+  }, [imageIndex, selectedImages, selectedIndex, visibleListings]);
 
   useEffect(() => {
     setSelectedIndex((current) => Math.min(current, Math.max(visibleListings.length - 1, 0)));
@@ -341,6 +1107,48 @@ export function App(props: { clerkPublishableKey: string }) {
     );
   }
 
+  if (user?.status === "disabled") {
+    return <DisabledAccountGate email={user.email || auth.email || ""} clerk={auth.clerk} />;
+  }
+
+  if (user && user.status !== "active") {
+    return (
+      <InviteGate
+        email={user.email || auth.email || ""}
+        error={error}
+        isPending={accountActionPending}
+        onSubmit={(code) => void submitInviteCode(code)}
+      />
+    );
+  }
+
+  if (user && !user.onboarding?.completed) {
+    return (
+      <OnboardingGate
+        email={user.email || auth.email || ""}
+        error={error}
+        isPending={accountActionPending}
+        onSubmit={(input) => void completeProfile(input)}
+      />
+    );
+  }
+
+  if (!user) {
+    return (
+      <main className="shell is-loading">
+        <div className="loading-card">
+          <Sparkles aria-hidden="true" />
+          <p>Loading today&apos;s auction watch...</p>
+        </div>
+      </main>
+    );
+  }
+
+  const activeUser = user;
+  const aiBudgetExceeded = Boolean(activeUser.aiUsage?.budgetExceeded);
+  const canQueueRun = Boolean(activeUser.capabilities?.canRunNow) && !aiBudgetExceeded;
+  const sourceSummary = sourceSummaryView(run?.sourceSummary);
+
   return (
     <main className={mode === "deck" ? "shell is-deck" : "shell is-list"}>
       <header className="app-header">
@@ -359,12 +1167,27 @@ export function App(props: { clerkPublishableKey: string }) {
           <button className="icon-button" type="button" onClick={() => setFilterOpen(true)} aria-label="Filters">
             <SlidersHorizontal size={19} aria-hidden="true" />
           </button>
-          <div className="private-button" title={user?.email || auth.email || "Signed in"}>
+          <button className="icon-toggle" type="button" onClick={() => setSettingsOpen(true)}>
+            <ShieldCheck size={16} aria-hidden="true" />
+            <span>Prefs</span>
+          </button>
+          <div className="private-button" title={activeUser.email || auth.email || "Signed in"}>
             <ShieldCheck size={16} aria-hidden="true" />
             <ClerkUserButton clerk={auth.clerk} />
           </div>
         </div>
       </header>
+
+      <RunStatusStrip
+        agentRun={agentRun}
+        canQueueRun={canQueueRun}
+        onOpen={() => setRunDetailOpen(true)}
+        onQueue={() => void queueAgentRun()}
+        pending={runRequestPending}
+        run={run}
+        sourceSummary={sourceSummary}
+        user={activeUser}
+      />
 
       {filterOpen ? (
         <FilterSheet
@@ -376,6 +1199,31 @@ export function App(props: { clerkPublishableKey: string }) {
           setQuery={setQuery}
           setShowHidden={setShowHidden}
           showHidden={showHidden}
+        />
+      ) : null}
+
+      {settingsOpen && user ? (
+        <SettingsSheet
+          error={error}
+          isPending={accountActionPending}
+          onClose={() => setSettingsOpen(false)}
+          onDelete={(confirmEmail) => void deleteAccount(confirmEmail)}
+          onExport={() => void exportAccountData()}
+          onSubmit={(input) => void saveSettings(input)}
+          user={user}
+        />
+      ) : null}
+
+      {runDetailOpen ? (
+        <RunDetailSheet
+          agentRun={agentRun}
+          canQueueRun={canQueueRun}
+          onClose={() => setRunDetailOpen(false)}
+          onQueue={() => void queueAgentRun()}
+          pending={runRequestPending}
+          run={run}
+          sourceSummary={sourceSummary}
+          user={activeUser}
         />
       ) : null}
 
@@ -466,7 +1314,11 @@ export function App(props: { clerkPublishableKey: string }) {
               </section>
 
               <section className="sticky-listing-strip">
-                {selectedListing.images[0] ? <img src={selectedListing.images[0]} alt="" loading="lazy" /> : <span className="mini-empty">No img</span>}
+                {selectedListing.images[0] ? (
+                  <img src={imageVariantUrl(selectedListing.images[0], "thumb")} alt="" loading="lazy" />
+                ) : (
+                  <span className="mini-empty">No img</span>
+                )}
                 <div>
                   <strong>{selectedListing.title}</strong>
                   <small>
@@ -534,6 +1386,192 @@ export function App(props: { clerkPublishableKey: string }) {
   );
 }
 
+function RunStatusStrip(props: {
+  agentRun: AgentRunRecord | null;
+  canQueueRun: boolean;
+  onOpen: () => void;
+  onQueue: () => void;
+  pending: boolean;
+  run: RunPayload | null;
+  sourceSummary: SourceSummaryView;
+  user: UserPayload;
+}) {
+  return (
+    <section className="run-status-strip" aria-label="Run status">
+      <button className="run-status-main" type="button" onClick={props.onOpen}>
+        <Clock3 size={18} aria-hidden="true" />
+        <span>
+          <strong>{runStatusText(props.run, props.agentRun)}</strong>
+          <small>{runStatusMeta(props.run, props.agentRun, props.sourceSummary)}</small>
+        </span>
+      </button>
+      <button
+        className="run-now-action"
+        disabled={props.pending || !props.canQueueRun}
+        type="button"
+        onClick={props.onQueue}
+        title={runButtonTitle(props.user, props.agentRun, props.canQueueRun)}
+      >
+        <Sparkles size={16} aria-hidden="true" />
+        <span>{props.pending ? "Queueing" : props.canQueueRun ? agentRunLabel(props.agentRun) : "Budget"}</span>
+      </button>
+    </section>
+  );
+}
+
+function RunDetailSheet(props: {
+  agentRun: AgentRunRecord | null;
+  canQueueRun: boolean;
+  onClose: () => void;
+  onQueue: () => void;
+  pending: boolean;
+  run: RunPayload | null;
+  sourceSummary: SourceSummaryView;
+  user: UserPayload;
+}) {
+  const summary = props.sourceSummary;
+  const items = timelineItems(props.run, props.agentRun, summary);
+  const sourceChecks = summary.checkedSources.length ? summary.checkedSources : summary.blockedSources;
+
+  return (
+    <div className="filter-overlay" role="dialog" aria-modal="true" aria-label="Run detail">
+      <button className="filter-backdrop" type="button" onClick={props.onClose} aria-label="Close run detail" />
+      <section className="filter-sheet run-detail-sheet">
+        <div className="sheet-grabber" />
+        <div className="sheet-title">
+          <strong>Run detail</strong>
+          <button type="button" onClick={props.onClose}>
+            Done
+          </button>
+        </div>
+
+        <div className="run-detail-hero">
+          <div>
+            <p className="eyebrow">Latest status</p>
+            <h2>{runStatusText(props.run, props.agentRun)}</h2>
+            <span>{runStatusMeta(props.run, props.agentRun, summary)}</span>
+          </div>
+          <button
+            className="run-now-action"
+            disabled={props.pending || !props.canQueueRun}
+            type="button"
+            onClick={props.onQueue}
+            title={runButtonTitle(props.user, props.agentRun, props.canQueueRun)}
+          >
+            <Sparkles size={16} aria-hidden="true" />
+            <span>{props.pending ? "Queueing" : props.canQueueRun ? agentRunLabel(props.agentRun) : "Budget"}</span>
+          </button>
+        </div>
+
+        <div className="run-metric-grid">
+          <Metric label="Listings" value={String(props.run?.listings.length || 0)} />
+          <Metric label="Candidates" value={String(summary.rawCandidateCount || 0)} />
+          <Metric label="Sources" value={String(summary.checkedSources.length)} />
+          <Metric label="Feedback" value={String(summary.feedbackCount || 0)} />
+        </div>
+
+        <section className="run-timeline" aria-label="Run timeline">
+          {items.map((item) => (
+            <article className={`timeline-row ${timelineStatusClass(item.status)}`} key={item.label}>
+              <span aria-hidden="true" />
+              <div>
+                <strong>{item.label}</strong>
+                <small>{item.detail}</small>
+              </div>
+            </article>
+          ))}
+        </section>
+
+        <section className="run-detail-section">
+          <div className="setup-section-title">
+            <span>Sources</span>
+            <small>{summary.enabledSources.length ? summary.enabledSources.join(", ") : "default"}</small>
+          </div>
+          <div className="source-check-list">
+            {sourceChecks.slice(0, 12).map((check, index) => (
+              <article key={`${check.source}:${check.label || check.url || index}`}>
+                <span className={`source-status-dot ${sourceStatusClass(check.status)}`}>{check.status}</span>
+                <div>
+                  <strong>{check.label ? `${check.site} · ${check.label}` : check.site}</strong>
+                  <small>{check.message || `${check.candidateCount} candidate(s)`}</small>
+                </div>
+                <em>{check.candidateCount}</em>
+              </article>
+            ))}
+            {sourceChecks.length === 0 ? <p className="setup-muted">No source checks have been published for this run yet.</p> : null}
+          </div>
+        </section>
+
+        <section className="run-detail-section">
+          <div className="setup-section-title">
+            <span>AI</span>
+            <small>{summary.aiScoring?.status || props.user.aiSettings?.mode || "not configured"}</small>
+          </div>
+          <div className="run-ai-row">
+            <span>
+              <small>Mode</small>
+              <strong>{props.user.aiSettings?.mode || "managed"}</strong>
+            </span>
+            <span>
+              <small>Provider</small>
+              <strong>{summary.aiScoring?.provider || "heuristic"}</strong>
+            </span>
+            <span>
+              <small>Tokens</small>
+              <strong>{summary.aiScoring?.totalTokens ?? 0}</strong>
+            </span>
+            <span>
+              <small>Cost</small>
+              <strong>{formatMicrosAsDollars(summary.aiScoring?.costMicros || 0)}</strong>
+            </span>
+          </div>
+          {summary.aiScoring?.message ? <p className="setup-muted">{summary.aiScoring.message}</p> : null}
+        </section>
+
+        <section className="run-detail-section">
+          <div className="setup-section-title">
+            <span>Runner tasks</span>
+            <small>{summary.runnerTasks.length}</small>
+          </div>
+          <div className="runner-task-list">
+            {summary.runnerTasks.map((task) => (
+              <article key={task.id}>
+                <span className={`source-status-dot ${sourceStatusClass(task.status)}`}>{task.status}</span>
+                <div>
+                  <strong>{task.source}</strong>
+                  <small>{task.kind} · {shortId(task.id)}</small>
+                </div>
+              </article>
+            ))}
+            {summary.runnerTasks.length === 0 ? <p className="setup-muted">No browser or container runner tasks were needed.</p> : null}
+          </div>
+        </section>
+
+        <section className="run-detail-section">
+          <div className="setup-section-title">
+            <span>Run ids</span>
+            <small>{props.agentRun?.status || "idle"}</small>
+          </div>
+          <div className="run-id-list">
+            <span>
+              <small>Agent</small>
+              <strong>{shortId(props.agentRun?.id)}</strong>
+            </span>
+            <span>
+              <small>Workflow</small>
+              <strong>{shortId(props.agentRun?.workflowInstanceId || summary.workflowInstanceId)}</strong>
+            </span>
+            <span>
+              <small>Published</small>
+              <strong>{shortId(props.run?.id)}</strong>
+            </span>
+          </div>
+        </section>
+      </section>
+    </div>
+  );
+}
+
 function FilterSheet(props: {
   counts: { all: number; visible: number; starred: number; hidden: number; ending: number };
   filter: ViewFilter;
@@ -577,6 +1615,169 @@ function FilterSheet(props: {
   );
 }
 
+function SettingsSheet(props: {
+  error: string | null;
+  isPending: boolean;
+  onClose: () => void;
+  onDelete: (confirmEmail: string) => void;
+  onExport: () => void;
+  onSubmit: (input: {
+    displayName?: string;
+    niche: string;
+    budgetMax?: number | null;
+    stretchBudget?: number | null;
+    homeRegion?: string | null;
+    timezone: string;
+    profile: Record<string, unknown>;
+    aiSettings?: AiSettingsInput;
+    sourceSettings?: SourceSettingsInput;
+  }) => void;
+  user: UserPayload;
+}) {
+  const profile = props.user.profile;
+  const profileData = profile?.profile || {};
+  const aiSettings = props.user.aiSettings;
+  const [displayName, setDisplayName] = useState(profile?.displayName || props.user.displayName || "");
+  const [budgetMax, setBudgetMax] = useState(profile?.budgetMax?.toString() || "30000");
+  const [stretchBudget, setStretchBudget] = useState(profile?.stretchBudget?.toString() || "2000");
+  const [homeRegion, setHomeRegion] = useState(profile?.homeRegion || "Northeast");
+  const [tasteNotes, setTasteNotes] = useState(stringProfileValue(profileData, "tasteNotes", "Open-air, charming, beach-town practical."));
+  const [avoidNotes, setAvoidNotes] = useState(stringProfileValue(profileData, "avoidNotes", "Major rust, salvage titles, huge lifts, fragile projects."));
+  const [aiMode, setAiMode] = useState<UserAiSettings["mode"]>(aiSettings?.mode || "managed");
+  const [dailyAiBudget, setDailyAiBudget] = useState(dollarsFromCents(aiSettings?.dailyBudgetCents, "2.50"));
+  const [monthlyAiBudget, setMonthlyAiBudget] = useState(dollarsFromCents(aiSettings?.monthlyBudgetCents, "25"));
+  const [gatewayKeyRef, setGatewayKeyRef] = useState(aiSettings?.gatewayKeyRef || "");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState(() => initialNotificationSettings(profileData));
+  const [sourcePreferences, setSourcePreferences] = useState(() => initialSourcePreferences(props.user.sourceSettings, profileData));
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+
+  return (
+    <div className="filter-overlay" role="dialog" aria-modal="true" aria-label="Preferences">
+      <button className="filter-backdrop" type="button" onClick={props.onClose} aria-label="Close preferences" />
+      <section className="filter-sheet settings-sheet">
+        <div className="sheet-grabber" />
+        <div className="sheet-title">
+          <strong>Preferences</strong>
+          <button type="button" onClick={props.onClose}>
+            Done
+          </button>
+        </div>
+        <p className="setup-muted">{props.user.email}</p>
+        <form
+          className="setup-form setup-grid"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const nextGatewayKeyRef = aiMode === "byok" ? gatewayKeyRef.trim() : "";
+            if (nextGatewayKeyRef && looksLikeRawProviderKey(nextGatewayKeyRef)) {
+              setLocalError(rawProviderKeyMessage);
+              return;
+            }
+            setLocalError(null);
+            props.onSubmit({
+              displayName,
+              niche: profile?.niche || "Beach cars and runabouts",
+              budgetMax: numberFromInput(budgetMax),
+              stretchBudget: numberFromInput(stretchBudget),
+              homeRegion,
+              timezone: profile?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York",
+              profile: {
+                ...profileData,
+                tasteNotes,
+                avoidNotes,
+                lanes: Array.isArray(profileData.lanes) ? profileData.lanes : ["family", "solo", "curiosity"],
+                sources: profileSourceList(sourcePreferences),
+                sourcePreferences: sourceSettingsInput(sourcePreferences),
+                notifications: notificationSettingsInput(notifications),
+              },
+              sourceSettings: sourceSettingsInput(sourcePreferences),
+              aiSettings: {
+                mode: aiMode,
+                gatewayKeyRef: nextGatewayKeyRef || null,
+                dailyBudgetCents: centsFromDollarInput(dailyAiBudget),
+                monthlyBudgetCents: centsFromDollarInput(monthlyAiBudget),
+              },
+            });
+          }}
+        >
+          <label>
+            <span>Name</span>
+            <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Optional" />
+          </label>
+          <label>
+            <span>Region</span>
+            <input value={homeRegion} onChange={(event) => setHomeRegion(event.target.value)} />
+          </label>
+          <label>
+            <span>Budget ceiling</span>
+            <input inputMode="numeric" value={budgetMax} onChange={(event) => setBudgetMax(event.target.value)} />
+          </label>
+          <label>
+            <span>Stretch room</span>
+            <input inputMode="numeric" value={stretchBudget} onChange={(event) => setStretchBudget(event.target.value)} />
+          </label>
+          <label className="setup-span">
+            <span>Prioritize</span>
+            <textarea value={tasteNotes} onChange={(event) => setTasteNotes(event.target.value)} />
+          </label>
+          <label className="setup-span">
+            <span>Avoid</span>
+            <textarea value={avoidNotes} onChange={(event) => setAvoidNotes(event.target.value)} />
+          </label>
+          <AiSettingsFields
+            dailyBudget={dailyAiBudget}
+            gatewayKeyRef={gatewayKeyRef}
+            mode={aiMode}
+            monthlyBudget={monthlyAiBudget}
+            usage={props.user.aiUsage || null}
+            setDailyBudget={setDailyAiBudget}
+            setGatewayKeyRef={(value) => {
+              setGatewayKeyRef(value);
+              if (localError) setLocalError(null);
+            }}
+            setMode={(mode) => {
+              setAiMode(mode);
+              if (localError) setLocalError(null);
+            }}
+            setMonthlyBudget={setMonthlyAiBudget}
+          />
+          <NotificationSettingsFields value={notifications} onChange={setNotifications} />
+          <SourceSettingsFields preferences={sourcePreferences} setPreferences={setSourcePreferences} />
+          {localError || props.error ? <p className="auth-error setup-span">{localError || props.error}</p> : null}
+          <button className="source-link setup-span" disabled={props.isPending} type="submit">
+            {props.isPending ? "Saving..." : "Save preferences"}
+          </button>
+        </form>
+        <section className="account-tools" aria-label="Account data">
+          <div className="setup-section-title">
+            <span>Account</span>
+            <small>{props.user.status}</small>
+          </div>
+          <div className="account-tool-row">
+            <button disabled={props.isPending} type="button" onClick={props.onExport}>
+              <Download size={16} aria-hidden="true" />
+              <span>Export data</span>
+            </button>
+          </div>
+          <label>
+            <span>Confirm email</span>
+            <input autoComplete="off" value={deleteConfirm} onChange={(event) => setDeleteConfirm(event.target.value)} />
+          </label>
+          <button
+            className="danger-action"
+            disabled={props.isPending || deleteConfirm.trim().toLowerCase() !== props.user.email.toLowerCase()}
+            type="button"
+            onClick={() => props.onDelete(deleteConfirm)}
+          >
+            <Trash2 size={16} aria-hidden="true" />
+            <span>Delete account</span>
+          </button>
+        </section>
+      </section>
+    </div>
+  );
+}
+
 function ListView(props: {
   counts: { all: number; visible: number; ending: number };
   feedbackByKey: Map<string, FeedbackRecord>;
@@ -610,7 +1811,7 @@ function ListView(props: {
                 props.setMode("deck");
               }}
             >
-              {listing.images[0] ? <img src={listing.images[0]} alt="" loading="lazy" /> : <span className="mini-empty">No img</span>}
+              {listing.images[0] ? <img src={imageVariantUrl(listing.images[0], "thumb")} alt="" loading="lazy" /> : <span className="mini-empty">No img</span>}
               <span className="scan-copy">
                 <span>
                   <strong>{listing.title}</strong>
@@ -683,6 +1884,720 @@ function ReviewRail(props: {
       </button>
     </nav>
   );
+}
+
+function InviteGate(props: { email: string; error: string | null; isPending: boolean; onSubmit: (code: string) => void }) {
+  const [code, setCode] = useState("");
+  return (
+    <main className="shell is-loading">
+      <section className="setup-card">
+        <p className="eyebrow">Invite required</p>
+        <h1>{appName}</h1>
+        <p className="setup-muted">{props.email}</p>
+        <form
+          className="setup-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            props.onSubmit(code);
+          }}
+        >
+          <label>
+            <span>Invite code</span>
+            <input autoComplete="one-time-code" value={code} onChange={(event) => setCode(event.target.value)} />
+          </label>
+          {props.error ? <p className="auth-error">{props.error}</p> : null}
+          <button className="source-link" disabled={props.isPending || !code.trim()} type="submit">
+            {props.isPending ? "Checking..." : "Accept invite"}
+          </button>
+        </form>
+      </section>
+    </main>
+  );
+}
+
+function DisabledAccountGate(props: { email: string; clerk: BrowserClerk | null }) {
+  return (
+    <main className="shell is-loading">
+      <section className="setup-card">
+        <p className="eyebrow">Account disabled</p>
+        <h1>{appName}</h1>
+        <p className="setup-muted">{props.email}</p>
+        <button className="source-link" type="button" onClick={() => void props.clerk?.signOut({ redirectUrl: "/" })}>
+          Sign out
+        </button>
+      </section>
+    </main>
+  );
+}
+
+function OnboardingGate(props: {
+  email: string;
+  error: string | null;
+  isPending: boolean;
+  onSubmit: (input: {
+    displayName?: string;
+    niche: string;
+    budgetMax?: number | null;
+    stretchBudget?: number | null;
+    homeRegion?: string | null;
+    timezone: string;
+    profile: Record<string, unknown>;
+    aiSettings?: AiSettingsInput;
+    sourceSettings?: SourceSettingsInput;
+  }) => void;
+}) {
+  const [displayName, setDisplayName] = useState("");
+  const [budgetMax, setBudgetMax] = useState("30000");
+  const [stretchBudget, setStretchBudget] = useState("2000");
+  const [homeRegion, setHomeRegion] = useState("Northeast");
+  const [tasteNotes, setTasteNotes] = useState("Open-air, charming, beach-town practical, kid-plausible when possible.");
+  const [avoidNotes, setAvoidNotes] = useState("Major rust, salvage titles, huge lifts, fragile projects, or over-budget icons.");
+  const [aiMode, setAiMode] = useState<UserAiSettings["mode"]>("managed");
+  const [dailyAiBudget, setDailyAiBudget] = useState("2.50");
+  const [monthlyAiBudget, setMonthlyAiBudget] = useState("25");
+  const [gatewayKeyRef, setGatewayKeyRef] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState(() => initialNotificationSettings({}));
+  const [sourcePreferences, setSourcePreferences] = useState(() => initialSourcePreferences([], {}));
+
+  return (
+    <main className="shell is-loading">
+      <section className="setup-card is-wide">
+        <p className="eyebrow">Initial preferences</p>
+        <h1>Beach cars and runabouts</h1>
+        <p className="setup-muted">{props.email}</p>
+        <form
+          className="setup-form setup-grid"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const nextGatewayKeyRef = aiMode === "byok" ? gatewayKeyRef.trim() : "";
+            if (nextGatewayKeyRef && looksLikeRawProviderKey(nextGatewayKeyRef)) {
+              setLocalError(rawProviderKeyMessage);
+              return;
+            }
+            setLocalError(null);
+            props.onSubmit({
+              displayName,
+              niche: "Beach cars and runabouts",
+              budgetMax: numberFromInput(budgetMax),
+              stretchBudget: numberFromInput(stretchBudget),
+              homeRegion,
+              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York",
+              profile: {
+                tasteNotes,
+                avoidNotes,
+                lanes: ["family", "solo", "curiosity"],
+                sources: profileSourceList(sourcePreferences),
+                sourcePreferences: sourceSettingsInput(sourcePreferences),
+                notifications: notificationSettingsInput(notifications),
+              },
+              sourceSettings: sourceSettingsInput(sourcePreferences),
+              aiSettings: {
+                mode: aiMode,
+                gatewayKeyRef: nextGatewayKeyRef || null,
+                dailyBudgetCents: centsFromDollarInput(dailyAiBudget),
+                monthlyBudgetCents: centsFromDollarInput(monthlyAiBudget),
+              },
+            });
+          }}
+        >
+          <label>
+            <span>Name</span>
+            <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Optional" />
+          </label>
+          <label>
+            <span>Region</span>
+            <input value={homeRegion} onChange={(event) => setHomeRegion(event.target.value)} />
+          </label>
+          <label>
+            <span>Budget ceiling</span>
+            <input inputMode="numeric" value={budgetMax} onChange={(event) => setBudgetMax(event.target.value)} />
+          </label>
+          <label>
+            <span>Stretch room</span>
+            <input inputMode="numeric" value={stretchBudget} onChange={(event) => setStretchBudget(event.target.value)} />
+          </label>
+          <label className="setup-span">
+            <span>Prioritize</span>
+            <textarea value={tasteNotes} onChange={(event) => setTasteNotes(event.target.value)} />
+          </label>
+          <label className="setup-span">
+            <span>Avoid</span>
+            <textarea value={avoidNotes} onChange={(event) => setAvoidNotes(event.target.value)} />
+          </label>
+          <AiSettingsFields
+            dailyBudget={dailyAiBudget}
+            gatewayKeyRef={gatewayKeyRef}
+            mode={aiMode}
+            monthlyBudget={monthlyAiBudget}
+            setDailyBudget={setDailyAiBudget}
+            setGatewayKeyRef={(value) => {
+              setGatewayKeyRef(value);
+              if (localError) setLocalError(null);
+            }}
+            setMode={(mode) => {
+              setAiMode(mode);
+              if (localError) setLocalError(null);
+            }}
+            setMonthlyBudget={setMonthlyAiBudget}
+          />
+          <NotificationSettingsFields value={notifications} onChange={setNotifications} />
+          <SourceSettingsFields preferences={sourcePreferences} setPreferences={setSourcePreferences} />
+          {localError || props.error ? <p className="auth-error setup-span">{localError || props.error}</p> : null}
+          <button className="source-link setup-span" disabled={props.isPending} type="submit">
+            {props.isPending ? "Saving..." : "Save preferences"}
+          </button>
+        </form>
+      </section>
+    </main>
+  );
+}
+
+function AiSettingsFields(props: {
+  mode: UserAiSettings["mode"];
+  dailyBudget: string;
+  monthlyBudget: string;
+  gatewayKeyRef: string;
+  usage?: AiUsageSummary | null;
+  setMode: (mode: UserAiSettings["mode"]) => void;
+  setDailyBudget: (value: string) => void;
+  setMonthlyBudget: (value: string) => void;
+  setGatewayKeyRef: (value: string) => void;
+}) {
+  return (
+    <section className="ai-settings setup-span">
+      <div className="setup-section-title">
+        <span>AI</span>
+        <small>{props.usage?.budgetExceeded ? "Budget reached" : props.mode === "managed" ? "Managed" : "BYOK"}</small>
+      </div>
+      {props.usage ? (
+        <div className="ai-usage-strip">
+          <span>
+            <small>Today</small>
+            <strong>{formatMicrosAsDollars(props.usage.daily.spendMicros)}</strong>
+            <em>{formatAiBudget(props.usage.daily.budgetCents)}</em>
+          </span>
+          <span>
+            <small>Month</small>
+            <strong>{formatMicrosAsDollars(props.usage.monthly.spendMicros)}</strong>
+            <em>{formatAiBudget(props.usage.monthly.budgetCents)}</em>
+          </span>
+        </div>
+      ) : null}
+      <div className="segmented-control" aria-label="AI mode">
+        <button
+          aria-pressed={props.mode === "managed"}
+          className={props.mode === "managed" ? "is-active" : ""}
+          type="button"
+          onClick={() => props.setMode("managed")}
+        >
+          Managed
+        </button>
+        <button
+          aria-pressed={props.mode === "byok"}
+          className={props.mode === "byok" ? "is-active" : ""}
+          type="button"
+          onClick={() => props.setMode("byok")}
+        >
+          BYOK
+        </button>
+      </div>
+      <div className="ai-budget-grid">
+        <label>
+          <span>Daily cap</span>
+          <input inputMode="decimal" value={props.dailyBudget} onChange={(event) => props.setDailyBudget(event.target.value)} />
+        </label>
+        <label>
+          <span>Monthly cap</span>
+          <input inputMode="decimal" value={props.monthlyBudget} onChange={(event) => props.setMonthlyBudget(event.target.value)} />
+        </label>
+      </div>
+      {props.mode === "byok" ? (
+        <label>
+          <span>AI Gateway alias</span>
+          <input
+            autoComplete="off"
+            placeholder="cf-aig-byok-friend-openai"
+            value={props.gatewayKeyRef}
+            onChange={(event) => props.setGatewayKeyRef(event.target.value)}
+          />
+        </label>
+      ) : null}
+    </section>
+  );
+}
+
+function NotificationSettingsFields(props: {
+  value: NotificationSettingsState;
+  onChange: (value: NotificationSettingsState) => void;
+}) {
+  function update(patch: Partial<NotificationSettingsState>) {
+    props.onChange({ ...props.value, ...patch });
+  }
+
+  return (
+    <section className="notification-settings setup-span">
+      <div className="setup-section-title">
+        <span>Notifications</span>
+        <small>{props.value.channel === "email" ? "Email" : "Muted"}</small>
+      </div>
+      <div className="segmented-control" aria-label="Notification channel">
+        <button
+          aria-pressed={props.value.channel === "email"}
+          className={props.value.channel === "email" ? "is-active" : ""}
+          type="button"
+          onClick={() => update({ channel: "email" })}
+        >
+          Email
+        </button>
+        <button
+          aria-pressed={props.value.channel === "none"}
+          className={props.value.channel === "none" ? "is-active" : ""}
+          type="button"
+          onClick={() => update({ channel: "none" })}
+        >
+          None
+        </button>
+      </div>
+      <div className="source-toggle-list is-compact">
+        <label>
+          <input checked={props.value.runDigest} onChange={(event) => update({ runDigest: event.target.checked })} type="checkbox" />
+          <span>Daily run digest</span>
+        </label>
+        <label>
+          <input checked={props.value.strongFitAlerts} onChange={(event) => update({ strongFitAlerts: event.target.checked })} type="checkbox" />
+          <span>Strong-fit alerts</span>
+        </label>
+      </div>
+      {props.value.channel === "email" ? (
+        <label>
+          <span>Digest time</span>
+          <input type="time" value={props.value.digestTime} onChange={(event) => update({ digestTime: event.target.value })} />
+        </label>
+      ) : null}
+    </section>
+  );
+}
+
+function SourceSettingsFields(props: {
+  preferences: SourcePreferenceState[];
+  setPreferences: (preferences: SourcePreferenceState[]) => void;
+}) {
+  function update(source: string, patch: Partial<SourcePreferenceState>) {
+    props.setPreferences(
+      sourceOptions.map((option) => {
+        const current = props.preferences.find((preference) => preference.source === option.source) || defaultSourcePreference(option);
+        return current.source === source ? { ...current, ...patch } : current;
+      }),
+    );
+  }
+
+  const activeCount = props.preferences.filter((preference) => preference.enabled).length;
+
+  return (
+    <section className="source-settings setup-span">
+      <div className="setup-section-title">
+        <span>Sources</span>
+        <small>{activeCount} active</small>
+      </div>
+      <div className="source-config-list">
+        {sourceOptions.map((option) => {
+          const preference = props.preferences.find((item) => item.source === option.source) || defaultSourcePreference(option);
+          return (
+            <article className={preference.enabled ? "source-config-card is-enabled" : "source-config-card"} key={option.source}>
+              <label className="source-config-toggle">
+                <input checked={preference.enabled} onChange={(event) => update(option.source, { enabled: event.target.checked })} type="checkbox" />
+                <span>{option.label}</span>
+              </label>
+              {preference.enabled ? (
+                <div className="source-detail-grid">
+                  <label>
+                    <span>Max miles</span>
+                    <input
+                      inputMode="numeric"
+                      value={preference.maxDistanceMiles}
+                      onChange={(event) => update(option.source, { maxDistanceMiles: event.target.value })}
+                    />
+                  </label>
+                  <label>
+                    <span>Source cap</span>
+                    <input
+                      inputMode="decimal"
+                      placeholder="optional"
+                      value={preference.maxBudget}
+                      onChange={(event) => update(option.source, { maxBudget: event.target.value })}
+                    />
+                  </label>
+                  {option.supportsNoReserve ? (
+                    <label className="source-check">
+                      <input checked={preference.noReserveOnly} onChange={(event) => update(option.source, { noReserveOnly: event.target.checked })} type="checkbox" />
+                      <span>No-reserve only</span>
+                    </label>
+                  ) : null}
+                  {option.supportsBrowserRunner ? (
+                    <label className="source-check">
+                      <input checked={preference.browserRunner} onChange={(event) => update(option.source, { browserRunner: event.target.checked })} type="checkbox" />
+                      <span>Browser runner</span>
+                    </label>
+                  ) : null}
+                  <label className="source-notes">
+                    <span>Search notes</span>
+                    <textarea
+                      placeholder={option.searchPlaceholder}
+                      value={preference.searchNotes}
+                      onChange={(event) => update(option.source, { searchNotes: event.target.value })}
+                    />
+                  </label>
+                </div>
+              ) : null}
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function AdminConsole(props: { demo: boolean }) {
+  const [publishToken, setPublishToken] = useState("");
+  const [email, setEmail] = useState("friend@example.com");
+  const [users, setUsers] = useState<AdminUserSummary[]>(
+    props.demo
+      ? [
+          {
+            id: "email:owner@example.com",
+            email: "owner@example.com",
+            status: "active",
+            onboardingCompletedAt: "2026-06-25T12:00:00.000Z",
+            latestRunAt: "2026-06-25T13:00:00.000Z",
+            aiUsage: demoAiUsage(184000, 482000),
+            createdAt: "2026-06-24T12:00:00.000Z",
+            lastSeenAt: "2026-06-25T13:10:00.000Z",
+          },
+          {
+            id: "email:friend@example.com",
+            email: "friend@example.com",
+            status: "invited",
+            onboardingCompletedAt: null,
+            latestRunAt: null,
+            aiUsage: demoAiUsage(0, 0),
+            createdAt: "2026-06-25T13:20:00.000Z",
+            lastSeenAt: "2026-06-25T13:20:00.000Z",
+          },
+        ]
+      : [],
+  );
+  const [invite, setInvite] = useState<InvitePayload | null>(
+    props.demo
+      ? {
+          id: "invite-demo",
+          email: "friend@example.com",
+          code: "demo-invite-code",
+          createdAt: "2026-06-25T13:20:00.000Z",
+          expiresAt: null,
+        }
+      : null,
+  );
+  const [status, setStatus] = useState<string | null>(props.demo ? "Demo data shown. Use /?admin=1 locally for live admin calls." : null);
+  const [pending, setPending] = useState(false);
+
+  async function refreshUsers(token = publishToken) {
+    if (props.demo) return;
+    if (!token.trim()) {
+      setStatus("Enter the publish token first.");
+      return;
+    }
+    setPending(true);
+    try {
+      setUsers(await listAdminUsers(token.trim()));
+      setStatus("Users refreshed.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not load users");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function createInvite() {
+    if (props.demo) return;
+    if (!publishToken.trim() || !email.trim()) {
+      setStatus("Enter a publish token and email.");
+      return;
+    }
+    setPending(true);
+    try {
+      const nextInvite = await createAdminInvite(publishToken.trim(), email.trim());
+      setInvite(nextInvite);
+      setStatus("Invite created. Share the code with the friend.");
+      await refreshUsers(publishToken.trim());
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not create invite");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <main className="shell admin-shell">
+      <header className="admin-header">
+        <div>
+          <p className="eyebrow">Admin</p>
+          <h1>Friend access</h1>
+        </div>
+        <span>{users.length} users</span>
+      </header>
+
+      <section className="admin-panel">
+        <div className="admin-grid">
+          <label>
+            <span>Publish token</span>
+            <input
+              disabled={props.demo}
+              type="password"
+              value={publishToken}
+              onChange={(event) => setPublishToken(event.target.value)}
+              placeholder={props.demo ? "Not needed in demo" : "Stored only in this browser tab"}
+            />
+          </label>
+          <label>
+            <span>Friend email</span>
+            <input value={email} onChange={(event) => setEmail(event.target.value)} />
+          </label>
+        </div>
+        <div className="admin-actions">
+          <button disabled={pending || props.demo} type="button" onClick={() => void createInvite()}>
+            Create invite
+          </button>
+          <button disabled={pending || props.demo} type="button" onClick={() => void refreshUsers()}>
+            Refresh users
+          </button>
+        </div>
+        {status ? <p className="admin-status">{status}</p> : null}
+        {invite ? (
+          <div className="invite-result">
+            <span>Invite code</span>
+            <strong>{invite.code}</strong>
+            <small>{invite.email}</small>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="admin-panel">
+        <div className="admin-table">
+          {users.map((user) => (
+            <article key={user.id}>
+              <div>
+                <strong>{user.email}</strong>
+                <small>{user.id}</small>
+              </div>
+              <span className={`admin-status-pill is-${user.status}`}>{user.status}</span>
+              <span>{user.onboardingCompletedAt ? "Onboarded" : "Needs setup"}</span>
+              <span>
+                {formatMicrosAsDollars(user.aiUsage?.daily.spendMicros || 0)} / {formatMicrosAsDollars(user.aiUsage?.monthly.spendMicros || 0)}
+              </span>
+              <span>{user.latestRunAt ? new Date(user.latestRunAt).toLocaleString() : "No run"}</span>
+            </article>
+          ))}
+          {users.length === 0 ? <p className="setup-muted">No users loaded yet.</p> : null}
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function numberFromInput(value: string): number | null {
+  const parsed = Number(value.replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function optionalNumberFromInput(value: string): number | null {
+  return value.trim() ? numberFromInput(value) : null;
+}
+
+function centsFromDollarInput(value: string): number | null {
+  const dollars = numberFromInput(value);
+  return dollars === null ? null : Math.max(0, Math.round(dollars * 100));
+}
+
+function optionalCentsFromDollarInput(value: string): number | null {
+  return value.trim() ? centsFromDollarInput(value) : null;
+}
+
+function dollarsFromCents(value: number | null | undefined, fallback: string): string {
+  return typeof value === "number" && Number.isFinite(value) ? String(value / 100) : fallback;
+}
+
+function formatMicrosAsDollars(micros: number): string {
+  return `$${(Math.max(0, micros) / 1_000_000).toFixed(2)}`;
+}
+
+function formatAiBudget(cents: number | null | undefined): string {
+  return typeof cents === "number" && Number.isFinite(cents) ? `of $${(cents / 100).toFixed(2)}` : "no cap";
+}
+
+function demoAiUsage(dailySpendMicros: number, monthlySpendMicros: number): AiUsageSummary {
+  return {
+    generatedAt: "2026-06-25T13:00:00.000Z",
+    daily: {
+      spendMicros: dailySpendMicros,
+      budgetCents: 250,
+      remainingMicros: Math.max(0, 250 * 10_000 - dailySpendMicros),
+      limitExceeded: dailySpendMicros >= 250 * 10_000,
+      startsAt: "2026-06-25T00:00:00.000Z",
+      endsAt: "2026-06-26T00:00:00.000Z",
+    },
+    monthly: {
+      spendMicros: monthlySpendMicros,
+      budgetCents: 2500,
+      remainingMicros: Math.max(0, 2500 * 10_000 - monthlySpendMicros),
+      limitExceeded: monthlySpendMicros >= 2500 * 10_000,
+      startsAt: "2026-06-01T00:00:00.000Z",
+      endsAt: "2026-07-01T00:00:00.000Z",
+    },
+    budgetExceeded: false,
+  };
+}
+
+function stringProfileValue(profile: Record<string, unknown>, key: string, fallback: string): string {
+  const value = profile[key];
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function initialNotificationSettings(profile: Record<string, unknown>): NotificationSettingsState {
+  const settings = normalizeRecord(profile.notifications);
+  const channel = settings.channel === "none" ? "none" : "email";
+  return {
+    channel,
+    runDigest: settings.runDigest !== false,
+    strongFitAlerts: settings.strongFitAlerts !== false,
+    digestTime: typeof settings.digestTime === "string" && settings.digestTime ? settings.digestTime : "08:00",
+  };
+}
+
+function notificationSettingsInput(settings: NotificationSettingsState): Record<string, unknown> {
+  return {
+    channel: settings.channel,
+    runDigest: settings.runDigest,
+    strongFitAlerts: settings.strongFitAlerts,
+    digestTime: settings.digestTime || "08:00",
+  };
+}
+
+function initialSourcePreferences(settings: SourceSetting[] | undefined, profile: Record<string, unknown>): SourcePreferenceState[] {
+  const settingsBySource = new Map((settings || []).map((setting) => [setting.source, setting]));
+  const profilePreferences = new Map(
+    Array.isArray(profile.sourcePreferences)
+      ? profile.sourcePreferences
+          .filter((item): item is Record<string, unknown> => !!item && typeof item === "object" && !Array.isArray(item))
+          .map((item) => [typeof item.source === "string" ? item.source : "", item])
+      : [],
+  );
+  const profileSources = new Set(Array.isArray(profile.sources) ? profile.sources.filter((source): source is string => typeof source === "string") : []);
+
+  return sourceOptions.map((option) => {
+    const stored = settingsBySource.get(option.source);
+    const profiled = profilePreferences.get(option.source);
+    const rawSettings = normalizeRecord(stored?.settings || normalizeRecord(profiled?.settings));
+    const hasProfileSources = profileSources.size > 0;
+    const enabled =
+      stored?.enabled ??
+      (typeof profiled?.enabled === "boolean" ? profiled.enabled : hasProfileSources ? profileSources.has(option.source) : option.enabledByDefault);
+    return defaultSourcePreference(option, {
+      enabled,
+      maxDistanceMiles: numberSettingText(rawSettings, "maxDistanceMiles", option.defaultMaxDistanceMiles),
+      maxBudget: dollarsFromCents(numberSetting(rawSettings, "maxBudgetCents"), option.defaultMaxBudget),
+      noReserveOnly: booleanSetting(rawSettings, "noReserveOnly", false),
+      browserRunner: booleanSetting(rawSettings, "browserRunner", option.defaultBrowserRunner),
+      searchNotes: stringSetting(rawSettings, "searchNotes", ""),
+    });
+  });
+}
+
+function defaultSourcePreference(
+  option: (typeof sourceOptions)[number],
+  overrides: Partial<SourcePreferenceState> = {},
+): SourcePreferenceState {
+  return {
+    source: option.source,
+    enabled: option.enabledByDefault,
+    maxDistanceMiles: option.defaultMaxDistanceMiles,
+    maxBudget: option.defaultMaxBudget,
+    noReserveOnly: false,
+    browserRunner: option.defaultBrowserRunner,
+    searchNotes: "",
+    ...overrides,
+  };
+}
+
+function profileSourceList(preferences: SourcePreferenceState[]): string[] {
+  const enabled = new Set(preferences.filter((preference) => preference.enabled).map((preference) => preference.source));
+  return sourceOptions.filter((option) => enabled.has(option.source)).map((option) => option.source);
+}
+
+function sourceSettingsInput(preferences: SourcePreferenceState[]): SourceSettingsInput {
+  const bySource = new Map(preferences.map((preference) => [preference.source, preference]));
+  return sourceOptions.map((option) => {
+    const preference = bySource.get(option.source) || defaultSourcePreference(option);
+    return {
+      source: option.source,
+      enabled: preference.enabled,
+      settings: sourceSettingsRecord(preference),
+    };
+  });
+}
+
+function sourceSettingsRecord(preference: SourcePreferenceState): Record<string, unknown> {
+  const settings: Record<string, unknown> = {
+    noReserveOnly: preference.noReserveOnly,
+    browserRunner: preference.browserRunner,
+  };
+  const maxDistanceMiles = optionalNumberFromInput(preference.maxDistanceMiles);
+  const maxBudgetCents = optionalCentsFromDollarInput(preference.maxBudget);
+  if (maxDistanceMiles !== null) settings.maxDistanceMiles = maxDistanceMiles;
+  if (maxBudgetCents !== null) settings.maxBudgetCents = maxBudgetCents;
+  if (preference.searchNotes.trim()) settings.searchNotes = preference.searchNotes.trim();
+  return settings;
+}
+
+function normalizeRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function numberSetting(settings: Record<string, unknown>, key: string): number | null {
+  const value = settings[key];
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function numberSettingText(settings: Record<string, unknown>, key: string, fallback: string): string {
+  const value = numberSetting(settings, key);
+  return value === null ? fallback : String(value);
+}
+
+function booleanSetting(settings: Record<string, unknown>, key: string, fallback: boolean): boolean {
+  const value = settings[key];
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function stringSetting(settings: Record<string, unknown>, key: string, fallback: string): string {
+  const value = settings[key];
+  return typeof value === "string" ? value : fallback;
+}
+
+function downloadJson(value: unknown, filename: string): void {
+  const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename.replace(/[^0-9a-z@._-]/gi, "-");
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 function FilterChip(props: { active: boolean; label: string; onClick: () => void }) {

@@ -1,9 +1,9 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "types": [],
+    "types": ["@cloudflare/workers-types", "node"],
     "lib": ["DOM", "DOM.Iterable", "ES2022"]
   },
-  "include": ["tests/**/*.test.ts", "src/shared"],
+  "include": ["tests/**/*.test.ts", "src/shared", "src/worker/secrets-env.d.ts", "src/worker/generated-env.d.ts"],
   "exclude": ["node_modules", "dist", "outputs"]
 }

@@ -4,6 +4,7 @@ import SwiftUI
 @MainActor
 final class BeachcarStore: ObservableObject {
   @Published private(set) var run: RunPayload?
+  @Published private(set) var agentRun: AgentRunRecord?
   @Published private(set) var feedbackByKey: [String: FeedbackRecord] = [:]
   @Published private(set) var pendingPreferenceNotes: [PendingPreferenceNote] = []
   @Published private(set) var isLoading = false
@@ -12,16 +13,20 @@ final class BeachcarStore: ObservableObject {
 
   let api: AuctionAPI
   private let offlineMode: Bool
+  private var prefetchTask: Task<Void, Never>?
   private static let pendingPreferenceNotesKey = "beachcar.pendingPreferenceNotes.v1"
+  private static let latestRunCachePrefix = "beachcar.latestRun.v1"
 
   init(
     api: AuctionAPI = AuctionAPI(baseURL: AppConfig.auctionBaseURL),
     initialRun: RunPayload? = nil,
+    initialAgentRun: AgentRunRecord? = nil,
     initialFeedback: [String: FeedbackRecord] = [:],
     offlineMode: Bool = false
   ) {
     self.api = api
     self.run = initialRun
+    self.agentRun = initialAgentRun
     self.feedbackByKey = initialFeedback
     self.offlineMode = offlineMode
     self.pendingPreferenceNotes = Self.loadPendingPreferenceNotes()
@@ -61,25 +66,50 @@ final class BeachcarStore: ObservableObject {
       }
   }
 
-  func load(tokenProvider: AuctionAPI.TokenProvider) async {
+  func load(tokenProvider: AuctionAPI.TokenProvider, cacheScope: String? = nil) async {
     guard !isLoading else { return }
     isLoading = true
     defer { isLoading = false }
+    if run == nil, let cached = Self.loadCachedRun(cacheScope: cacheScope) {
+      apply(payload: cached)
+      startImagePrefetch(for: cached)
+    }
     do {
       let token = try await tokenProvider()
       let payload = try await api.latestRun(authToken: token)
-      run = payload
-      var overlay = Dictionary(uniqueKeysWithValues: payload.feedback.map { ($0.listingKey, $0) })
-      for listing in payload.listings {
-        if let feedback = listing.feedback {
-          overlay[listing.key] = feedback
-        }
-      }
-      feedbackByKey = overlay
+      apply(payload: payload)
+      agentRun = try? await api.latestAgentRun(authToken: token)
+      Self.persistCachedRun(payload, cacheScope: cacheScope)
+      startImagePrefetch(for: payload)
       await retryPendingPreferenceNotes(authToken: token)
       errorMessage = nil
     } catch {
-      errorMessage = error.localizedDescription
+      if run == nil, let cached = Self.loadCachedRun(cacheScope: cacheScope) {
+        apply(payload: cached)
+        startImagePrefetch(for: cached)
+      } else {
+        errorMessage = error.localizedDescription
+      }
+    }
+  }
+
+  private func apply(payload: RunPayload) {
+    run = payload
+    var overlay = Dictionary(uniqueKeysWithValues: payload.feedback.map { ($0.listingKey, $0) })
+    for listing in payload.listings {
+      if let feedback = listing.feedback {
+        overlay[listing.key] = feedback
+      }
+    }
+    feedbackByKey = overlay
+  }
+
+  private func startImagePrefetch(for payload: RunPayload) {
+    prefetchTask?.cancel()
+    let urls = prefetchURLs(for: payload)
+    guard !urls.isEmpty else { return }
+    prefetchTask = Task(priority: .utility) {
+      await BeachcarImagePipeline.shared.prefetch(urls)
     }
   }
 
@@ -236,6 +266,36 @@ final class BeachcarStore: ObservableObject {
     }
   }
 
+  private static func loadCachedRun(cacheScope: String?) -> RunPayload? {
+    guard let data = UserDefaults.standard.data(forKey: latestRunCacheKey(cacheScope: cacheScope)) else { return nil }
+    return try? JSONDecoder().decode(RunPayload.self, from: data)
+  }
+
+  private static func persistCachedRun(_ payload: RunPayload, cacheScope: String?) {
+    guard let data = try? JSONEncoder().encode(payload) else { return }
+    UserDefaults.standard.set(data, forKey: latestRunCacheKey(cacheScope: cacheScope))
+  }
+
+  private static func latestRunCacheKey(cacheScope: String?) -> String {
+    guard let cacheScope, !cacheScope.isEmpty else { return latestRunCachePrefix }
+    return "\(latestRunCachePrefix).\(cacheScope)"
+  }
+
+  private func prefetchURLs(for payload: RunPayload) -> [URL] {
+    var urls: [URL] = []
+    for listing in payload.listings.prefix(5) {
+      for image in listing.images.prefix(2) {
+        if let deck = api.resolvedImageURL(image, variant: .deck) {
+          urls.append(deck)
+        }
+        if let thumb = api.resolvedImageURL(image, variant: .thumb) {
+          urls.append(thumb)
+        }
+      }
+    }
+    return Array(Set(urls)).prefix(20).map { $0 }
+  }
+
   private func sortScore(_ listing: AuctionListing) -> Int {
     switch feedbackByKey[listing.key]?.action {
     case nil: 0
@@ -260,6 +320,6 @@ struct UndoState {
 
 extension BeachcarStore {
   static func uiTesting() -> BeachcarStore {
-    BeachcarStore(initialRun: .uiTestingFixture, offlineMode: true)
+    BeachcarStore(initialRun: .uiTestingFixture, initialAgentRun: .uiTestingPublished, offlineMode: true)
   }
 }

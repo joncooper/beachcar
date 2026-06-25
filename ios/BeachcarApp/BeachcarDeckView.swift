@@ -5,6 +5,7 @@ import SwiftUI
 struct BeachcarDeckView: View {
   @ObservedObject var store: BeachcarStore
   let tokenProvider: AuctionAPI.TokenProvider
+  var cacheScope: String?
 
   @State private var showFilters = false
   @State private var filter: DeckFilter = .all
@@ -20,6 +21,10 @@ struct BeachcarDeckView: View {
         .padding(.horizontal, 14)
         .padding(.top, 4)
         .padding(.bottom, 6)
+
+      RunStatusBanner(run: store.run, agentRun: store.agentRun)
+        .padding(.horizontal, 14)
+        .padding(.bottom, 8)
 
       if let error = store.errorMessage {
         Text(error)
@@ -64,7 +69,7 @@ struct BeachcarDeckView: View {
       }
     }
     .refreshable {
-      await store.load(tokenProvider: tokenProvider)
+      await store.load(tokenProvider: tokenProvider, cacheScope: cacheScope)
     }
     .sheet(item: $listDetailListing) { listing in
       ListingDetailSheet(
@@ -266,6 +271,127 @@ struct BeachcarDeckView: View {
 
   private var filterButtonBackground: Color {
     filtersAreActive ? BeachcarColors.mint.opacity(0.34) : .white.opacity(0.78)
+  }
+}
+
+private struct RunStatusBanner: View {
+  let run: RunPayload?
+  let agentRun: AgentRunRecord?
+
+  var body: some View {
+    HStack(spacing: 10) {
+      Image(systemName: iconName)
+        .font(.system(size: 16, weight: .black))
+        .foregroundStyle(iconColor)
+        .frame(width: 30, height: 30)
+        .background(iconColor.opacity(0.14), in: Circle())
+      VStack(alignment: .leading, spacing: 2) {
+        Text(title)
+          .font(.footnote.weight(.black))
+          .foregroundStyle(BeachcarColors.ink)
+          .lineLimit(1)
+        Text(detail)
+          .font(.caption2.weight(.semibold))
+          .foregroundStyle(BeachcarColors.secondary)
+          .lineLimit(1)
+          .minimumScaleFactor(0.78)
+      }
+      Spacer(minLength: 8)
+      Text(trailingValue)
+        .font(.caption.weight(.black))
+        .foregroundStyle(BeachcarColors.ink)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(.white.opacity(0.82), in: Capsule())
+    }
+    .padding(10)
+    .background(.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: 18, style: .continuous)
+        .stroke(.black.opacity(0.06), lineWidth: 1)
+    }
+    .accessibilityElement(children: .combine)
+    .accessibilityIdentifier("run-status-banner")
+  }
+
+  private var title: String {
+    switch agentRun?.status {
+    case .queued:
+      return "Run queued"
+    case .running:
+      return "Workflow running"
+    case .failed:
+      return "Run failed"
+    case .cancelled:
+      return "Run cancelled"
+    case .published:
+      return "Latest run published"
+    case nil:
+      return run?.id == nil ? "No run yet" : "Latest run published"
+    }
+  }
+
+  private var detail: String {
+    if let error = agentRun?.error, agentRun?.status == .failed {
+      return error
+    }
+    if agentRun?.status == .queued {
+      return "Waiting for the per-user Agent"
+    }
+    if agentRun?.status == .running {
+      return "Cloudflare Workflow is processing"
+    }
+    let checks = run?.sourceSummary?.checkedSources.count ?? 0
+    let runners = run?.sourceSummary?.runnerTasks.count ?? 0
+    let raw = run?.sourceSummary?.rawCandidateCount ?? 0
+    if checks > 0 {
+      let runnerText = runners > 0 ? " · \(runners) runner task\(runners == 1 ? "" : "s")" : ""
+      return "\(raw) raw candidates · \(checks) source checks\(runnerText)"
+    }
+    return "\(run?.listings.count ?? 0) cards · updated \(generatedLabel)"
+  }
+
+  private var trailingValue: String {
+    if let status = agentRun?.status, status == .queued || status == .running || status == .failed {
+      return status.label
+    }
+    return "\(run?.listings.count ?? 0) picks"
+  }
+
+  private var generatedLabel: String {
+    guard let generatedAt = run?.generatedAt else { return "not yet" }
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let date = formatter.date(from: generatedAt) ?? ISO8601DateFormatter().date(from: generatedAt)
+    guard let date else { return "recently" }
+    if Calendar.current.isDateInToday(date) {
+      return date.formatted(date: .omitted, time: .shortened)
+    }
+    return date.formatted(.dateTime.month(.abbreviated).day())
+  }
+
+  private var iconName: String {
+    switch agentRun?.status {
+    case .queued:
+      return "clock.badge"
+    case .running:
+      return "arrow.triangle.2.circlepath"
+    case .failed:
+      return "exclamationmark.triangle.fill"
+    default:
+      return "checkmark.seal.fill"
+    }
+  }
+
+  private var iconColor: Color {
+    switch agentRun?.status {
+    case .queued, .running:
+      return BeachcarColors.gold
+    case .failed:
+      return BeachcarColors.stop
+    default:
+      return BeachcarColors.teal
+    }
   }
 }
 
@@ -512,19 +638,16 @@ private struct ListingListRow: View {
   @ViewBuilder
   private var thumbnail: some View {
     if let firstImage = listing.images.first {
-      AsyncImage(url: api.resolvedImageURL(firstImage)) { phase in
-        switch phase {
-        case .success(let image):
-          image.resizable().scaledToFill()
-        case .failure:
-          Rectangle()
-            .fill(.white.opacity(0.72))
-            .overlay(Image(systemName: "photo.badge.exclamationmark"))
-        default:
-          Rectangle()
-            .fill(.white.opacity(0.72))
-            .overlay(ProgressView())
-        }
+      CachedRemoteImage(url: api.resolvedImageURL(firstImage, variant: .thumb)) { image in
+        image.resizable().scaledToFill()
+      } placeholder: {
+        Rectangle()
+          .fill(.white.opacity(0.72))
+          .overlay(ProgressView())
+      } failure: {
+        Rectangle()
+          .fill(.white.opacity(0.72))
+          .overlay(Image(systemName: "photo.badge.exclamationmark"))
       }
     } else {
       Rectangle()

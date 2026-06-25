@@ -4,6 +4,7 @@ import SwiftUI
 @main
 struct BeachcarApp: App {
   init() {
+    BeachcarImagePipeline.configureSharedCache()
     Clerk.configure(
       publishableKey: AppConfig.clerkPublishableKey,
       options: .init(

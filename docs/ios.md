@@ -24,7 +24,28 @@ The app uses Clerk native iOS auth:
 - `UserButton(signedOutContent:)`
 - Google auth through Clerk
 
-The Worker still enforces `ALLOWED_EMAIL`, so native app tokens are accepted only for the configured user.
+The Worker uses `ALLOWED_EMAIL` only to bootstrap the owner. Other signed-in users are created as `invited` and must accept an invite code before they can load runs, save feedback, or submit preference notes.
+
+The native app checks `/api/me` after sign-in:
+
+- `invited` users see an invite-code gate.
+- `active` users without completed onboarding see the preferences setup screen.
+- active users with completed onboarding enter the existing review deck.
+- `disabled` users are blocked before deck load.
+
+## Run Status
+
+- After loading `/api/runs/latest`, the store also reads `/api/agent-runs/latest`.
+- The deck shows a compact status banner for queued, running, failed, and published runs.
+- The banner also uses `sourceSummary` from the latest run for source-check counts, raw candidate counts, and browser/container runner-task counts.
+- If the Agent-run status request fails, listing review still works from the latest run or cached run.
+
+## Offline Cache And Images
+
+- Latest-run JSON is cached in `UserDefaults` with the signed-in user id in the cache key.
+- If `/api/runs/latest` fails and a cached run exists for that user, the deck falls back to the cached run.
+- Listing images use `CachedRemoteImage`, which reads through a decoded in-memory image cache and `URLCache`.
+- After a run loads, the store prefetches bounded `deck` and `thumb` image variants for the first listings so the next cards are already warm.
 
 Clerk quickstart prerequisites:
 
@@ -69,6 +90,14 @@ You can override the simulator destination:
 ```bash
 IOS_DESTINATION='platform=iOS Simulator,name=iPhone 16 Pro Max' npm run ios:sim
 ```
+
+Run UI tests:
+
+```bash
+npm run ios:test-ui
+```
+
+The UI tests launch local fixtures with `--ui-testing`; `--ui-testing-scenario invited|onboarding|active` covers invite, onboarding, and active deck entry without Clerk or Worker access.
 
 ## Simulator Runtime
 

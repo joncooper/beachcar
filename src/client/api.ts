@@ -1,6 +1,20 @@
-import type { FeedbackAction, FeedbackRecord, PreferenceEvent, RunPayload, UserPayload } from "../shared/types";
+import type {
+  AccountDeletionResult,
+  AccountExport,
+  AdminUserSummary,
+  AiUsageEventRecord,
+  AiUsageSummary,
+  AgentRunRecord,
+  FeedbackAction,
+  FeedbackRecord,
+  InvitePayload,
+  PreferenceEvent,
+  RunPayload,
+  UserAiSettings,
+  UserPayload,
+} from "../shared/types";
 
-const latestRunCacheKey = "beachcar-watch:last-run";
+const latestRunCachePrefix = "beachcar-watch:last-run";
 let tokenGetter: (() => Promise<string | null>) | null = null;
 
 export class ApiError extends Error {
@@ -16,20 +30,99 @@ export async function getMe(): Promise<UserPayload> {
   return requestJson<UserPayload>("/api/me");
 }
 
+export async function acceptInvite(code: string): Promise<UserPayload> {
+  return requestJson<UserPayload>("/api/invites/accept", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+}
+
+export async function putProfile(input: {
+  displayName?: string;
+  niche?: string;
+  budgetMin?: number | null;
+  budgetMax?: number | null;
+  stretchBudget?: number | null;
+  homeRegion?: string | null;
+  timezone?: string;
+  scheduleCron?: string;
+  profile?: Record<string, unknown>;
+  completeOnboarding?: boolean;
+}): Promise<UserPayload> {
+  return requestJson<UserPayload>("/api/profile", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function putAiSettings(input: {
+  mode: UserAiSettings["mode"];
+  gatewayKeyRef?: string | null;
+  monthlyBudgetCents?: number | null;
+  dailyBudgetCents?: number | null;
+}): Promise<UserPayload> {
+  return requestJson<UserPayload>("/api/ai-settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function putSourceSettings(input: {
+  sources: Array<{ source: string; enabled: boolean; settings?: Record<string, unknown> }>;
+}): Promise<UserPayload> {
+  return requestJson<UserPayload>("/api/source-settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function getAiUsage(): Promise<{ summary: AiUsageSummary; events: AiUsageEventRecord[] }> {
+  return requestJson<{ summary: AiUsageSummary; events: AiUsageEventRecord[] }>("/api/ai-usage");
+}
+
+export async function exportAccount(): Promise<AccountExport> {
+  return requestJson<AccountExport>("/api/account/export");
+}
+
+export async function deleteAccount(confirmEmail: string): Promise<AccountDeletionResult> {
+  return requestJson<AccountDeletionResult>("/api/account", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ confirmEmail }),
+  });
+}
+
 export function setAuthTokenGetter(getter: () => Promise<string | null>): void {
   tokenGetter = getter;
 }
 
-export async function getLatestRun(): Promise<RunPayload> {
+export async function getLatestRun(userId?: string): Promise<RunPayload> {
+  const cacheKey = userId ? `${latestRunCachePrefix}:${userId}` : latestRunCachePrefix;
   try {
     const run = await requestJson<RunPayload>("/api/runs/latest");
-    localStorage.setItem(latestRunCacheKey, JSON.stringify(run));
+    localStorage.setItem(cacheKey, JSON.stringify(run));
     return run;
   } catch (error) {
-    const cached = localStorage.getItem(latestRunCacheKey);
+    const cached = localStorage.getItem(cacheKey);
     if (cached) return JSON.parse(cached) as RunPayload;
     throw error;
   }
+}
+
+export async function getLatestAgentRun(): Promise<AgentRunRecord | null> {
+  return requestJson<AgentRunRecord | null>("/api/agent-runs/latest");
+}
+
+export async function requestAgentRun(reason?: string): Promise<AgentRunRecord> {
+  return requestJson<AgentRunRecord>("/api/agent-runs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason }),
+  });
 }
 
 export async function putFeedback(
@@ -62,15 +155,35 @@ export async function postPreferenceEvent(input: {
   });
 }
 
-async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = tokenGetter ? await tokenGetter() : null;
+export async function createAdminInvite(publishToken: string, email: string): Promise<InvitePayload> {
+  return requestJson<InvitePayload>("/api/admin/invites", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Publish-Token": publishToken,
+    },
+    body: JSON.stringify({ email }),
+    skipUserToken: true,
+  });
+}
+
+export async function listAdminUsers(publishToken: string): Promise<AdminUserSummary[]> {
+  return requestJson<AdminUserSummary[]>("/api/admin/users", {
+    headers: { "X-Publish-Token": publishToken },
+    skipUserToken: true,
+  });
+}
+
+async function requestJson<T>(path: string, init: RequestInit & { skipUserToken?: boolean } = {}): Promise<T> {
+  const { skipUserToken, ...requestInit } = init;
+  const token = !skipUserToken && tokenGetter ? await tokenGetter() : null;
   const response = await fetch(path, {
     credentials: "same-origin",
-    ...init,
+    ...requestInit,
     headers: {
       Accept: "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...init.headers,
+      ...requestInit.headers,
     },
   });
 

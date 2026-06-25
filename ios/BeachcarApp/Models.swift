@@ -30,14 +30,285 @@ enum FeedbackAction: String, Codable {
   }
 }
 
-struct RunPayload: Decodable {
+enum UserStatus: String, Codable {
+  case invited
+  case active
+  case disabled
+}
+
+struct UserPayload: Decodable, Equatable, Identifiable {
+  let id: String
+  let email: String
+  let displayName: String?
+  let status: UserStatus
+  let profile: UserProfile?
+  let onboarding: UserOnboarding?
+
+  var onboardingCompleted: Bool {
+    onboarding?.completed == true || profile?.onboardingCompletedAt != nil
+  }
+}
+
+struct UserOnboarding: Decodable, Equatable {
+  let completed: Bool
+  let completedAt: String?
+}
+
+struct UserProfile: Decodable, Equatable {
+  let userId: String
+  let displayName: String?
+  let niche: String
+  let budgetMin: Int?
+  let budgetMax: Int?
+  let stretchBudget: Int?
+  let homeRegion: String?
+  let timezone: String
+  let scheduleCron: String
+  let onboardingCompletedAt: String?
+  let updatedAt: String
+}
+
+struct ProfileInput: Encodable, Equatable {
+  let displayName: String?
+  let niche: String
+  let budgetMax: Int?
+  let stretchBudget: Int?
+  let homeRegion: String?
+  let timezone: String
+  let profile: ProfilePreferences
+  let sourceSettings: SourceSettingsRequest
+  let completeOnboarding: Bool
+}
+
+struct ProfilePreferences: Encodable, Equatable {
+  let tasteNotes: String
+  let avoidNotes: String
+  let lanes: [String]
+  let sources: [String]
+  let sourcePreferences: [SourceSettingInput]
+  let notifications: NotificationPreferences
+}
+
+struct NotificationPreferences: Encodable, Equatable {
+  let channel: String
+  let runDigest: Bool
+  let strongFitAlerts: Bool
+  let digestTime: String
+}
+
+struct SourceSettingsRequest: Encodable, Equatable {
+  let sources: [SourceSettingInput]
+}
+
+struct SourceSettingInput: Encodable, Equatable {
+  let source: String
+  let enabled: Bool
+  let settings: SourcePreferenceSettings
+}
+
+struct SourcePreferenceSettings: Encodable, Equatable {
+  let maxDistanceMiles: Int?
+  let maxBudgetCents: Int?
+  let noReserveOnly: Bool
+  let browserRunner: Bool
+  let searchNotes: String?
+}
+
+extension UserPayload {
+  static var uiTestingInvited: UserPayload {
+    UserPayload(
+      id: "email:friend@example.com",
+      email: "friend@example.com",
+      displayName: nil,
+      status: .invited,
+      profile: nil,
+      onboarding: UserOnboarding(completed: false, completedAt: nil)
+    )
+  }
+
+  static var uiTestingNeedsOnboarding: UserPayload {
+    UserPayload(
+      id: "email:friend@example.com",
+      email: "friend@example.com",
+      displayName: "Friend",
+      status: .active,
+      profile: .uiTesting(completed: false),
+      onboarding: UserOnboarding(completed: false, completedAt: nil)
+    )
+  }
+
+  static var uiTestingActive: UserPayload {
+    UserPayload(
+      id: "email:friend@example.com",
+      email: "friend@example.com",
+      displayName: "Friend",
+      status: .active,
+      profile: .uiTesting(completed: true),
+      onboarding: UserOnboarding(completed: true, completedAt: "2026-06-25T12:00:00.000Z")
+    )
+  }
+}
+
+extension UserProfile {
+  static func uiTesting(completed: Bool) -> UserProfile {
+    UserProfile(
+      userId: "email:friend@example.com",
+      displayName: "Friend",
+      niche: "Beach cars and runabouts",
+      budgetMin: nil,
+      budgetMax: 30000,
+      stretchBudget: 2000,
+      homeRegion: "Northeast",
+      timezone: "America/New_York",
+      scheduleCron: "0 8 * * *",
+      onboardingCompletedAt: completed ? "2026-06-25T12:00:00.000Z" : nil,
+      updatedAt: "2026-06-25T12:00:00.000Z"
+    )
+  }
+}
+
+struct RunPayload: Codable {
   let id: String?
   let generatedAt: String?
+  let sourceSummary: RunSourceSummary?
   let listings: [AuctionListing]
   let feedback: [FeedbackRecord]
 }
 
-struct AuctionListing: Decodable, Identifiable, Hashable {
+enum AgentRunStatus: String, Decodable, Equatable {
+  case queued
+  case running
+  case published
+  case failed
+  case cancelled
+
+  var label: String {
+    switch self {
+    case .queued: "Queued"
+    case .running: "Running"
+    case .published: "Published"
+    case .failed: "Failed"
+    case .cancelled: "Cancelled"
+    }
+  }
+}
+
+struct AgentRunRecord: Decodable, Equatable, Identifiable {
+  let id: String
+  let userId: String
+  let workflowInstanceId: String?
+  let status: AgentRunStatus
+  let error: String?
+  let startedAt: String?
+  let finishedAt: String?
+  let createdAt: String
+  let updatedAt: String
+}
+
+struct RunSourceSummary: Codable, Equatable {
+  let checkedSources: [RunSourceCheck]
+  let blockedSources: [RunSourceCheck]
+  let runnerTasks: [RunRunnerTaskSummary]
+  let rawCandidateCount: Int?
+  let feedbackCount: Int?
+  let fallbackUsed: Bool?
+  let aiScoring: RunAiScoringSummary?
+
+  enum CodingKeys: String, CodingKey {
+    case checkedSources
+    case blockedSources
+    case runnerTasks
+    case rawCandidateCount
+    case feedbackCount
+    case fallbackUsed
+    case aiScoring
+  }
+
+  init(
+    checkedSources: [RunSourceCheck] = [],
+    blockedSources: [RunSourceCheck] = [],
+    runnerTasks: [RunRunnerTaskSummary] = [],
+    rawCandidateCount: Int? = nil,
+    feedbackCount: Int? = nil,
+    fallbackUsed: Bool? = nil,
+    aiScoring: RunAiScoringSummary? = nil
+  ) {
+    self.checkedSources = checkedSources
+    self.blockedSources = blockedSources
+    self.runnerTasks = runnerTasks
+    self.rawCandidateCount = rawCandidateCount
+    self.feedbackCount = feedbackCount
+    self.fallbackUsed = fallbackUsed
+    self.aiScoring = aiScoring
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    checkedSources = try container.decodeIfPresent([RunSourceCheck].self, forKey: .checkedSources) ?? []
+    blockedSources = try container.decodeIfPresent([RunSourceCheck].self, forKey: .blockedSources) ?? []
+    runnerTasks = try container.decodeIfPresent([RunRunnerTaskSummary].self, forKey: .runnerTasks) ?? []
+    rawCandidateCount = try container.decodeIfPresent(Int.self, forKey: .rawCandidateCount)
+    feedbackCount = try container.decodeIfPresent(Int.self, forKey: .feedbackCount)
+    fallbackUsed = try container.decodeIfPresent(Bool.self, forKey: .fallbackUsed)
+    aiScoring = try container.decodeIfPresent(RunAiScoringSummary.self, forKey: .aiScoring)
+  }
+}
+
+struct RunSourceCheck: Codable, Equatable, Identifiable {
+  var id: String { "\(source):\(label ?? site):\(status)" }
+  let source: String
+  let site: String
+  let status: String
+  let label: String?
+  let message: String?
+  let candidateCount: Int
+
+  enum CodingKeys: String, CodingKey {
+    case source
+    case site
+    case status
+    case label
+    case message
+    case candidateCount
+  }
+
+  init(source: String, site: String, status: String, label: String? = nil, message: String? = nil, candidateCount: Int = 0) {
+    self.source = source
+    self.site = site
+    self.status = status
+    self.label = label
+    self.message = message
+    self.candidateCount = candidateCount
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    source = try container.decodeIfPresent(String.self, forKey: .source) ?? "source"
+    site = try container.decodeIfPresent(String.self, forKey: .site) ?? source
+    status = try container.decodeIfPresent(String.self, forKey: .status) ?? "unknown"
+    label = try container.decodeIfPresent(String.self, forKey: .label)
+    message = try container.decodeIfPresent(String.self, forKey: .message)
+    candidateCount = try container.decodeIfPresent(Int.self, forKey: .candidateCount) ?? 0
+  }
+}
+
+struct RunRunnerTaskSummary: Codable, Equatable, Identifiable {
+  let id: String
+  let source: String
+  let kind: String
+  let status: String
+}
+
+struct RunAiScoringSummary: Codable, Equatable {
+  let status: String
+  let provider: String?
+  let model: String?
+  let totalTokens: Int?
+  let costMicros: Int?
+  let message: String?
+}
+
+struct AuctionListing: Codable, Identifiable, Hashable {
   let listingKey: String?
   let section: String
   let lane: Lane
@@ -191,6 +462,52 @@ extension RunPayload {
     {
       "id": "ui-test-run",
       "generatedAt": "2026-06-23T12:00:00.000Z",
+      "sourceSummary": {
+        "checkedSources": [
+          {
+            "source": "bringatrailer",
+            "site": "Bring a Trailer",
+            "status": "ok",
+            "label": "Volkswagen Thing",
+            "candidateCount": 1,
+            "message": "Parsed live keyword-page listing cards."
+          },
+          {
+            "source": "carsandbids",
+            "site": "Cars & Bids",
+            "status": "blocked",
+            "candidateCount": 0,
+            "message": "Fetch reached a bot/access challenge."
+          }
+        ],
+        "blockedSources": [
+          {
+            "source": "carsandbids",
+            "site": "Cars & Bids",
+            "status": "blocked",
+            "candidateCount": 0,
+            "message": "Fetch reached a bot/access challenge."
+          }
+        ],
+        "runnerTasks": [
+          {
+            "id": "runner-task-browser-source-carsandbids-ui-test",
+            "source": "carsandbids",
+            "kind": "browser_source",
+            "status": "queued"
+          }
+        ],
+        "rawCandidateCount": 12,
+        "feedbackCount": 4,
+        "fallbackUsed": false,
+        "aiScoring": {
+          "status": "skipped",
+          "provider": "ai-gateway",
+          "totalTokens": 0,
+          "costMicros": 0,
+          "message": "AI rerank was not applied."
+        }
+      },
       "feedback": [],
       "listings": [
         {
@@ -272,5 +589,21 @@ extension RunPayload {
     """
     let data = Data(json.utf8)
     return try! JSONDecoder().decode(RunPayload.self, from: data)
+  }
+}
+
+extension AgentRunRecord {
+  static var uiTestingPublished: AgentRunRecord {
+    AgentRunRecord(
+      id: "agent-run-ui-test",
+      userId: "email:friend@example.com",
+      workflowInstanceId: "workflow-agent-run-ui-test",
+      status: .published,
+      error: nil,
+      startedAt: "2026-06-23T12:00:00.000Z",
+      finishedAt: "2026-06-23T12:02:00.000Z",
+      createdAt: "2026-06-23T12:00:00.000Z",
+      updatedAt: "2026-06-23T12:02:00.000Z"
+    )
   }
 }

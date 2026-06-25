@@ -8,6 +8,7 @@ enum BeachcarColors {
   static let mint = Color(red: 0.53, green: 0.78, blue: 0.70)
   static let teal = Color(red: 0.09, green: 0.42, blue: 0.35)
   static let sand = Color(red: 0.92, green: 0.84, blue: 0.68)
+  static let gold = Color(red: 0.66, green: 0.43, blue: 0.08)
   static let stop = Color(red: 0.64, green: 0.18, blue: 0.15)
   static let hairline = Color.black.opacity(0.08)
 }
@@ -44,27 +45,22 @@ struct PhotoCarousel: View {
       } else {
         TabView(selection: $selectedImage) {
           ForEach(Array(listing.images.enumerated()), id: \.offset) { index, image in
-            AsyncImage(url: api.resolvedImageURL(image)) { phase in
-              switch phase {
-              case .empty:
+            CachedRemoteImage(url: api.resolvedImageURL(image, variant: .deck)) { image in
+              image
+                .resizable()
+                .scaledToFill()
+            } placeholder: {
                 ZStack {
                   Rectangle().fill(.white.opacity(0.68))
                   ProgressView()
                 }
-              case .success(let image):
-                image
-                  .resizable()
-                  .scaledToFill()
-              case .failure:
+            } failure: {
                 ZStack {
                   Rectangle().fill(.white.opacity(0.72))
                   Image(systemName: "photo.badge.exclamationmark")
                     .font(.title2)
                     .foregroundStyle(BeachcarColors.muted)
                 }
-              @unknown default:
-                Color.clear
-              }
             }
             .id("\(listing.key)-photo-\(index)-\(image)")
             .tag(index)
@@ -98,13 +94,12 @@ struct PhotoCarousel: View {
       if showsThumbnails && listing.images.count > 1 {
         HStack(spacing: 7) {
           ForEach(Array(listing.images.prefix(5).enumerated()), id: \.element) { index, image in
-            AsyncImage(url: api.resolvedImageURL(image)) { phase in
-              switch phase {
-              case .success(let image):
-                image.resizable().scaledToFill()
-              default:
-                Rectangle().fill(.white.opacity(0.75))
-              }
+            CachedRemoteImage(url: api.resolvedImageURL(image, variant: .thumb)) { image in
+              image.resizable().scaledToFill()
+            } placeholder: {
+              Rectangle().fill(.white.opacity(0.75))
+            } failure: {
+              Rectangle().fill(.white.opacity(0.75))
             }
             .frame(width: 48, height: 36)
             .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))

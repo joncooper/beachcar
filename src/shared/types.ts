@@ -58,15 +58,30 @@ export interface PreferenceEvent {
 }
 
 export interface RunPayload {
-  id: string;
-  generatedAt: string;
+  id: string | null;
+  generatedAt: string | null;
   reportMarkdown?: string | null;
   sourceSummary?: unknown;
   listings: AuctionListing[];
   feedback: FeedbackRecord[];
 }
 
+export interface AgentRunRecord {
+  id: string;
+  userId: string;
+  workflowInstanceId?: string | null;
+  status: "queued" | "running" | "published" | "failed" | "cancelled";
+  progress: Record<string, unknown>;
+  error?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ImportPayload {
+  runId?: string;
+  userId?: string;
   generatedAt?: string;
   reportMarkdown?: string;
   sourceSummary?: unknown;
@@ -89,6 +104,156 @@ export interface FeedbackExport {
   };
 }
 
-export interface UserPayload {
+export interface UserRecord {
+  id: string;
   email: string;
+  displayName?: string | null;
+  status: "invited" | "active" | "disabled";
+}
+
+export interface UserProfile {
+  userId: string;
+  displayName?: string | null;
+  niche: string;
+  budgetMin?: number | null;
+  budgetMax?: number | null;
+  stretchBudget?: number | null;
+  homeRegion?: string | null;
+  timezone: string;
+  scheduleCron: string;
+  profile: Record<string, unknown>;
+  onboardingCompletedAt?: string | null;
+  updatedAt: string;
+}
+
+export interface SourceSetting {
+  source: string;
+  enabled: boolean;
+  settings: Record<string, unknown>;
+  updatedAt: string;
+}
+
+export interface UserAiSettings {
+  mode: "managed" | "byok";
+  gatewayKeyRef?: string | null;
+  monthlyBudgetCents?: number | null;
+  dailyBudgetCents?: number | null;
+  status: "not_configured" | "active" | "disabled" | "error";
+  updatedAt: string;
+}
+
+export interface AiUsageWindow {
+  spendMicros: number;
+  budgetCents?: number | null;
+  remainingMicros?: number | null;
+  limitExceeded: boolean;
+  startsAt: string;
+  endsAt: string;
+}
+
+export interface AiUsageSummary {
+  generatedAt: string;
+  daily: AiUsageWindow;
+  monthly: AiUsageWindow;
+  budgetExceeded: boolean;
+}
+
+export interface AiUsageEventRecord {
+  id: string;
+  userId: string;
+  agentRunId?: string | null;
+  provider: string;
+  model?: string | null;
+  operation: string;
+  mode?: UserAiSettings["mode"] | null;
+  gatewayId?: string | null;
+  gatewayKeyRef?: string | null;
+  gatewayRequestId?: string | null;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  totalTokens?: number | null;
+  costMicros: number;
+  status: "ok" | "error" | "cached";
+  metadata: Record<string, unknown>;
+  occurredAt: string;
+  createdAt: string;
+}
+
+export interface RunnerTaskRecord {
+  id: string;
+  userId: string;
+  agentRunId?: string | null;
+  kind: "source_discovery" | "codex_research" | "browser_source";
+  source: string;
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  priority: number;
+  input: Record<string, unknown>;
+  result?: Record<string, unknown> | null;
+  error?: string | null;
+  runnerId?: string | null;
+  claimedAt?: string | null;
+  finishedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserPayload extends UserRecord {
+  profile?: UserProfile | null;
+  sourceSettings?: SourceSetting[];
+  aiSettings?: UserAiSettings | null;
+  aiUsage?: AiUsageSummary | null;
+  onboarding?: {
+    completed: boolean;
+    completedAt?: string | null;
+  };
+  capabilities?: {
+    canUseManagedAi: boolean;
+    canUseByok: boolean;
+    canRunNow: boolean;
+  };
+}
+
+export interface AdminUserSummary extends UserRecord {
+  onboardingCompletedAt?: string | null;
+  latestRunAt?: string | null;
+  aiUsage?: AiUsageSummary | null;
+  createdAt: string;
+  lastSeenAt: string;
+}
+
+export interface AccountExport {
+  version: 1;
+  kind: "beachcar-account-export";
+  generatedAt: string;
+  user: UserPayload;
+  feedback: FeedbackExport;
+  runs: RunPayload[];
+  agentRuns: AgentRunRecord[];
+  aiUsageEvents: AiUsageEventRecord[];
+  runnerTasks: RunnerTaskRecord[];
+}
+
+export interface AccountDeletionResult {
+  ok: true;
+  userId: string;
+  disabledAt: string;
+  deleted: {
+    profiles: number;
+    sourceSettings: number;
+    aiSettings: number;
+    aiUsageEvents: number;
+    runnerTasks: number;
+    feedback: number;
+    preferenceEvents: number;
+    runs: number;
+    agentRuns: number;
+  };
+}
+
+export interface InvitePayload {
+  id: string;
+  email: string;
+  code: string;
+  createdAt: string;
+  expiresAt?: string | null;
 }

@@ -5,8 +5,39 @@ struct AuctionAPI {
 
   let baseURL: URL
 
+  enum ImageVariant: String {
+    case thumb
+    case deck
+    case full
+  }
+
+  func me(authToken: String?) async throws -> UserPayload {
+    try await request(path: "/api/me", authToken: authToken)
+  }
+
+  func acceptInvite(code: String, authToken: String?) async throws -> UserPayload {
+    try await request(
+      path: "/api/invites/accept",
+      method: "POST",
+      body: InviteAcceptRequest(code: code),
+      authToken: authToken
+    )
+  }
+
+  func putProfile(input: ProfileInput, authToken: String?) async throws -> UserPayload {
+    try await request(path: "/api/profile", method: "PUT", body: input, authToken: authToken)
+  }
+
+  func putSourceSettings(input: SourceSettingsRequest, authToken: String?) async throws -> UserPayload {
+    try await request(path: "/api/source-settings", method: "PUT", body: input, authToken: authToken)
+  }
+
   func latestRun(authToken: String?) async throws -> RunPayload {
     try await request(path: "/api/runs/latest", authToken: authToken)
+  }
+
+  func latestAgentRun(authToken: String?) async throws -> AgentRunRecord? {
+    try await request(path: "/api/agent-runs/latest", authToken: authToken)
   }
 
   func putFeedback(
@@ -48,11 +79,21 @@ struct AuctionAPI {
     )
   }
 
-  func resolvedImageURL(_ value: String) -> URL? {
+  func resolvedImageURL(_ value: String, variant: ImageVariant? = nil) -> URL? {
+    let url: URL?
     if value.hasPrefix("/") {
-      return URL(string: value, relativeTo: baseURL)?.absoluteURL
+      url = URL(string: value, relativeTo: baseURL)?.absoluteURL
+    } else {
+      url = URL(string: value)
     }
-    return URL(string: value)
+    guard let url else { return nil }
+    guard let variant, url.path.hasPrefix("/api/images/"), var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+      return url
+    }
+    var items = components.queryItems?.filter { $0.name != "variant" } ?? []
+    items.append(URLQueryItem(name: "variant", value: variant.rawValue))
+    components.queryItems = items
+    return components.url ?? url
   }
 
   private func request<T: Decodable, Body: Encodable>(
@@ -147,6 +188,10 @@ private struct PreferenceEventRequest: Encodable {
   let note: String?
   let transcript: String?
   let tags: [String]
+}
+
+private struct InviteAcceptRequest: Encodable {
+  let code: String
 }
 
 private struct ErrorResponse: Decodable {

@@ -2,9 +2,12 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "beachcar-watch",
   "main": "src/worker/index.ts",
-  "compatibility_date": "2026-06-19",
+  "compatibility_date": "2026-06-25",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
+  "dev": {
+    "enable_containers": false
+  },
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
@@ -15,6 +18,45 @@
     "enabled": true,
     "head_sampling_rate": 1
   },
+  "containers": [
+    {
+      "class_name": "BeachcarRunnerContainer",
+      "image": "./runner/Dockerfile",
+      "image_build_context": "./runner",
+      "instance_type": "basic",
+      "max_instances": 2,
+      "rollout_step_percentage": [10, 100]
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "BeachcarAgent",
+        "class_name": "BeachcarAgent"
+      },
+      {
+        "name": "BEACHCAR_RUNNER_CONTAINER",
+        "class_name": "BeachcarRunnerContainer"
+      }
+    ]
+  },
+  "workflows": [
+    {
+      "name": "beachcar-run-workflow",
+      "binding": "BEACHCAR_RUN_WORKFLOW",
+      "class_name": "BeachcarRunWorkflow"
+    }
+  ],
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["BeachcarAgent"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["BeachcarRunnerContainer"]
+    }
+  ],
   "vars": {
     "ALLOWED_EMAIL": "you@example.com",
     "ENVIRONMENT": "production"

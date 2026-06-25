@@ -47,7 +47,7 @@ fi
 archive_root="${IOS_ARCHIVE_ROOT:-build/ios}"
 if [[ -z "${IOS_ARCHIVE_PATH:-}" ]]; then
   if [[ ! -f "$archive_root/latest-archive-path" ]]; then
-    echo "No archive path supplied and $archive_root/latest-archive-path does not exist. Run npm run ios:archive first." >&2
+    echo "No archive path supplied and $archive_root/latest-archive-path does not exist. Run bun run ios:archive first." >&2
     exit 1
   fi
   IOS_ARCHIVE_PATH="$(cat "$archive_root/latest-archive-path")"
@@ -128,7 +128,7 @@ xcodebuild   -exportArchive   -archivePath "$IOS_ARCHIVE_PATH"   -exportPath "$e
 if [[ "${TESTFLIGHT_ASSIGN_INTERNAL_GROUP:-YES}" != "NO" ]]; then
   echo
   echo "Assigning uploaded build to TestFlight beta group..."
-  node scripts/ios-assign-testflight-group.mjs
+  bun scripts/ios-assign-testflight-group.mjs
 fi
 
 cat <<EOF

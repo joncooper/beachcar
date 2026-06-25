@@ -410,30 +410,38 @@ Improvement: Moved raw provider-key detection into `src/shared/ai-keys.ts`, reus
 
 Verification: `npm test` passed with 20 tests across 5 files, `npm run typecheck` passed, and `npm run preflight` passed. The readiness report still shows the expected 21 ok items and 5 rollout todos. No deploy commands were run.
 
+### App/architecture pass 42
+
+Review: The remote MCP source tool still fetched BaT RSS directly on demand, and the static Worker build had not been browser-verified after moving shared raw-key detection into `src/shared`. The JS workflow also still mixed npm/Node entrypoints with the project-standard Bun workflow.
+
+Improvement: Added a D1-backed public source cache for the Bring a Trailer auctions RSS feed, including `source_items`, `source_ingestion_runs`, a 15-minute cron trigger, admin status/ingest endpoints, and MCP `search_bat_cache` reads from the cache with stale/empty refresh. Updated the static client build to emit the shared raw-key helper, replace `import.meta.env.DEV`, and keep the demo automation panel offline-clean. Moved active JS scripts, CI, and the runner container to Bun while keeping `node --check` only for syntax-only checks.
+
+Verification: `bun run typecheck`, `bun run test`, `bun run preflight`, and `bun run preflight:local` passed. Local D1 applied `0009_source_cache.sql`; curl verified `/api/admin/source-cache/status`, `/api/admin/source-cache/ingest`, and the scheduled test endpoint. In-app browser verification confirmed the Worker-served static app mounts and the Vite settings demo renders the Connect automation panel without a 404. `bunx wrangler deploy --dry-run` built the Worker assets and Bun-based Container image without deploying. No remote resources were created or mutated.
+
 ## Local Verification
 
 Commands run:
 
 ```bash
-npm install
-npm install agents
-npm run typecheck
-npm test
-VITE_CLERK_PUBLISHABLE_KEY=pk_test_local_dummy npm run build
-VITE_CLERK_PUBLISHABLE_KEY=pk_test_local_dummy npm run dev -- --port 5173
+bun install
+bun add agents
+bun run typecheck
+bun run test
+VITE_CLERK_PUBLISHABLE_KEY=pk_test_local_dummy bun run build
+VITE_CLERK_PUBLISHABLE_KEY=pk_test_local_dummy bun run dev -- --port 5173
 curl -fsS 'http://127.0.0.1:5173/?demo=run'
-npm run preflight
-npm run preflight:local
-npm run preflight:full
-npm run ios:build
-npm run ios:test-ui
-npm run container-runner:check
+bun run preflight
+bun run preflight:local
+bun run preflight:full
+bun run ios:build
+bun run ios:test-ui
+bun run container-runner:check
 node --check scripts/run-runner-task-local.mjs
-npm run container-runner:dev
-npx wrangler types /tmp/beachcar-generated-env.d.ts --include-runtime false
-npm run db:migrate:local
-VITE_CLERK_PUBLISHABLE_KEY=pk_test_local_dummy npm run dev -- --port 5173
-npx wrangler dev --local --port 8787
+bun run container-runner:dev
+bunx wrangler types /tmp/beachcar-generated-env.d.ts --include-runtime false
+bun run db:migrate:local
+VITE_CLERK_PUBLISHABLE_KEY=pk_test_local_dummy bun run dev -- --port 5173
+bunx wrangler dev --local --port 8787
 curl -fsS -H 'X-Beachcar-Test-Email: you@example.com' http://127.0.0.1:8787/api/me
 curl -fsS -H 'X-Beachcar-Test-Email: friend@example.com' http://127.0.0.1:8787/api/me
 curl -fsS -H 'X-Beachcar-Test-Email: you@example.com' -H 'Content-Type: application/json' -d '{"reason":"local smoke"}' http://127.0.0.1:8787/api/agent-runs
@@ -441,7 +449,7 @@ curl -fsS -H 'X-Beachcar-Test-Email: you@example.com' http://127.0.0.1:8787/api/
 curl -fsS -H 'X-Beachcar-Test-Email: you@example.com' -H 'Content-Type: application/json' -d '{"reason":"agent smoke"}' http://127.0.0.1:8787/api/agent-runs
 curl -fsS -H 'X-Beachcar-Test-Email: you@example.com' -H 'Content-Type: application/json' -X PUT -d '{"displayName":"Owner","niche":"Beach cars and runabouts","budgetMax":30000,"stretchBudget":2000,"homeRegion":"Northeast","timezone":"America/New_York","scheduleCron":"0 8 * * *","profile":{"tasteNotes":"local smoke","avoidNotes":"rust"},"completeOnboarding":true}' http://127.0.0.1:8787/api/profile
 PUBLISH_TOKEN=local-publish-token
-npm run agent:run-local
+bun run agent:run-local
 curl -fsS -H 'X-Beachcar-Test-Email: you@example.com' http://127.0.0.1:8787/api/agent-runs/latest
 curl -fsS -H 'X-Publish-Token: local-publish-token' http://127.0.0.1:8787/api/admin/agent-runs/next
 curl -fsS -X PUT -H 'X-Beachcar-Test-Email: you@example.com' -H 'Content-Type: application/json' -d '{"mode":"managed","dailyBudgetCents":300,"monthlyBudgetCents":3000}' http://127.0.0.1:8787/api/ai-settings
@@ -452,7 +460,7 @@ curl -fsS -H 'X-Beachcar-Test-Email: you@example.com' -H 'Content-Type: applicat
 curl -fsS -H 'X-Beachcar-Test-Email: you@example.com' http://127.0.0.1:8787/api/agent-runs/latest
 curl -fsS -H 'X-Beachcar-Test-Email: you@example.com' http://127.0.0.1:8787/api/runs/latest
 curl -fsS -H 'X-Publish-Token: local-publish-token' http://127.0.0.1:8787/api/admin/agent-runs/next
-npm run smoke:local-worker
+bun run smoke:local-worker
 ```
 
 Results:
@@ -469,10 +477,10 @@ Results:
 - Local Vite served the dev-only `?demo=run` route for the Run Detail screen.
 - Native iOS build passed with code signing disabled.
 - After native run-status support, native iOS build still passed with code signing disabled.
-- `npm run preflight` passed the deterministic web/Worker/container/client build checks.
-- `npm run preflight:local` passed and managed the local Wrangler Worker lifecycle around `npm run smoke:local-worker`.
-- `npm run preflight:full` passed with the native iOS build plus local Worker smoke.
-- After the `2026-06-25` compatibility-date update, `npm run preflight` passed again; `npm run preflight:local` was not rerun because local Wrangler escalation was rejected by a Codex usage-limit gate.
+- `bun run preflight` passed the deterministic web/Worker/container/client build checks.
+- `bun run preflight:local` passed and managed the local Wrangler Worker lifecycle around `bun run smoke:local-worker`.
+- `bun run preflight:full` passed with the native iOS build plus local Worker smoke.
+- After the `2026-06-25` compatibility-date update, `bun run preflight` passed again; `bun run preflight:local` was not rerun because local Wrangler escalation was rejected by a Codex usage-limit gate.
 - Container runner syntax check passed.
 - Local container-runner HTTP contract check passed for a sample Cars & Bids browser-source task.
 - Native iOS UI-test target built, but CoreSimulator timed out before executing assertions.
@@ -485,7 +493,7 @@ Results:
 - Local AI settings smoke checks proved managed mode save, BYOK gateway-reference save, and raw provider-key rejection.
 - PWA onboarding and preferences now block raw provider-key shaped BYOK values client-side and label the saved value as an AI Gateway alias.
 - Local Workflow smoke checks proved the default authenticated run path starts a Cloudflare Workflow locally and publishes a user-scoped run without the external simulator.
-- `npm run smoke:local-worker` now repeats the local Worker smoke end-to-end: profile onboarding, AI settings, raw-key rejection, Workflow-backed run, latest-run readback, and empty fallback queue.
+- `bun run smoke:local-worker` now repeats the local Worker smoke end-to-end: profile onboarding, AI settings, raw-key rejection, Workflow-backed run, latest-run readback, and empty fallback queue.
 - Expanded local Worker smoke checks proved temporary friend invite acceptance, account export, account deletion, disabled-account blocking, and admin disabled-state visibility.
 - Client latest-run fallback is now user-keyed, and the service worker caches image endpoints only, not authenticated JSON API responses.
 - Local source-settings smoke checks proved per-user source settings save through D1, round-trip through account export, feed Workflow source metadata, and are deleted with account data.
@@ -501,7 +509,7 @@ Results:
 
 Notes:
 
-- `npm install` reported one low-severity advisory. I did not run `npm audit fix` because that would change dependency versions outside the feature work.
+- `bun install` is now the expected dependency install path. Historical npm audit notes above are from earlier passes.
 - The first sandboxed local Wrangler migration attempt failed because Wrangler needed to write logs outside the workspace and bind localhost; it passed after escalation for local-only verification.
 
 ## Screenshots
@@ -552,9 +560,9 @@ Run Detail, mobile:
 
 ## Remaining Work
 
-- Enable `npm run preflight:local` in CI once the CI environment can run local Wrangler/D1 state reliably; the quick `npm run preflight` CI workflow is now present.
+- Enable `bun run preflight:local` in CI once the CI environment can run local Wrangler/D1 state reliably; the quick `bun run preflight` CI workflow is now present.
 - Deploy and exercise the Cloudflare Container runner for browser/session-heavy sources, and continue adding source-specific live connectors beyond the BaT keyword/RSS path.
 - Exercise image variant creation against remote Worker bindings before production use; local source-image warmup is now covered by smoke.
-- Re-run `npm run ios:test-ui` once CoreSimulator boots normally; the invite/onboarding/deck UI tests are now present but were not executed because the simulator timed out before launch.
+- Re-run `bun run ios:test-ui` once CoreSimulator boots normally; the invite/onboarding/deck UI tests are now present but were not executed because the simulator timed out before launch.
 - Exercise the AI Gateway scoring adapter against a real remote Gateway once credentials and budgets are ready; local wiring and usage recording are in place.
 - Turn on credentialed Codex mode in the deployed Container runner and provision BYOK references through Cloudflare instead of saving references manually.

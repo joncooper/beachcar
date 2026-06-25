@@ -201,6 +201,7 @@ describe("source discovery", () => {
     const rss = `<?xml version="1.0"?><rss><channel><item>
       <title><![CDATA[1988 Suzuki Samurai JX]]></title>
       <link>https://bringatrailer.com/listing/1988-suzuki-samurai-60/</link>
+      <pubDate>Thu, 25 Jun 2026 16:00:00 GMT</pubDate>
       <description><![CDATA[Small soft-top 4x4 with beach-town appeal.]]></description>
       <content:encoded><![CDATA[<img src="https://bringatrailer.com/wp-content/uploads/2026/06/samurai.jpg?w=620" />]]></content:encoded>
     </item></channel></rss>`;
@@ -210,6 +211,7 @@ describe("source discovery", () => {
     expect(listings[0]).toMatchObject({
       title: "1988 Suzuki Samurai JX",
       url: "https://bringatrailer.com/listing/1988-suzuki-samurai-60/",
+      publishedAt: "2026-06-25T16:00:00.000Z",
       imageUrls: ["https://bringatrailer.com/wp-content/uploads/2026/06/samurai.jpg?w=620"],
     });
   });

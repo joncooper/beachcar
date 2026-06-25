@@ -83,6 +83,7 @@ export interface SourceCandidate {
   summary: string;
   noReserve?: boolean;
   sourceUrl: string;
+  publishedAt?: string;
 }
 
 export interface AiCandidateScore {
@@ -277,6 +278,7 @@ export function parseBringATrailerRssFeed(xml: string): SourceCandidate[] {
       const url = textFromXmlTag(block, "link");
       if (!title || !url) return null;
       const summary = stripHtml(textFromXmlTag(block, "description") || textFromXmlTag(block, "content:encoded") || "");
+      const publishedAt = isoDateOrUndefined(textFromXmlTag(block, "pubDate") || textFromXmlTag(block, "dc:date"));
       return {
         source: "bringatrailer",
         site: "Bring a Trailer",
@@ -292,6 +294,7 @@ export function parseBringATrailerRssFeed(xml: string): SourceCandidate[] {
         imageUrls: imageUrlsFromText(block).slice(0, 4),
         summary,
         sourceUrl: BAT_RSS_FEED,
+        publishedAt,
       } satisfies SourceCandidate;
     })
     .filter((candidate): candidate is SourceCandidate => candidate !== null);
@@ -834,6 +837,12 @@ function decodeHtml(value: string): string {
     .replace(/&#(\d+);/g, (_, raw: string) => String.fromCharCode(Number.parseInt(raw, 10)))
     .replace(/&([a-zA-Z0-9#]+);/g, (entity, name: string) => named[name] || entity)
     .trim();
+}
+
+function isoDateOrUndefined(value: string | null): string | undefined {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : undefined;
 }
 
 function parseMoney(value: string): number | undefined {

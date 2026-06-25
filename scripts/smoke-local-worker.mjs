@@ -378,6 +378,10 @@ async function smokeRemoteMcp(friendEmail) {
 
   const setup = await mcpTool(created.token, "get_setup_context", {});
   assert(setup.user?.email === friendEmail, "Expected MCP setup context to be scoped to the friend.");
+  const batCache = await mcpTool(created.token, "search_bat_cache", { terms: ["samurai"], limit: 5 });
+  assert(batCache.mode === "d1_cache", "Expected search_bat_cache to use the D1 source cache.");
+  assert(["hit", "miss", "refreshed", "stale_refresh_failed"].includes(batCache.cacheStatus), "Expected search_bat_cache to report cache status.");
+  assert(batCache.status?.source === "bringatrailer", "Expected search_bat_cache to return Bring a Trailer cache status.");
 
   const runId = `mcp-smoke-${Date.now()}`;
   const published = await mcpTool(created.token, "publish_run", {

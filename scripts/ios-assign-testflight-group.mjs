@@ -71,7 +71,7 @@ function resolveArchivePath() {
   if (process.env.IOS_ARCHIVE_PATH) return process.env.IOS_ARCHIVE_PATH;
   const latestPath = path.join(root, process.env.IOS_ARCHIVE_ROOT || "build/ios", "latest-archive-path");
   if (!fs.existsSync(latestPath)) {
-    throw new Error(`No archive path supplied and ${latestPath} does not exist. Run npm run ios:archive first.`);
+    throw new Error(`No archive path supplied and ${latestPath} does not exist. Run bun run ios:archive first.`);
   }
   return fs.readFileSync(latestPath, "utf8").trim();
 }

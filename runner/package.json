@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "start": "node runner-server.mjs"
+    "start": "bun runner-server.mjs"
   },
   "dependencies": {
     "@openai/codex-sdk": "0.142.2"

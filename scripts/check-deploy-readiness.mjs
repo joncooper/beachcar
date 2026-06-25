@@ -30,6 +30,7 @@ check(
   "Add BeachcarRunnerContainer Durable Object binding.",
 );
 check("Workflow binding exists", hasClassBinding(wrangler?.workflows, "BeachcarRunWorkflow"), "Add BEACHCAR_RUN_WORKFLOW workflow binding.");
+check("Source cache cron trigger exists", Array.isArray(wrangler?.triggers?.crons) && wrangler.triggers.crons.includes("*/15 * * * *"), "Add a scheduled trigger to refresh public source caches.");
 check("Container image config exists", Array.isArray(wrangler?.containers) && wrangler.containers.some((entry) => entry.class_name === "BeachcarRunnerContainer"), "Add the BeachcarRunnerContainer containers config.");
 check("Local dev keeps containers disabled by default", wrangler?.dev?.enable_containers === false, "Set dev.enable_containers=false so local smoke stays Docker-free.");
 check("Bootstrap owner email is configured", !!wrangler?.vars?.ALLOWED_EMAIL, "Set vars.ALLOWED_EMAIL to the owner email.");
@@ -44,9 +45,10 @@ check("Multi-user migration is present", migrationFiles.includes("0005_multi_use
 check("AI usage migration is present", migrationFiles.includes("0006_ai_usage.sql"), "Add/apply 0006_ai_usage.sql.");
 check("Runner tasks migration is present", migrationFiles.includes("0007_runner_tasks.sql"), "Add/apply 0007_runner_tasks.sql.");
 check("Remote MCP automation migration is present", migrationFiles.includes("0008_remote_mcp_automation.sql"), "Add/apply 0008_remote_mcp_automation.sql.");
-check("Preflight script is available", !!packageJson?.scripts?.preflight, "Add npm run preflight.");
-check("Local Worker preflight script is available", !!packageJson?.scripts?.["preflight:local"], "Add npm run preflight:local.");
-check("Full preflight script is available", !!packageJson?.scripts?.["preflight:full"], "Add npm run preflight:full.");
+check("Source cache migration is present", migrationFiles.includes("0009_source_cache.sql"), "Add/apply 0009_source_cache.sql.");
+check("Preflight script is available", !!packageJson?.scripts?.preflight, "Add bun run preflight.");
+check("Local Worker preflight script is available", !!packageJson?.scripts?.["preflight:local"], "Add bun run preflight:local.");
+check("Full preflight script is available", !!packageJson?.scripts?.["preflight:full"], "Add bun run preflight:full.");
 check("Runner package includes Codex SDK", !!runnerPackage?.dependencies?.["@openai/codex-sdk"], "Add @openai/codex-sdk to runner/package.json.");
 
 checkSecretHint("PUBLISH_TOKEN", "Needed for admin import, invite admin console, and local Worker smoke.");

@@ -37,7 +37,7 @@ Acceptance criteria for the first slice:
 - The iOS app can sign in and review an already-onboarded user's latest run.
 - Images use stable variant URLs with long-lived cache headers.
 - No raw OpenAI key is stored in D1.
-- `npm test` and `npm run typecheck` pass.
+- `bun run test` and `bun run typecheck` pass.
 
 ## Current State
 
@@ -261,7 +261,7 @@ Remote MCP tools:
 
 - `get_setup_context` -> user profile/source/feedback/latest-run/AI-budget context.
 - `plan_daily_research` -> source checklist and publish contract for a cloud agent.
-- `search_bat_cache` -> current preview reads the public Bring a Trailer auctions RSS feed; D1 cache ingestion can replace the internals later.
+- `search_bat_cache` -> searches D1-cached Bring a Trailer public RSS candidates and refreshes the cache when empty or stale.
 - `submit_candidates` -> validate/normalize listings before publishing.
 - `publish_run` -> user-scoped run import plus image warmup.
 - `record_usage` -> AI/token/cost usage events for the external agent.
@@ -270,7 +270,7 @@ Remote MCP tools:
 
 Migration sequence:
 
-1. Create `users`, `invites`, `profiles`, `source_settings`, `user_ai_settings`, `agent_runs`, `audit_events`, and `image_variants`.
+1. Create `users`, `invites`, `profiles`, `source_settings`, `user_ai_settings`, `agent_runs`, `audit_events`, `image_variants`, source-cache tables, and automation-token tables.
 2. Add nullable `user_id` and `status` columns to `runs`.
 3. Backfill one owner user and set all existing runs to that user.
 4. Replace `feedback` with a `(user_id, listing_key)` primary key table.

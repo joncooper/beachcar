@@ -1,5 +1,5 @@
 /* eslint-disable */
-// Starter Env bindings. Regenerate with `npm run cf:types` after updating wrangler.jsonc.
+// Starter Env bindings. Regenerate with `bun run cf:types` after updating wrangler.jsonc.
 interface __BaseEnv_Env {
 	BeachcarAgent: DurableObjectNamespace<import("./agents/beachcar-agent").BeachcarAgent>;
 	BEACHCAR_RUNNER_CONTAINER: DurableObjectNamespace<import("./containers/beachcar-runner-container").BeachcarRunnerContainer>;

@@ -23,6 +23,7 @@ await cp(path.join(root, "src/client/styles.css"), path.join(assetsDir, "styles.
 for (const file of ["main.tsx", "App.tsx", "api.ts", "clerk-browser.ts"]) {
   await transpileClientFile(file);
 }
+await transpileSharedFile("ai-keys.ts");
 
 await writeFile(
   path.join(distDir, "index.html"),
@@ -63,6 +64,17 @@ console.log("Built client assets in dist/");
 
 async function transpileClientFile(file) {
   const inputPath = path.join(root, "src/client", file);
+  const outputPath = path.join(assetsDir, file.replace(/\.(tsx|ts)$/, ".js"));
+  await transpileBrowserFile(inputPath, outputPath);
+}
+
+async function transpileSharedFile(file) {
+  const inputPath = path.join(root, "src/shared", file);
+  const outputPath = path.join(assetsDir, file.replace(/\.(tsx|ts)$/, ".js"));
+  await transpileBrowserFile(inputPath, outputPath);
+}
+
+async function transpileBrowserFile(inputPath, outputPath) {
   const source = await readFile(inputPath, "utf8");
   const transpiled = ts.transpileModule(source, {
     compilerOptions: {
@@ -86,8 +98,8 @@ async function transpileClientFile(file) {
     .replaceAll("import.meta.env.VITE_CLERK_PUBLISHABLE_KEY", JSON.stringify(publishableKey))
     .replaceAll("import.meta.env.VITE_APP_NAME", JSON.stringify(appName))
     .replaceAll("import.meta.env.VITE_APP_SHORT_NAME", JSON.stringify(appShortName))
+    .replaceAll("import.meta.env.DEV", "false")
     .replace(/^import\s+["']\.\/styles\.css["'];?\n?/m, "");
-  const outputPath = path.join(assetsDir, file.replace(/\.(tsx|ts)$/, ".js"));
   await writeFile(outputPath, output);
 }
 
@@ -122,7 +134,8 @@ function rewriteBrowserImports(code) {
   return code
     .replaceAll('from "./App"', 'from "./App.js"')
     .replaceAll('from "./api"', 'from "./api.js"')
-    .replaceAll('from "./clerk-browser"', 'from "./clerk-browser.js"');
+    .replaceAll('from "./clerk-browser"', 'from "./clerk-browser.js"')
+    .replaceAll('from "../shared/ai-keys"', 'from "./ai-keys.js"');
 }
 
 async function loadEnv() {

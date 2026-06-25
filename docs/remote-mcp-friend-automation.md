@@ -51,7 +51,7 @@ MCP tools:
 
 - `get_setup_context`
 - `plan_daily_research`
-- `search_bat_cache`
+- `search_bat_cache`: searches D1-cached Bring a Trailer public RSS candidates and refreshes the cache when empty or stale.
 - `submit_candidates`
 - `publish_run`
 - `record_usage`
@@ -95,6 +95,15 @@ The website bundle route emits the same workflow with the current deployment's M
 `publish_run` reuses the existing import path. That path stores listing/image metadata in D1, queues image warmup through `ctx.waitUntil(prewarmImportedImages(...))`, mirrors source images into R2, and serves `thumb`, `deck`, and `full` variants through `/api/images/:imageKey?variant=...`.
 
 That means runs published by a friend's cloud agent should behave the same as Workflow or admin-import runs in both the PWA and iOS app.
+
+## Source Cache
+
+Bring a Trailer RSS ingestion is persisted in D1:
+
+- `source_items` stores deduped listing/feed candidates by URL.
+- `source_ingestion_runs` records every scheduled/manual refresh.
+- A 15-minute Worker cron refreshes the BaT public auctions RSS feed.
+- Admins can inspect and refresh the cache through `/api/admin/source-cache/status` and `/api/admin/source-cache/ingest`.
 
 ## OAuth Follow-Up
 

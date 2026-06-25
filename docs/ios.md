@@ -58,43 +58,43 @@ Clerk quickstart prerequisites:
 Install dependencies:
 
 ```bash
-npm install
+bun install
 ```
 
 Generate the Xcode project:
 
 ```bash
-npm run ios:generate
+bun run ios:generate
 ```
 
 Resolve packages:
 
 ```bash
-npm run ios:resolve
+bun run ios:resolve
 ```
 
 Build without opening Xcode:
 
 ```bash
-npm run ios:build
+bun run ios:build
 ```
 
 Run on simulator:
 
 ```bash
-npm run ios:sim
+bun run ios:sim
 ```
 
 You can override the simulator destination:
 
 ```bash
-IOS_DESTINATION='platform=iOS Simulator,name=iPhone 16 Pro Max' npm run ios:sim
+IOS_DESTINATION='platform=iOS Simulator,name=iPhone 16 Pro Max' bun run ios:sim
 ```
 
 Run UI tests:
 
 ```bash
-npm run ios:test-ui
+bun run ios:test-ui
 ```
 
 The UI tests launch local fixtures with `--ui-testing`; `--ui-testing-scenario invited|onboarding|active` covers invite, onboarding, and active deck entry without Clerk or Worker access.
@@ -114,8 +114,8 @@ The run script auto-creates an `iPhone 16 Pro Max` simulator when the runtime is
 For unattended simulator testing, create a Clerk sign-in token and store it in `.env.local`:
 
 ```bash
-node scripts/create-clerk-dev-token.mjs
-npm run ios:sim
+bun scripts/create-clerk-dev-token.mjs
+bun run ios:sim
 ```
 
 When `CLERK_DEV_SIGN_IN_TOKEN` is present, `ios:sim` launches the DEBUG build with `--clerk-ticket`, signs in through ClerkKit, and then loads the production Worker with the native Clerk session token. This is for local DEBUG testing only; normal users still sign in with Google through Clerk.
@@ -135,19 +135,19 @@ One-time Apple setup:
 Build an App Store Connect archive:
 
 ```bash
-npm run ios:archive
+bun run ios:archive
 ```
 
 Upload the latest archive to TestFlight:
 
 ```bash
-npm run ios:testflight
+bun run ios:testflight
 ```
 
 Or do both in one command:
 
 ```bash
-npm run ios:release
+bun run ios:release
 ```
 
 The scripts write outputs under `build/ios/` and record the latest archive path in `build/ios/latest-archive-path`.
@@ -161,7 +161,7 @@ By default, `ios:testflight` also assigns the uploaded build to `TESTFLIGHT_BETA
 To force a version/build:
 
 ```bash
-IOS_MARKETING_VERSION=0.1.0 IOS_BUILD_NUMBER=202606231425 npm run ios:release
+IOS_MARKETING_VERSION=0.1.0 IOS_BUILD_NUMBER=202606231425 bun run ios:release
 ```
 
 ### Internal-Only Builds
@@ -173,4 +173,4 @@ By default, `TESTFLIGHT_INTERNAL_ONLY=YES`, so uploaded builds are meant for int
 - `No profiles for com.joncooper.beachcar`: confirm the bundle ID exists in the Apple Developer account and rerun with `-allowProvisioningUpdates` through the provided scripts.
 - `No Accounts`: use an App Store Connect API key in `.env.apple.local`, or add the Apple account in Xcode once.
 - Missing app record: create the iOS app record in App Store Connect before upload.
-- App icon validation: run `npm run ios:icons`; the release scripts run this automatically.
+- App icon validation: run `bun run ios:icons`; the release scripts run this automatically.

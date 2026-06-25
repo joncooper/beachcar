@@ -10,7 +10,9 @@ Resources:
 
 You may rename these, but keep `package.json` scripts and `wrangler.jsonc` in sync.
 
-After running `npx wrangler d1 create beachcar-watch`, copy the returned `database_id` into `wrangler.jsonc`.
+After running `bunx wrangler d1 create beachcar-watch`, copy the returned `database_id` into `wrangler.jsonc`.
+
+If a differently named D1 database already exists in the account, inspect its tables and applied migrations before reusing it. Do not point `wrangler.jsonc` at a non-empty legacy database unless the schema matches the migrations in this repo.
 
 Worker secrets:
 
@@ -22,4 +24,3 @@ Worker vars:
 
 - `ALLOWED_EMAIL`
 - `ENVIRONMENT`
-

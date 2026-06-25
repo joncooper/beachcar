@@ -18,7 +18,8 @@ import {
 } from "./db";
 import { jsonResponse } from "./http";
 import { prewarmImportedImages } from "./image-cache";
-import { parseBringATrailerRssFeed, type SourceCandidate } from "./workflows/source-discovery";
+import { searchBringATrailerCache } from "./source-cache";
+import type { SourceCandidate } from "./workflows/source-discovery";
 
 type JsonRpcId = string | number | null;
 
@@ -34,8 +35,6 @@ interface McpSession {
   user: Awaited<ReturnType<typeof getUserPayload>>;
   scope: UserScope;
 }
-
-const batRssFeed = "https://bringatrailer.com/auctions/feed/";
 
 export const mcpToolDefinitions = [
   {
@@ -60,7 +59,7 @@ export const mcpToolDefinitions = [
   },
   {
     name: "search_bat_cache",
-    description: "Search Bring a Trailer's public auctions RSS feed for candidate listings. This preview fetches the live public feed and does not persist a D1 cache yet.",
+    description: "Search cached Bring a Trailer public RSS candidates. The cache refreshes from the public auctions feed when empty or stale.",
     inputSchema: {
       type: "object",
       properties: {
@@ -70,6 +69,7 @@ export const mcpToolDefinitions = [
           description: "Optional terms to match against title and description. Defaults to saved taste/source notes.",
         },
         limit: { type: "number", description: "Maximum candidate count to return. Default 12, max 50." },
+        refresh: { type: "boolean", description: "Set false to skip stale-cache refresh and search only current D1 rows." },
       },
       additionalProperties: false,
     },
@@ -313,33 +313,19 @@ async function searchBatPublicFeed(session: McpSession, env: Env, args: Record<s
   assertScope(session, "sources:read");
   const limit = limitFromUnknown(args.limit, 12, 50);
   const terms = termsFromArgs(args, session.user);
-  const response = await fetch(batRssFeed, {
-    headers: {
-      Accept: "application/rss+xml, application/xml;q=0.9, text/xml;q=0.8",
-      "User-Agent": "BeachcarRemoteMCP/0.1 (+https://beachcar.local)",
-    },
-  });
-  const text = await response.text();
-  if (!response.ok) throw new Error(`Bring a Trailer RSS returned HTTP ${response.status}`);
-  const candidates = parseBringATrailerRssFeed(text)
-    .filter((candidate) => matchesTerms(candidate, terms))
-    .slice(0, limit);
+  const result = await searchBringATrailerCache(env.DB, { terms, limit, refresh: args.refresh !== false });
   await recordToolEvent(env, session, "tool.search_bat_cache", {
     source: "bringatrailer",
-    feed: batRssFeed,
+    feed: result.feed,
     termCount: terms.length,
-    candidateCount: candidates.length,
-    mode: "public_rss_live",
+    candidateCount: result.candidateCount,
+    mode: result.mode,
+    cacheStatus: result.cacheStatus,
+    latestIngestionAt: result.status.latestIngestion?.finishedAt || null,
   });
   return {
-    source: "bringatrailer",
-    site: "Bring a Trailer",
-    mode: "public_rss_live",
-    cacheStatus: "not_persisted_yet",
-    feed: batRssFeed,
-    terms,
-    candidateCount: candidates.length,
-    candidates: candidates.map(publicCandidate),
+    ...result,
+    candidates: result.candidates.map(publicCandidate),
   };
 }
 
@@ -533,12 +519,6 @@ function termsFromArgs(args: Record<string, unknown>, user: McpSession["user"]):
     .map((term) => term.trim().toLowerCase())
     .filter((term) => term.length >= 3)
     .slice(0, 20);
-}
-
-function matchesTerms(candidate: SourceCandidate, terms: string[]): boolean {
-  if (!terms.length) return true;
-  const text = `${candidate.title} ${candidate.summary} ${candidate.sourceQuery}`.toLowerCase();
-  return terms.some((term) => text.includes(term));
 }
 
 function publicCandidate(candidate: SourceCandidate): Record<string, unknown> {

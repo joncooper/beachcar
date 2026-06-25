@@ -58,7 +58,7 @@ The app is the hosted review and memory surface. The agent is the collector, ana
 ## Local Setup
 
 ```bash
-npm install
+bun install
 cp .env.example .env.local
 cp .publish.env.example .publish.env
 ```
@@ -66,16 +66,16 @@ cp .publish.env.example .publish.env
 Fill in `.env.local` with your Clerk keys and desired app name.
 
 ```bash
-npm run typecheck
-npm test
+bun run typecheck
+bun run test
 set -a; source .env.local; set +a
-npm run build
+bun run build
 ```
 
 Run the repeatable local preflight:
 
 ```bash
-npm run preflight
+bun run preflight
 ```
 
 The quick preflight includes the non-deploying readiness report below, but leaves known rollout todos non-fatal.
@@ -83,21 +83,21 @@ The quick preflight includes the non-deploying readiness report below, but leave
 To exercise the Agent/Workflow/D1/R2 path locally, make sure `.dev.vars` or `.publish.env` has `PUBLISH_TOKEN`, then run:
 
 ```bash
-npm run preflight:local
+bun run preflight:local
 ```
 
-The local preflight starts `wrangler dev --local`, waits for it to become ready, runs `npm run smoke:local-worker`, and stops the local Worker afterward.
+The local preflight starts `wrangler dev --local`, waits for it to become ready, runs `bun run smoke:local-worker`, and stops the local Worker afterward.
 
 For the larger local gate that also builds the native app:
 
 ```bash
-npm run preflight:full
+bun run preflight:full
 ```
 
 Before any intentional deploy rehearsal, run the non-deploying readiness check:
 
 ```bash
-npm run deploy:check
+bun run deploy:check
 ```
 
 It inspects local config, migrations, script wiring, and env hints without contacting Cloudflare or printing secret values. Add `-- --strict` when you want missing deploy/friend-rollout items to fail CI.
@@ -107,21 +107,21 @@ It inspects local config, migrations, script wiring, and env hints without conta
 The native app lives in `ios/` and is generated from `ios/project.yml` with XcodeGen, so you can work without opening Xcode. It uses Clerk with Google auth, talks to the same Worker API as the PWA, and supports TestFlight builds from the command line.
 
 ```bash
-npm run ios:generate
-npm run ios:resolve
-npm run ios:build
+bun run ios:generate
+bun run ios:resolve
+bun run ios:build
 ```
 
 Useful commands:
 
 ```bash
-npm run ios:sim
-npm run ios:test-ui
-npm run ios:archive
-npm run ios:testflight
+bun run ios:sim
+bun run ios:test-ui
+bun run ios:archive
+bun run ios:testflight
 ```
 
-Use `npm run ios:release` when shipping app changes; it archives, uploads to App Store Connect, waits for the new build to appear, and assigns it to the configured internal TestFlight group.
+Use `bun run ios:release` when shipping app changes; it archives, uploads to App Store Connect, waits for the new build to appear, and assigns it to the configured internal TestFlight group.
 
 See `docs/ios.md` for the native UX model, Clerk setup, and simulator/device notes.
 
@@ -130,8 +130,8 @@ See `docs/ios.md` for the native UX model, Clerk setup, and simulator/device not
 Create resources:
 
 ```bash
-npx wrangler d1 create beachcar-watch
-npx wrangler r2 bucket create beachcar-watch-images
+bunx wrangler d1 create beachcar-watch
+bunx wrangler r2 bucket create beachcar-watch-images
 ```
 
 Copy the D1 `database_id` into `wrangler.jsonc`, then set the bootstrap owner email:
@@ -148,11 +148,11 @@ Copy the D1 `database_id` into `wrangler.jsonc`, then set the bootstrap owner em
 Apply migrations and set Worker secrets when you are ready to deploy:
 
 ```bash
-npm run db:migrate:remote
-npx wrangler secret put PUBLISH_TOKEN
-npx wrangler secret put CLERK_SECRET_KEY
-npx wrangler secret put CLERK_JWT_ISSUER
-npm run deploy
+bun run db:migrate:remote
+bunx wrangler secret put PUBLISH_TOKEN
+bunx wrangler secret put CLERK_SECRET_KEY
+bunx wrangler secret put CLERK_JWT_ISSUER
+bun run deploy
 ```
 
 `CLERK_JWT_ISSUER` is your Clerk issuer URL, usually like `https://your-instance.clerk.accounts.dev`.
@@ -169,13 +169,13 @@ PUBLISH_TOKEN=<same value configured as Worker secret>
 Publish sample data:
 
 ```bash
-npm run publish:daily
+bun run publish:daily
 ```
 
 Publish a real daily run:
 
 ```bash
-DAILY_JSON=outputs/daily-run-2026-06-20.json npm run publish:daily
+DAILY_JSON=outputs/daily-run-2026-06-20.json bun run publish:daily
 ```
 
 The publish script imports the run first, then copies queued listing images to R2 through the admin image API.
@@ -228,4 +228,4 @@ You are responsible for how your automation accesses third-party sites. Use your
 
 ## Project Status
 
-This worktree contains a local friend-beta implementation. No production deploy is implied by the local preflight. Before inviting real friends, run `npm run preflight:full`, deploy intentionally, then verify the remote Worker, D1 migrations, AI Gateway budget policy, image variant creation, and Container runner against the deployed Cloudflare account.
+This worktree contains a local friend-beta implementation. No production deploy is implied by the local preflight. Before inviting real friends, run `bun run preflight:full`, deploy intentionally, then verify the remote Worker, D1 migrations, AI Gateway budget policy, image variant creation, and Container runner against the deployed Cloudflare account.

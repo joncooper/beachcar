@@ -28,6 +28,7 @@ import {
   getNextQueuedAgentRun,
   getNextRunnerTask,
   getRunnerTaskById,
+  getSourceCacheStatus,
   getUserPayload,
   importRun,
   listAdminUsers,
@@ -49,6 +50,7 @@ import { errorResponse, jsonResponse, readJson } from "./http";
 import { mirrorImage, prewarmImportedImages, serveImage, uploadImage } from "./image-cache";
 import { automationBundleMarkdown } from "./automation-bundle";
 import { handleMcpRequest } from "./mcp";
+import { ingestBringATrailerRssCache } from "./source-cache";
 export { BeachcarAgent } from "./agents/beachcar-agent";
 export { BeachcarRunnerContainer } from "./containers/beachcar-runner-container";
 export { BeachcarRunWorkflow } from "./workflows/beachcar-run-workflow";
@@ -70,6 +72,10 @@ export default {
       console.error(JSON.stringify({ level: "error", message, path: url.pathname }));
       return errorResponse(message, 500);
     }
+  },
+
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(refreshScheduledSourceCaches(env, event.cron));
   },
 };
 
@@ -266,6 +272,14 @@ async function handleAdmin(request: Request, env: Env, ctx: ExecutionContext, ur
 
   if (request.method === "GET" && url.pathname === "/api/admin/users") {
     return jsonResponse(await listAdminUsers(env.DB));
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/admin/source-cache/status") {
+    return jsonResponse({ sources: { bringatrailer: await getSourceCacheStatus(env.DB, "bringatrailer") } });
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/admin/source-cache/ingest") {
+    return jsonResponse({ source: "bringatrailer", ingestion: await ingestBringATrailerRssCache(env.DB) }, { status: 201 });
   }
 
   if (request.method === "GET" && url.pathname === "/api/admin/runner-tasks/next") {
@@ -605,4 +619,14 @@ function beachcarAgentName(userId: string): string {
 function limitFromUrl(url: URL, fallback: number): number {
   const parsed = Number(url.searchParams.get("limit") || "");
   return Number.isFinite(parsed) && parsed > 0 ? Math.min(500, Math.floor(parsed)) : fallback;
+}
+
+async function refreshScheduledSourceCaches(env: Env, cron: string): Promise<void> {
+  try {
+    const result = await ingestBringATrailerRssCache(env.DB);
+    console.log(JSON.stringify({ level: "info", message: "source_cache.ingested", cron, source: result.source, itemCount: result.itemCount, newItemCount: result.newItemCount }));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(JSON.stringify({ level: "error", message, cron, source: "bringatrailer" }));
+  }
 }

@@ -55,6 +55,7 @@ import type {
   AiUsageSummary,
   AutomationStatus,
   AutomationTokenCreateResult,
+  AutomationTokenRecord,
   AgentRunRecord,
   AuctionListing,
   FeedbackAction,
@@ -494,6 +495,7 @@ export function App(props: { clerkPublishableKey: string }) {
     return (
       <main className="shell is-deck">
         <SettingsSheet
+          automationStatus={demoAutomationStatus()}
           error={null}
           isPending={false}
           onClose={() => undefined}
@@ -575,6 +577,40 @@ function demoSettingsUser(): UserPayload {
     },
     onboarding: { completed: true, completedAt: "2026-06-25T12:00:00.000Z" },
     capabilities: { canUseManagedAi: true, canUseByok: true, canRunNow: false },
+  };
+}
+
+function demoAutomationStatus(): AutomationStatus {
+  const now = "2026-06-25T12:00:00.000Z";
+  return {
+    mcpEndpoint: "https://beachcar-watch.example.workers.dev/mcp",
+    bundleEndpoint: "https://beachcar-watch.example.workers.dev/api/automation/bundle",
+    oauth: {
+      status: "planned",
+      message: "Remote MCP OAuth is planned; this preview uses revocable scoped automation tokens.",
+    },
+    defaultScopes: ["setup:read", "sources:read", "runs:publish", "usage:write", "events:read"],
+    tokens: [
+      {
+        id: "automation-token-demo",
+        userId: "email:friend@example.com",
+        label: "Friend cloud agent",
+        scopes: ["setup:read", "sources:read", "runs:publish", "usage:write", "events:read"],
+        lastUsedAt: now,
+        createdAt: now,
+      },
+    ],
+    recentEvents: [
+      {
+        id: "automation-event-demo",
+        userId: "email:friend@example.com",
+        tokenId: "automation-token-demo",
+        actor: "automation",
+        eventType: "tool.search_bat_cache",
+        metadata: { source: "bringatrailer", candidateCount: 12 },
+        createdAt: now,
+      },
+    ],
   };
 }
 
@@ -1626,6 +1662,7 @@ function FilterSheet(props: {
 }
 
 function SettingsSheet(props: {
+  automationStatus?: AutomationStatus;
   error: string | null;
   isPending: boolean;
   onClose: () => void;
@@ -1753,7 +1790,7 @@ function SettingsSheet(props: {
           />
           <NotificationSettingsFields value={notifications} onChange={setNotifications} />
           <SourceSettingsFields preferences={sourcePreferences} setPreferences={setSourcePreferences} />
-          <AutomationSettingsPanel />
+          <AutomationSettingsPanel demoStatus={props.automationStatus} />
           {localError || props.error ? <p className="auth-error setup-span">{localError || props.error}</p> : null}
           <button className="source-link setup-span" disabled={props.isPending} type="submit">
             {props.isPending ? "Saving..." : "Save preferences"}
@@ -1789,13 +1826,18 @@ function SettingsSheet(props: {
   );
 }
 
-function AutomationSettingsPanel() {
-  const [status, setStatus] = useState<AutomationStatus | null>(null);
+function AutomationSettingsPanel(props: { demoStatus?: AutomationStatus }) {
+  const [status, setStatus] = useState<AutomationStatus | null>(props.demoStatus || null);
   const [created, setCreated] = useState<AutomationTokenCreateResult | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    if (props.demoStatus) {
+      setStatus(props.demoStatus);
+      setMessage(null);
+      return;
+    }
     setPending("refresh");
     try {
       setStatus(await getAutomationStatus());
@@ -1805,13 +1847,27 @@ function AutomationSettingsPanel() {
     } finally {
       setPending(null);
     }
-  }, []);
+  }, [props.demoStatus]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
   async function createToken() {
+    if (props.demoStatus) {
+      const createdAt = new Date().toISOString();
+      const record: AutomationTokenRecord = {
+        id: `automation-token-demo-${createdAt.replace(/[^0-9a-z]/gi, "-").toLowerCase()}`,
+        userId: "email:friend@example.com",
+        label: "Friend cloud agent",
+        scopes: props.demoStatus.defaultScopes,
+        createdAt,
+      };
+      setCreated({ token: "beachcar_demo_token_shown_once", record });
+      setStatus({ ...props.demoStatus, tokens: [record, ...props.demoStatus.tokens] });
+      setMessage("Token created. Store it in your cloud agent now; Beachcar will not show it again.");
+      return;
+    }
     setPending("create");
     try {
       const token = await createAutomationToken("Friend cloud agent");
@@ -1826,6 +1882,20 @@ function AutomationSettingsPanel() {
   }
 
   async function revokeToken(id: string) {
+    if (props.demoStatus) {
+      const revokedAt = new Date().toISOString();
+      setStatus((current) =>
+        current
+          ? {
+              ...current,
+              tokens: current.tokens.map((token) => (token.id === id ? { ...token, revokedAt } : token)),
+            }
+          : current,
+      );
+      if (created?.record.id === id) setCreated(null);
+      setMessage("Automation token revoked.");
+      return;
+    }
     setPending(id);
     try {
       await revokeAutomationToken(id);
@@ -1850,6 +1920,10 @@ function AutomationSettingsPanel() {
   }
 
   async function downloadSkill() {
+    if (props.demoStatus) {
+      setMessage("The hosted Worker provides the downloadable skill after sign-in.");
+      return;
+    }
     setPending("bundle");
     try {
       const bundle = await getAutomationBundle();

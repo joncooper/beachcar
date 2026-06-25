@@ -23,6 +23,7 @@ import type {
   UserProfile,
 } from "../shared/types";
 import type { AuthUser } from "./auth";
+import type { SourceCandidate } from "./workflows/source-discovery";
 
 export interface UserScope {
   userId: string;
@@ -216,6 +217,33 @@ interface RunListingRow {
   payload_json: string;
 }
 
+interface SourceItemRow {
+  id: string;
+  source: string;
+  site: string;
+  source_url: string;
+  item_url: string;
+  title: string;
+  summary: string | null;
+  image_urls_json: string;
+  payload_json: string;
+  published_at: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+}
+
+interface SourceIngestionRunRow {
+  id: string;
+  source: string;
+  source_url: string;
+  status: "ok" | "failed";
+  item_count: number;
+  new_item_count: number;
+  error: string | null;
+  started_at: string;
+  finished_at: string;
+}
+
 export interface ImportResult {
   runId: string;
   listingCount: number;
@@ -232,6 +260,33 @@ export interface AuthenticatedAutomationToken {
 }
 
 export const defaultAutomationScopes: AutomationScope[] = ["setup:read", "sources:read", "runs:publish", "usage:write", "events:read"];
+
+export interface SourceCacheUpsertResult {
+  source: string;
+  sourceUrl: string;
+  itemCount: number;
+  newItemCount: number;
+  startedAt: string;
+  finishedAt: string;
+}
+
+export interface SourceCacheStatus {
+  source: string;
+  itemCount: number;
+  latestIngestion: SourceIngestionRun | null;
+}
+
+export interface SourceIngestionRun {
+  id: string;
+  source: string;
+  sourceUrl: string;
+  status: "ok" | "failed";
+  itemCount: number;
+  newItemCount: number;
+  error?: string | null;
+  startedAt: string;
+  finishedAt: string;
+}
 
 export async function ensureUser(db: D1Database, authUser: AuthUser, input: { isOwner?: boolean } = {}): Promise<UserPayload> {
   const now = new Date().toISOString();
@@ -768,6 +823,143 @@ async function getAutomationToken(db: D1Database, userId: string, id: string): P
     .bind(id, userId)
     .first<AutomationTokenRow>();
   return row ? automationTokenFromRow(row) : null;
+}
+
+export async function upsertSourceCache(
+  db: D1Database,
+  input: { source: string; sourceUrl: string; candidates: SourceCandidate[]; startedAt?: string; finishedAt?: string },
+): Promise<SourceCacheUpsertResult> {
+  const source = input.source.trim().toLowerCase();
+  if (!source) throw new Error("source is required");
+  const startedAt = input.startedAt || new Date().toISOString();
+  const finishedAt = input.finishedAt || new Date().toISOString();
+  let newItemCount = 0;
+
+  for (const candidate of input.candidates) {
+    if (!candidate.url || !candidate.title) continue;
+    const existing = await db.prepare("SELECT id FROM source_items WHERE item_url = ?").bind(candidate.url).first<{ id: string }>();
+    if (!existing) newItemCount += 1;
+    const id = existing?.id || `source-item-${source}-${(await sha256Hex(candidate.url)).slice(0, 20)}`;
+    await db
+      .prepare(
+        `INSERT INTO source_items (
+           id, source, site, source_url, item_url, title, summary, image_urls_json, payload_json, published_at, first_seen_at, last_seen_at
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(item_url) DO UPDATE SET
+           source = excluded.source,
+           site = excluded.site,
+           source_url = excluded.source_url,
+           title = excluded.title,
+           summary = excluded.summary,
+           image_urls_json = excluded.image_urls_json,
+           payload_json = excluded.payload_json,
+           published_at = COALESCE(excluded.published_at, source_items.published_at),
+           last_seen_at = excluded.last_seen_at`,
+      )
+      .bind(
+        id,
+        source,
+        candidate.site,
+        candidate.sourceUrl || input.sourceUrl,
+        candidate.url,
+        candidate.title,
+        candidate.summary || null,
+        JSON.stringify(candidate.imageUrls || []),
+        JSON.stringify(candidate),
+        candidate.publishedAt || null,
+        finishedAt,
+        finishedAt,
+      )
+      .run();
+  }
+
+  await recordSourceIngestionRun(db, {
+    source,
+    sourceUrl: input.sourceUrl,
+    status: "ok",
+    itemCount: input.candidates.length,
+    newItemCount,
+    startedAt,
+    finishedAt,
+  });
+
+  return { source, sourceUrl: input.sourceUrl, itemCount: input.candidates.length, newItemCount, startedAt, finishedAt };
+}
+
+export async function recordSourceIngestionRun(
+  db: D1Database,
+  input: {
+    source: string;
+    sourceUrl: string;
+    status: "ok" | "failed";
+    itemCount?: number;
+    newItemCount?: number;
+    error?: string | null;
+    startedAt?: string;
+    finishedAt?: string;
+  },
+): Promise<SourceIngestionRun> {
+  const startedAt = input.startedAt || new Date().toISOString();
+  const finishedAt = input.finishedAt || new Date().toISOString();
+  const id = `source-ingestion-${input.source.replace(/[^0-9a-z-]/gi, "-").toLowerCase()}-${finishedAt.replace(/[^0-9a-z]/gi, "-").toLowerCase()}-${crypto.randomUUID().slice(0, 8)}`;
+  await db
+    .prepare(
+      `INSERT INTO source_ingestion_runs (
+         id, source, source_url, status, item_count, new_item_count, error, started_at, finished_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      id,
+      input.source.trim().toLowerCase(),
+      input.sourceUrl,
+      input.status,
+      Math.max(0, Math.floor(input.itemCount || 0)),
+      Math.max(0, Math.floor(input.newItemCount || 0)),
+      input.error ? String(input.error).slice(0, 1000) : null,
+      startedAt,
+      finishedAt,
+    )
+    .run();
+  const row = await db.prepare("SELECT * FROM source_ingestion_runs WHERE id = ?").bind(id).first<SourceIngestionRunRow>();
+  if (!row) throw new Error("Could not record source ingestion run");
+  return sourceIngestionRunFromRow(row);
+}
+
+export async function getSourceCacheStatus(db: D1Database, source: string): Promise<SourceCacheStatus> {
+  const normalized = source.trim().toLowerCase();
+  const [count, latestIngestion] = await Promise.all([countRows(db, "SELECT COUNT(*) AS count FROM source_items WHERE source = ?", normalized), getLatestSourceIngestionRun(db, normalized)]);
+  return { source: normalized, itemCount: count, latestIngestion };
+}
+
+export async function getLatestSourceIngestionRun(db: D1Database, source: string): Promise<SourceIngestionRun | null> {
+  const row = await db
+    .prepare("SELECT * FROM source_ingestion_runs WHERE source = ? ORDER BY finished_at DESC LIMIT 1")
+    .bind(source.trim().toLowerCase())
+    .first<SourceIngestionRunRow>();
+  return row ? sourceIngestionRunFromRow(row) : null;
+}
+
+export async function searchSourceCache(
+  db: D1Database,
+  input: { source: string; terms?: string[]; limit?: number },
+): Promise<{ candidates: SourceCandidate[]; status: SourceCacheStatus }> {
+  const source = input.source.trim().toLowerCase();
+  const terms = (input.terms || []).map((term) => term.trim().toLowerCase()).filter((term) => term.length >= 3);
+  const limit = Math.max(1, Math.min(50, Math.floor(input.limit || 12)));
+  const { results } = await db
+    .prepare(
+      `SELECT *
+       FROM source_items
+       WHERE source = ?
+       ORDER BY COALESCE(published_at, last_seen_at) DESC, last_seen_at DESC
+       LIMIT 300`,
+    )
+    .bind(source)
+    .all<SourceItemRow>();
+  const candidates = results.map(sourceCandidateFromRow).filter((candidate) => sourceCandidateMatchesTerms(candidate, terms)).slice(0, limit);
+  return { candidates, status: await getSourceCacheStatus(db, source) };
 }
 
 export async function createRunnerTask(
@@ -1733,6 +1925,45 @@ function automationEventFromRow(row: AutomationEventRow): AutomationEventRecord 
   };
 }
 
+function sourceIngestionRunFromRow(row: SourceIngestionRunRow): SourceIngestionRun {
+  return {
+    id: row.id,
+    source: row.source,
+    sourceUrl: row.source_url,
+    status: row.status,
+    itemCount: row.item_count,
+    newItemCount: row.new_item_count,
+    error: row.error,
+    startedAt: row.started_at,
+    finishedAt: row.finished_at,
+  };
+}
+
+function sourceCandidateFromRow(row: SourceItemRow): SourceCandidate {
+  const payload = parseObject(row.payload_json) as Partial<SourceCandidate>;
+  return {
+    source: row.source,
+    site: row.site,
+    sourceQuery: payload.sourceQuery || "cached source item",
+    title: row.title,
+    url: row.item_url,
+    bid: payload.bid || "Check listing",
+    bidNum: payload.bidNum,
+    total: payload.total || "Check listing",
+    location: payload.location,
+    endsAt: payload.endsAt,
+    timeLeft: payload.timeLeft,
+    bids: payload.bids,
+    bidders: payload.bidders,
+    comments: payload.comments,
+    imageUrls: parseStringArray(row.image_urls_json),
+    summary: row.summary || payload.summary || "",
+    noReserve: payload.noReserve,
+    sourceUrl: row.source_url,
+    publishedAt: row.published_at || payload.publishedAt,
+  };
+}
+
 function runnerTaskFromRow(row: RunnerTaskRow): RunnerTaskRecord {
   return {
     id: row.id,
@@ -1819,6 +2050,21 @@ function parseObject(value: string): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+function parseStringArray(value: string): string[] {
+  try {
+    const parsed = JSON.parse(value || "[]") as unknown;
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
+  } catch {
+    return [];
+  }
+}
+
+function sourceCandidateMatchesTerms(candidate: SourceCandidate, terms: string[]): boolean {
+  if (!terms.length) return true;
+  const text = `${candidate.title} ${candidate.summary} ${candidate.sourceQuery}`.toLowerCase();
+  return terms.some((term) => text.includes(term));
 }
 
 function stringOrDefault(value: unknown, fallback: string): string {

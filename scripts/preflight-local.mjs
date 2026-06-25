@@ -7,6 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 const args = process.argv.slice(2);
 const flags = new Set(args);
 const root = process.cwd();
+const jsRunner = process.env.BEACHCAR_JS_RUNNER || "bun";
 const port = valueArg("--port") || process.env.PREFLIGHT_WORKER_PORT || "8787";
 const workerUrl = `http://127.0.0.1:${port}`;
 const runSmoke = flags.has("--smoke") || flags.has("--full");
@@ -21,16 +22,16 @@ const buildEnv = {
   VITE_CLERK_PUBLISHABLE_KEY: inheritedEnv.VITE_CLERK_PUBLISHABLE_KEY || "pk_test_local_dummy",
 };
 
-await run("Typecheck", "npm", ["run", "typecheck"]);
-await run("Unit tests", "npm", ["test"]);
-await run("Container runner syntax", "npm", ["run", "container-runner:check"]);
+await runScript("Typecheck", "typecheck");
+await runScript("Unit tests", "test");
+await runScript("Container runner syntax", "container-runner:check");
 await run("Runner task simulator syntax", "node", ["--check", "scripts/run-runner-task-local.mjs"]);
 await run("Service worker syntax", "node", ["--check", "public/sw.js"]);
-await run("Deploy readiness report", "npm", ["run", "deploy:check"]);
-await run("Client build", "npm", ["run", "build"], { env: buildEnv });
+await runScript("Deploy readiness report", "deploy:check");
+await runScript("Client build", "build", { env: buildEnv });
 
 if (runIos) {
-  await run("Native iOS build", "npm", ["run", "ios:build"]);
+  await runScript("Native iOS build", "ios:build");
 }
 
 if (runSmoke) {
@@ -43,7 +44,7 @@ async function runWorkerSmoke() {
   let worker = null;
   try {
     if (!useExistingWorker) {
-      worker = spawn("npm", ["run", "worker:dev", "--", "--local", "--ip", "127.0.0.1", "--port", port], {
+      worker = spawn(jsRunner, ["run", "worker:dev", "--", "--local", "--ip", "127.0.0.1", "--port", port], {
         cwd: root,
         env: {
           ...inheritedEnv,
@@ -63,7 +64,7 @@ async function runWorkerSmoke() {
     }
 
     await waitForWorker(workerUrl);
-    await run("Local Worker smoke", "npm", ["run", "smoke:local-worker"], {
+    await runScript("Local Worker smoke", "smoke:local-worker", {
       env: {
         ...inheritedEnv,
         AUCTION_WATCH_URL: workerUrl,
@@ -129,6 +130,10 @@ async function run(label, command, commandArgs, options = {}) {
       }
     });
   });
+}
+
+async function runScript(label, script, options = {}) {
+  await run(label, jsRunner, ["run", script], options);
 }
 
 function valueArg(name) {

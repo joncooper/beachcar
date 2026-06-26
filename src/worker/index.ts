@@ -51,6 +51,14 @@ import { mirrorImage, prewarmImportedImages, serveImage, uploadImage } from "./i
 import { automationBundleMarkdown } from "./automation-bundle";
 import { handleMcpRequest } from "./mcp";
 import { handleMcpProtectedResourceMetadata, mcpEndpoint, mcpProtectedResourceMetadataEndpoint } from "./oauth-metadata";
+import {
+  handleOAuthAuthorizationServerMetadata,
+  handleOAuthRequest,
+  oauthAuthorizationEndpoint,
+  oauthAuthorizationServerMetadataEndpoint,
+  oauthRegistrationEndpoint,
+  oauthTokenEndpoint,
+} from "./oauth-server";
 import { ingestBringATrailerRssCache } from "./source-cache";
 export { BeachcarAgent } from "./agents/beachcar-agent";
 export { BeachcarRunnerContainer } from "./containers/beachcar-runner-container";
@@ -62,6 +70,12 @@ export default {
     try {
       if (isMcpProtectedResourceMetadataPath(url.pathname)) {
         return handleMcpProtectedResourceMetadata(request);
+      }
+      if (isOAuthAuthorizationServerMetadataPath(url.pathname)) {
+        return handleOAuthAuthorizationServerMetadata(request);
+      }
+      if (url.pathname.startsWith("/oauth/")) {
+        return await handleOAuthRequest(request, env, url);
       }
       if (url.pathname === "/mcp") {
         return await handleMcpRequest(request, env, ctx);
@@ -163,10 +177,14 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url:
     return jsonResponse({
       ...automationEndpoints(request),
       oauth: {
-        status: "metadata_ready",
+        status: "authorization_code_ready",
         protectedResourceMetadataEndpoint: mcpProtectedResourceMetadataEndpoint(request),
+        authorizationServerMetadataEndpoint: oauthAuthorizationServerMetadataEndpoint(request),
+        authorizationEndpoint: oauthAuthorizationEndpoint(request),
+        tokenEndpoint: oauthTokenEndpoint(request),
+        registrationEndpoint: oauthRegistrationEndpoint(request),
         message:
-          "OAuth protected-resource discovery is available; full authorization-code OAuth is still planned. This preview uses revocable scoped automation tokens.",
+          "OAuth protected-resource discovery and authorization-code + PKCE endpoints are available. Scoped automation tokens remain available for preview clients that cannot complete OAuth yet.",
       },
       defaultScopes: defaultAutomationScopes,
       tokens: await listAutomationTokens(env.DB, authUser.id),
@@ -494,6 +512,10 @@ function adminScope(url: URL, env: Env, userId?: string): UserScope {
 
 function isMcpProtectedResourceMetadataPath(pathname: string): boolean {
   return pathname === "/.well-known/oauth-protected-resource" || pathname === "/.well-known/oauth-protected-resource/mcp";
+}
+
+function isOAuthAuthorizationServerMetadataPath(pathname: string): boolean {
+  return pathname === "/.well-known/oauth-authorization-server";
 }
 
 function automationEndpoints(request: Request): { mcpEndpoint: string; bundleEndpoint: string; protectedResourceMetadataEndpoint: string } {

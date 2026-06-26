@@ -50,11 +50,11 @@ The repo now has the first local friend-beta slice implemented:
 - SwiftUI iOS app using ClerkKit and the same Worker API, with invite/onboarding gates, per-user latest-run cache, image prefetching, and run-status UI.
 - Cloudflare Agents SDK Durable Object plus Workflow binding for per-user run requests and schedule state.
 - Cloudflare Container runner scaffold and runner-task queue for Codex SDK/browser-heavy follow-up work.
-- Hosted remote MCP preview at `/mcp`, with revocable scoped automation tokens, OAuth protected-resource metadata discovery, user-visible automation events, and a downloadable friend skill for cloud agents.
+- Hosted remote MCP preview at `/mcp`, with revocable scoped automation tokens, OAuth protected-resource metadata discovery, local-first authorization-code + PKCE endpoints, user-visible automation events, and a downloadable friend skill for cloud agents.
 - Daily AI/publisher compatibility flow that imports normalized JSON and mirrors listing images.
 - PWA onboarding and Preferences include structured taste calibration plus freeform notes, with selected archetypes composed into the existing automation preference context.
 
-The remaining gaps before real friend use are deployment and remote-account validation: deployed D1 migrations, deployed Container runner, full MCP OAuth authorization-code flow, real AI Gateway budget/BYOK policy, remote image transform behavior, and live screenshots/UI tests in an environment where browser and CoreSimulator automation are available.
+The remaining gaps before real friend use are deployment and remote-account validation: deployed D1 migrations, deployed Container runner, MCP OAuth with a real deployed Clerk session and cloud MCP client, real AI Gateway budget/BYOK policy, remote image transform behavior, and live screenshots/UI tests in an environment where browser and CoreSimulator automation are available.
 
 ## Recent Cloudflare/OpenAI Releases To Use
 
@@ -268,6 +268,15 @@ Remote MCP tools:
 - `record_usage` -> AI/token/cost usage events for the external agent.
 - `verify_latest_run` -> read back the published user-scoped run.
 - `list_automation_events` -> user-visible automation activity log.
+
+OAuth routes:
+
+- `GET /.well-known/oauth-protected-resource/mcp` -> `/mcp` protected-resource metadata.
+- `GET /.well-known/oauth-authorization-server` -> authorization server metadata.
+- `POST /oauth/register` -> dynamic public-client registration for HTTPS or localhost redirect URIs.
+- `GET /oauth/authorize` -> signed-in authorization-code issuance with S256 PKCE.
+- `POST /oauth/token` -> short-lived access-token exchange, audience-bound to `/mcp`.
+- `POST /oauth/revoke` -> access-token revocation.
 
 Migration sequence:
 

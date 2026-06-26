@@ -30,6 +30,7 @@ const report = {
 await checkAppShell();
 await checkMcpDiscovery();
 await checkRemoteAuthFallback();
+await checkOAuthAuthorizationCodeFlow();
 await checkSignedInSurface();
 await checkAdminSurface();
 await checkAuthenticatedMcp();
@@ -80,6 +81,27 @@ async function checkMcpDiscovery() {
     "runs:publish is listed.",
     "Protected-resource metadata did not list expected automation scopes.",
   );
+  addCheck(
+    "OAuth metadata advertises authorization server",
+    Array.isArray(metadata?.authorization_servers) && metadata.authorization_servers.includes(new URL(baseUrl).origin),
+    JSON.stringify(metadata?.authorization_servers || []),
+    "Protected-resource metadata did not advertise this Worker as an authorization server.",
+  );
+
+  const authServerResponse = await request("/.well-known/oauth-authorization-server");
+  const authServer = await readJson(authServerResponse);
+  addCheck(
+    "OAuth authorization-server metadata responds",
+    authServerResponse.ok && authServer?.authorization_endpoint === absoluteUrl("/oauth/authorize") && authServer?.token_endpoint === absoluteUrl("/oauth/token"),
+    `HTTP ${authServerResponse.status}`,
+    "Authorization-server metadata did not advertise authorize/token endpoints.",
+  );
+  addCheck(
+    "OAuth authorization-server metadata supports PKCE",
+    Array.isArray(authServer?.code_challenge_methods_supported) && authServer.code_challenge_methods_supported.includes("S256"),
+    "S256 is listed.",
+    "Authorization-server metadata did not list S256 PKCE support.",
+  );
 
   const unauthorized = await request("/mcp", {
     method: "POST",
@@ -115,6 +137,104 @@ async function checkRemoteAuthFallback() {
     `HTTP ${response.status}`,
     "Remote deployment accepted X-Beachcar-Test-Email, which would be a production auth bypass.",
   );
+}
+
+async function checkOAuthAuthorizationCodeFlow() {
+  const canAuthorize = isLocal || Boolean(clerkToken);
+  if (!canAuthorize) {
+    addCheck("OAuth authorization-code PKCE smoke", false, "Set BEACHCAR_CLERK_TOKEN or run against localhost to verify the OAuth code flow.", "", "warn");
+    return;
+  }
+
+  try {
+    const redirectUri = isLocal ? "http://127.0.0.1:8787/oauth/callback-test" : "https://client.example.com/beachcar/oauth/callback";
+    const scope = "setup:read sources:read runs:publish usage:write events:read";
+    const registeredResponse = await request("/oauth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        client_name: "Beachcar verifier",
+        redirect_uris: [redirectUri],
+        scope,
+        token_endpoint_auth_method: "none",
+      }),
+    });
+    const registered = await readJson(registeredResponse);
+    if (!registeredResponse.ok || !registered?.client_id) {
+      throw new Error(`client registration failed: HTTP ${registeredResponse.status}`);
+    }
+
+    const verifier = randomBase64Url(48);
+    const challenge = await pkceChallenge(verifier);
+    const authorizeUrl = new URL(absoluteUrl("/oauth/authorize"));
+    authorizeUrl.searchParams.set("response_type", "code");
+    authorizeUrl.searchParams.set("client_id", registered.client_id);
+    authorizeUrl.searchParams.set("redirect_uri", redirectUri);
+    authorizeUrl.searchParams.set("scope", scope);
+    authorizeUrl.searchParams.set("state", "verify-state");
+    authorizeUrl.searchParams.set("resource", absoluteUrl("/mcp"));
+    authorizeUrl.searchParams.set("code_challenge", challenge);
+    authorizeUrl.searchParams.set("code_challenge_method", "S256");
+    const authorizeHeaders = isLocal ? { "X-Beachcar-Test-Email": testEmail } : { Authorization: `Bearer ${clerkToken}` };
+    const authorizeResponse = await fetch(authorizeUrl, { headers: authorizeHeaders, redirect: "manual" });
+    const location = authorizeResponse.headers.get("location") || "";
+    const redirected = location ? new URL(location) : null;
+    const code = redirected?.searchParams.get("code") || "";
+    if (authorizeResponse.status !== 302 || !code || redirected?.searchParams.get("state") !== "verify-state") {
+      throw new Error(`authorize failed: HTTP ${authorizeResponse.status} ${location}`);
+    }
+
+    const tokenResponse = await request("/oauth/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code,
+        client_id: registered.client_id,
+        redirect_uri: redirectUri,
+        resource: absoluteUrl("/mcp"),
+        code_verifier: verifier,
+      }).toString(),
+    });
+    const token = await readJson(tokenResponse);
+    if (!tokenResponse.ok || typeof token?.access_token !== "string") {
+      throw new Error(`token exchange failed: HTTP ${tokenResponse.status}`);
+    }
+
+    const toolsResponse = await request("/mcp", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: "verify-oauth-tools", method: "tools/list" }),
+    });
+    const tools = await readJson(toolsResponse);
+    if (!toolsResponse.ok || !Array.isArray(tools?.result?.tools) || !tools.result.tools.some((tool) => tool?.name === "publish_run")) {
+      throw new Error(`OAuth MCP tools/list failed: HTTP ${toolsResponse.status}`);
+    }
+
+    await request("/oauth/revoke", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ token: token.access_token }).toString(),
+    });
+    const revokedResponse = await request("/mcp", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: "verify-oauth-revoked", method: "tools/list" }),
+    });
+    if (revokedResponse.status !== 401) {
+      throw new Error(`revoked OAuth token was still accepted: HTTP ${revokedResponse.status}`);
+    }
+
+    addCheck("OAuth authorization-code PKCE smoke", true, `client ${registered.client_id}; tools ${tools.result.tools.length}`, "");
+  } catch (error) {
+    addCheck("OAuth authorization-code PKCE smoke", false, error instanceof Error ? error.message : "OAuth code flow failed", "");
+  }
 }
 
 async function checkSignedInSurface() {
@@ -249,6 +369,23 @@ function hasFlag(name) {
 function valueArg(name) {
   const index = args.indexOf(name);
   return index >= 0 ? args[index + 1] || "" : "";
+}
+
+async function pkceChallenge(verifier) {
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  return base64Url(new Uint8Array(hash));
+}
+
+function randomBase64Url(byteLength) {
+  const bytes = new Uint8Array(byteLength);
+  crypto.getRandomValues(bytes);
+  return base64Url(bytes);
+}
+
+function base64Url(bytes) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
 async function loadEnvFile(path) {

@@ -14,6 +14,7 @@ import type {
   FeedbackRecord,
   ImageStatus,
   ImportPayload,
+  OAuthAccessTokenRecord,
   PreferenceEvent,
   RunPayload,
   RunnerTaskRecord,
@@ -144,6 +145,45 @@ interface AutomationEventRow {
   created_at: string;
 }
 
+interface OAuthClientRow {
+  client_id: string;
+  client_name: string;
+  redirect_uris_json: string;
+  scope: string;
+  token_endpoint_auth_method: string;
+  client_id_issued_at: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface OAuthAuthorizationCodeRow {
+  id: string;
+  code_hash: string;
+  user_id: string;
+  client_id: string;
+  redirect_uri: string;
+  resource: string;
+  scopes_json: string;
+  code_challenge: string;
+  code_challenge_method: string;
+  expires_at: string;
+  consumed_at: string | null;
+  created_at: string;
+}
+
+interface OAuthAccessTokenRow {
+  id: string;
+  user_id: string;
+  client_id: string;
+  token_hash: string;
+  resource: string;
+  scopes_json: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  expires_at: string;
+  created_at: string;
+}
+
 interface ImageRow {
   image_key: string;
   listing_key: string;
@@ -257,6 +297,11 @@ export interface AuthenticatedAutomationToken {
   label: string;
   scopes: AutomationScope[];
   createdAt: string;
+  kind?: "manual" | "oauth";
+  clientId?: string | null;
+  resource?: string | null;
+  expiresAt?: string | null;
+  automationTokenId?: string | null;
 }
 
 export const defaultAutomationScopes: AutomationScope[] = ["setup:read", "sources:read", "runs:publish", "usage:write", "events:read"];
@@ -784,11 +829,217 @@ export async function authenticateAutomationToken(db: D1Database, rawToken: stri
     label: row.label,
     scopes: parseAutomationScopes(row.scopes_json),
     createdAt: row.created_at,
+    kind: "manual",
+    automationTokenId: row.id,
   };
 }
 
 export async function touchAutomationToken(db: D1Database, tokenId: string): Promise<void> {
   await db.prepare("UPDATE automation_tokens SET last_used_at = ? WHERE id = ?").bind(new Date().toISOString(), tokenId).run();
+}
+
+export async function registerOAuthClient(
+  db: D1Database,
+  input: { clientName?: unknown; redirectUris?: unknown; scope?: unknown; tokenEndpointAuthMethod?: unknown },
+): Promise<{
+  clientId: string;
+  clientName: string;
+  redirectUris: string[];
+  scope: string;
+  tokenEndpointAuthMethod: "none";
+  clientIdIssuedAt: number;
+}> {
+  const redirectUris = normalizeRedirectUris(input.redirectUris);
+  if (!redirectUris.length) throw new Error("redirect_uris must include at least one HTTPS or localhost URI");
+  const clientName = stringOrDefault(input.clientName, "Beachcar MCP client").slice(0, 120);
+  const requestedScopes = scopeStringToAutomationScopes(typeof input.scope === "string" ? input.scope : "");
+  const scope = requestedScopes.join(" ");
+  const issuedAt = Math.floor(Date.now() / 1000);
+  const clientId = `beachcar-oauth-client-${randomBase64Url(18)}`;
+  const now = new Date().toISOString();
+
+  await db
+    .prepare(
+      `INSERT INTO oauth_clients (
+         client_id, client_name, redirect_uris_json, scope, token_endpoint_auth_method, client_id_issued_at, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, 'none', ?, ?, ?)`,
+    )
+    .bind(clientId, clientName, JSON.stringify(redirectUris), scope, issuedAt, now, now)
+    .run();
+
+  return {
+    clientId,
+    clientName,
+    redirectUris,
+    scope,
+    tokenEndpointAuthMethod: "none",
+    clientIdIssuedAt: issuedAt,
+  };
+}
+
+export async function getOAuthClient(
+  db: D1Database,
+  clientId: string,
+): Promise<{
+  clientId: string;
+  clientName: string;
+  redirectUris: string[];
+  scope: string;
+  tokenEndpointAuthMethod: "none";
+} | null> {
+  const row = await db.prepare("SELECT * FROM oauth_clients WHERE client_id = ?").bind(clientId).first<OAuthClientRow>();
+  if (!row) return null;
+  return {
+    clientId: row.client_id,
+    clientName: row.client_name,
+    redirectUris: parseStringArray(row.redirect_uris_json),
+    scope: row.scope,
+    tokenEndpointAuthMethod: "none",
+  };
+}
+
+export async function createOAuthAuthorizationCode(
+  db: D1Database,
+  input: {
+    userId: string;
+    clientId: string;
+    redirectUri: string;
+    resource: string;
+    scope?: unknown;
+    codeChallenge: string;
+    codeChallengeMethod: string;
+  },
+): Promise<{ code: string; expiresAt: string; scopes: AutomationScope[] }> {
+  const client = await getOAuthClient(db, input.clientId);
+  if (!client) throw new Error("Unknown OAuth client_id");
+  if (!client.redirectUris.includes(input.redirectUri)) throw new Error("redirect_uri is not registered for this client");
+  if (!isAllowedRedirectUri(input.redirectUri)) throw new Error("redirect_uri must be HTTPS or localhost");
+  if (!input.resource) throw new Error("resource is required");
+  if (input.codeChallengeMethod !== "S256") throw new Error("code_challenge_method must be S256");
+  if (!isValidPkceChallenge(input.codeChallenge)) throw new Error("code_challenge is invalid");
+
+  const clientScopes = scopeStringToAutomationScopes(client.scope);
+  const requestedScopes = scopeStringToAutomationScopes(typeof input.scope === "string" ? input.scope : "");
+  const scopes = requestedScopes.length
+    ? requestedScopes.filter((scope) => clientScopes.includes(scope))
+    : clientScopes.length
+      ? clientScopes
+      : defaultAutomationScopes;
+  if (!scopes.length) throw new Error("Requested scope is not allowed for this client");
+
+  const createdAt = new Date();
+  const expiresAt = new Date(createdAt.getTime() + 10 * 60_000).toISOString();
+  const id = `oauth-code-${createdAt.toISOString().replace(/[^0-9a-z]/gi, "-").toLowerCase()}-${crypto.randomUUID().slice(0, 8)}`;
+  const code = `bcoauth_code_${randomBase64Url(32)}`;
+  const codeHash = await sha256Hex(code);
+
+  await db
+    .prepare(
+      `INSERT INTO oauth_authorization_codes (
+         id, code_hash, user_id, client_id, redirect_uri, resource, scopes_json, code_challenge, code_challenge_method, expires_at, created_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'S256', ?, ?)`,
+    )
+    .bind(id, codeHash, input.userId, input.clientId, input.redirectUri, input.resource, JSON.stringify(scopes), input.codeChallenge, expiresAt, createdAt.toISOString())
+    .run();
+
+  return { code, expiresAt, scopes };
+}
+
+export async function exchangeOAuthAuthorizationCode(
+  db: D1Database,
+  input: { code: string; clientId: string; redirectUri: string; resource: string; codeVerifier: string },
+): Promise<{ accessToken: string; tokenType: "Bearer"; expiresIn: number; scope: string; record: OAuthAccessTokenRecord }> {
+  const codeHash = await sha256Hex(input.code.trim());
+  const row = await db.prepare("SELECT * FROM oauth_authorization_codes WHERE code_hash = ?").bind(codeHash).first<OAuthAuthorizationCodeRow>();
+  if (!row) throw new Error("Invalid authorization code");
+  if (row.consumed_at) throw new Error("Authorization code has already been used");
+  if (new Date(row.expires_at).getTime() <= Date.now()) throw new Error("Authorization code has expired");
+  if (row.client_id !== input.clientId) throw new Error("client_id does not match authorization code");
+  if (row.redirect_uri !== input.redirectUri) throw new Error("redirect_uri does not match authorization code");
+  if (row.resource !== input.resource) throw new Error("resource does not match authorization code");
+  if (!(await verifyPkce(input.codeVerifier, row.code_challenge))) throw new Error("code_verifier does not match authorization code");
+
+  const consumedAt = new Date().toISOString();
+  await db.prepare("UPDATE oauth_authorization_codes SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL").bind(consumedAt, row.id).run();
+
+  const scopes = parseAutomationScopes(row.scopes_json);
+  const tokenId = `oauth-token-${consumedAt.replace(/[^0-9a-z]/gi, "-").toLowerCase()}-${crypto.randomUUID().slice(0, 8)}`;
+  const accessToken = `bcoauth_${tokenId}.${randomBase64Url(32)}`;
+  const tokenHash = await sha256Hex(accessToken);
+  const expiresIn = 60 * 60;
+  const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+
+  await db
+    .prepare(
+      `INSERT INTO oauth_access_tokens (
+         id, user_id, client_id, token_hash, resource, scopes_json, expires_at, created_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(tokenId, row.user_id, row.client_id, tokenHash, row.resource, JSON.stringify(scopes), expiresAt, consumedAt)
+    .run();
+
+  const record = await getOAuthAccessTokenById(db, row.user_id, tokenId);
+  if (!record) throw new Error("Could not issue access token");
+  return { accessToken, tokenType: "Bearer", expiresIn, scope: scopes.join(" "), record };
+}
+
+export async function authenticateOAuthAccessToken(
+  db: D1Database,
+  rawToken: string,
+  resource: string,
+): Promise<AuthenticatedAutomationToken | null> {
+  const token = rawToken.trim();
+  if (!token.startsWith("bcoauth_") || token.length < 80) return null;
+  const tokenHash = await sha256Hex(token);
+  const row = await db
+    .prepare(
+      `SELECT * FROM oauth_access_tokens
+       WHERE token_hash = ? AND revoked_at IS NULL`,
+    )
+    .bind(tokenHash)
+    .first<OAuthAccessTokenRow>();
+  if (!row) return null;
+  if (new Date(row.expires_at).getTime() <= Date.now()) return null;
+  if (row.resource !== resource) return null;
+  return {
+    id: row.id,
+    userId: row.user_id,
+    label: `OAuth client ${row.client_id}`,
+    scopes: parseAutomationScopes(row.scopes_json),
+    createdAt: row.created_at,
+    kind: "oauth",
+    clientId: row.client_id,
+    resource: row.resource,
+    expiresAt: row.expires_at,
+    automationTokenId: null,
+  };
+}
+
+export async function touchOAuthAccessToken(db: D1Database, tokenId: string): Promise<void> {
+  await db.prepare("UPDATE oauth_access_tokens SET last_used_at = ? WHERE id = ?").bind(new Date().toISOString(), tokenId).run();
+}
+
+export async function revokeOAuthAccessToken(db: D1Database, rawToken: string): Promise<boolean> {
+  const token = rawToken.trim();
+  if (!token.startsWith("bcoauth_")) return false;
+  const tokenHash = await sha256Hex(token);
+  const revokedAt = new Date().toISOString();
+  const result = await db
+    .prepare("UPDATE oauth_access_tokens SET revoked_at = COALESCE(revoked_at, ?) WHERE token_hash = ?")
+    .bind(revokedAt, tokenHash)
+    .run();
+  return Boolean(result.meta.changes);
+}
+
+export async function listOAuthAccessTokens(db: D1Database, userId: string, limit = 100): Promise<OAuthAccessTokenRecord[]> {
+  const { results } = await db
+    .prepare("SELECT * FROM oauth_access_tokens WHERE user_id = ? ORDER BY created_at DESC LIMIT ?")
+    .bind(userId, Math.max(1, Math.min(500, Math.floor(limit))))
+    .all<OAuthAccessTokenRow>();
+  return results.map(oauthAccessTokenFromRow);
 }
 
 export async function recordAutomationEvent(
@@ -1297,7 +1548,7 @@ export async function getLatestRun(db: D1Database, scope: UserScope): Promise<Ru
 }
 
 export async function exportAccount(db: D1Database, scope: UserScope): Promise<AccountExport> {
-  const [user, feedback, runs, agentRuns, aiUsageEvents, runnerTasks, automationTokens, automationEvents] = await Promise.all([
+  const [user, feedback, runs, agentRuns, aiUsageEvents, runnerTasks, automationTokens, oauthAccessTokens, automationEvents] = await Promise.all([
     getUserPayload(db, scope.userId),
     exportFeedback(db, scope),
     getRuns(db, scope),
@@ -1305,6 +1556,7 @@ export async function exportAccount(db: D1Database, scope: UserScope): Promise<A
     getAiUsageEvents(db, scope.userId, 500),
     getRunnerTasks(db, scope.userId, 500),
     listAutomationTokens(db, scope.userId, 100),
+    listOAuthAccessTokens(db, scope.userId, 500),
     getAutomationEvents(db, scope.userId, 500),
   ]);
   return {
@@ -1318,6 +1570,7 @@ export async function exportAccount(db: D1Database, scope: UserScope): Promise<A
     aiUsageEvents,
     runnerTasks,
     automationTokens,
+    oauthAccessTokens,
     automationEvents,
   };
 }
@@ -1335,11 +1588,15 @@ export async function deleteAccountData(db: D1Database, userId: string): Promise
     runs: await countRows(db, "SELECT COUNT(*) AS count FROM runs WHERE user_id = ?", userId),
     agentRuns: await countRows(db, "SELECT COUNT(*) AS count FROM agent_runs WHERE user_id = ?", userId),
     automationTokens: await countRows(db, "SELECT COUNT(*) AS count FROM automation_tokens WHERE user_id = ?", userId),
+    oauthAuthorizationCodes: await countRows(db, "SELECT COUNT(*) AS count FROM oauth_authorization_codes WHERE user_id = ?", userId),
+    oauthAccessTokens: await countRows(db, "SELECT COUNT(*) AS count FROM oauth_access_tokens WHERE user_id = ?", userId),
     automationEvents: await countRows(db, "SELECT COUNT(*) AS count FROM automation_events WHERE user_id = ?", userId),
   };
 
   await db.prepare("DELETE FROM automation_events WHERE user_id = ?").bind(userId).run();
   await db.prepare("DELETE FROM automation_tokens WHERE user_id = ?").bind(userId).run();
+  await db.prepare("DELETE FROM oauth_access_tokens WHERE user_id = ?").bind(userId).run();
+  await db.prepare("DELETE FROM oauth_authorization_codes WHERE user_id = ?").bind(userId).run();
   await db.prepare("DELETE FROM run_listings WHERE run_id IN (SELECT id FROM runs WHERE user_id = ?)").bind(userId).run();
   await db.prepare("DELETE FROM runs WHERE user_id = ?").bind(userId).run();
   await db.prepare("DELETE FROM feedback WHERE user_id = ?").bind(userId).run();
@@ -1925,6 +2182,20 @@ function automationEventFromRow(row: AutomationEventRow): AutomationEventRecord 
   };
 }
 
+function oauthAccessTokenFromRow(row: OAuthAccessTokenRow): OAuthAccessTokenRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    clientId: row.client_id,
+    resource: row.resource,
+    scopes: parseAutomationScopes(row.scopes_json),
+    lastUsedAt: row.last_used_at,
+    revokedAt: row.revoked_at,
+    expiresAt: row.expires_at,
+    createdAt: row.created_at,
+  };
+}
+
 function sourceIngestionRunFromRow(row: SourceIngestionRunRow): SourceIngestionRun {
   return {
     id: row.id,
@@ -2041,6 +2312,51 @@ function parseAutomationScopes(value: string): AutomationScope[] {
 
 function isAutomationScope(value: unknown): value is AutomationScope {
   return value === "setup:read" || value === "sources:read" || value === "runs:publish" || value === "usage:write" || value === "events:read";
+}
+
+async function getOAuthAccessTokenById(db: D1Database, userId: string, id: string): Promise<OAuthAccessTokenRecord | null> {
+  const row = await db.prepare("SELECT * FROM oauth_access_tokens WHERE user_id = ? AND id = ?").bind(userId, id).first<OAuthAccessTokenRow>();
+  return row ? oauthAccessTokenFromRow(row) : null;
+}
+
+function scopeStringToAutomationScopes(value: string): AutomationScope[] {
+  if (!value.trim()) return [];
+  const scopes = value.split(/\s+/).filter(isAutomationScope);
+  return [...new Set(scopes)];
+}
+
+function normalizeRedirectUris(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const uris = value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(isAllowedRedirectUri);
+  return [...new Set(uris)].slice(0, 20);
+}
+
+function isAllowedRedirectUri(value: string): boolean {
+  try {
+    const url = new URL(value);
+    if (url.hash) return false;
+    if (url.protocol === "https:") return true;
+    if (url.protocol === "http:" && ["localhost", "127.0.0.1", "::1"].includes(url.hostname)) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function isValidPkceChallenge(value: string): boolean {
+  return /^[A-Za-z0-9_-]{43,128}$/.test(value);
+}
+
+async function verifyPkce(codeVerifier: string, codeChallenge: string): Promise<boolean> {
+  if (!/^[A-Za-z0-9._~-]{43,128}$/.test(codeVerifier)) return false;
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(codeVerifier));
+  let binary = "";
+  for (const byte of new Uint8Array(hash)) binary += String.fromCharCode(byte);
+  const derived = btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  return derived === codeChallenge;
 }
 
 function parseObject(value: string): Record<string, unknown> {

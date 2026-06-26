@@ -28,6 +28,11 @@ check(
   Array.isArray(wrangler?.assets?.run_worker_first) && wrangler.assets.run_worker_first.includes("/.well-known/*"),
   "Add /.well-known/* to assets.run_worker_first so OAuth protected-resource metadata is not served by the SPA fallback.",
 );
+check(
+  "OAuth routes run through Worker",
+  Array.isArray(wrangler?.assets?.run_worker_first) && wrangler.assets.run_worker_first.includes("/oauth/*"),
+  "Add /oauth/* to assets.run_worker_first so authorization, token, registration, and revocation endpoints are not served by the SPA fallback.",
+);
 check("BeachcarAgent Durable Object binding exists", hasClassBinding(wrangler?.durable_objects?.bindings, "BeachcarAgent"), "Add BeachcarAgent Durable Object binding.");
 check(
   "Container Durable Object binding exists",
@@ -51,6 +56,7 @@ check("AI usage migration is present", migrationFiles.includes("0006_ai_usage.sq
 check("Runner tasks migration is present", migrationFiles.includes("0007_runner_tasks.sql"), "Add/apply 0007_runner_tasks.sql.");
 check("Remote MCP automation migration is present", migrationFiles.includes("0008_remote_mcp_automation.sql"), "Add/apply 0008_remote_mcp_automation.sql.");
 check("Source cache migration is present", migrationFiles.includes("0009_source_cache.sql"), "Add/apply 0009_source_cache.sql.");
+check("MCP OAuth migration is present", migrationFiles.includes("0010_mcp_oauth.sql"), "Add/apply 0010_mcp_oauth.sql.");
 check("Preflight script is available", !!packageJson?.scripts?.preflight, "Add bun run preflight.");
 check("Local Worker preflight script is available", !!packageJson?.scripts?.["preflight:local"], "Add bun run preflight:local.");
 check("Full preflight script is available", !!packageJson?.scripts?.["preflight:full"], "Add bun run preflight:full.");

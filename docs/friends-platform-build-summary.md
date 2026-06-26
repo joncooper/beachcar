@@ -568,6 +568,14 @@ Improvement: Updated `.agents/skills/beachcar-daily-run/SKILL.md`, its OpenAI UI
 
 Verification: `uv run --with PyYAML python /Users/jdc/.codex/skills/.system/skill-creator/scripts/quick_validate.py .agents/skills/beachcar-daily-run` passed. `node --check src/worker/automation-bundle.ts` passed.
 
+### App/architecture pass 50: MCP OAuth authorization-code preview
+
+Review: MCP OAuth protected-resource discovery existed, but cloud clients still needed a manually copied `bcauto_...` token because the Worker had no authorization server metadata, client registration, authorization-code issuance, token exchange, or token revocation path.
+
+Improvement: Added `0010_mcp_oauth.sql`, D1 helpers for OAuth clients/codes/access tokens, `src/worker/oauth-server.ts`, authorization-server metadata at `/.well-known/oauth-authorization-server`, dynamic public-client registration at `/oauth/register`, signed-in authorization-code issuance at `/oauth/authorize`, S256 PKCE token exchange at `/oauth/token`, revocation at `/oauth/revoke`, and MCP acceptance of short-lived `bcoauth_...` access tokens. OAuth tokens are hashed at rest, expire after one hour, are audience-bound to the exact `/mcp` resource, and leave automation events with OAuth metadata while preserving the existing manual token path.
+
+Verification: Applied `0010_mcp_oauth.sql` locally. `bun run cloudflare:verify -- --url http://127.0.0.1:8787` registered a public client, completed authorization-code + S256 PKCE with local test auth, exchanged a short-lived access token, used it for MCP `tools/list`, revoked it, and verified the revoked token was rejected. Direct curl probes verified both protected-resource metadata and authorization-server metadata.
+
 ## Screenshots
 
 Invite gate, desktop:

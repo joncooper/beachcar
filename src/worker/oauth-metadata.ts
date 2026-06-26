@@ -22,6 +22,7 @@ export function mcpProtectedResourceMetadata(request: Request): Record<string, u
     resource,
     resource_name: "Beachcar Remote MCP",
     resource_documentation: new URL("/api/automation/bundle", request.url).toString(),
+    authorization_servers: [new URL(request.url).origin],
     scopes_supported: defaultAutomationScopes,
     bearer_methods_supported: ["header"],
     mcp_protocol_versions_supported: ["2025-06-18", "2025-03-26"],

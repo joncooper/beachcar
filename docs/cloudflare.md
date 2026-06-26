@@ -46,7 +46,7 @@ After a local or remote Worker is running, verify the public app and MCP surface
 BEACHCAR_DEPLOY_URL=https://beachcar-watch.<your-subdomain>.workers.dev bun run cloudflare:verify
 ```
 
-The verifier does not create, migrate, or deploy anything. It checks the app shell, `GET /mcp`, OAuth protected-resource metadata, the unauthenticated MCP `WWW-Authenticate` challenge, and remote rejection of `X-Beachcar-Test-Email`. Optional environment variables extend the smoke:
+The verifier does not create, migrate, or deploy anything. It checks the app shell, `GET /mcp`, OAuth protected-resource metadata, authorization-server metadata, the unauthenticated MCP `WWW-Authenticate` challenge, and remote rejection of `X-Beachcar-Test-Email`. Against localhost, or against a deployed URL with `BEACHCAR_CLERK_TOKEN`, it also runs a full dynamic-client registration + authorization-code + S256 PKCE + MCP `tools/list` + revoke smoke. Optional environment variables extend the smoke:
 
 - `BEACHCAR_CLERK_TOKEN`: verifies signed-in `/api/me` and `/api/automation/status`.
 - `PUBLISH_TOKEN`: verifies admin source-cache status.

@@ -13,7 +13,7 @@ Authenticate with the Beachcar automation token as a Bearer token. The token is 
 
 - Connect to the hosted `/mcp` endpoint supplied by Beachcar or by the downloaded skill bundle.
 - Send the Beachcar automation token as `Authorization: Bearer <token>`.
-- If the client supports OAuth protected-resource discovery, use the `WWW-Authenticate` metadata challenge from `/mcp`; the current preview still authenticates with the scoped token.
+- If the client supports OAuth protected-resource discovery, use the `WWW-Authenticate` metadata challenge from `/mcp` and complete authorization-code + PKCE. Use the scoped token fallback only when the client cannot complete OAuth.
 - If hosted MCP tools are unavailable in the current environment, stop and tell the user the agent needs MCP tool access. Do not replace MCP publishing with a local server or an untracked API call.
 
 ## Workflow

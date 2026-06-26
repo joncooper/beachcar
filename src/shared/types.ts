@@ -191,6 +191,18 @@ export interface AutomationTokenRecord {
   createdAt: string;
 }
 
+export interface OAuthAccessTokenRecord {
+  id: string;
+  userId: string;
+  clientId: string;
+  resource: string;
+  scopes: AutomationScope[];
+  lastUsedAt?: string | null;
+  revokedAt?: string | null;
+  expiresAt: string;
+  createdAt: string;
+}
+
 export interface AutomationTokenCreateResult {
   token: string;
   record: AutomationTokenRecord;
@@ -211,8 +223,12 @@ export interface AutomationStatus {
   bundleEndpoint: string;
   protectedResourceMetadataEndpoint: string;
   oauth: {
-    status: "planned" | "metadata_ready";
+    status: "planned" | "metadata_ready" | "authorization_code_ready";
     protectedResourceMetadataEndpoint?: string;
+    authorizationServerMetadataEndpoint?: string;
+    authorizationEndpoint?: string;
+    tokenEndpoint?: string;
+    registrationEndpoint?: string;
     message: string;
   };
   defaultScopes: AutomationScope[];
@@ -318,6 +334,7 @@ export interface AccountExport {
   aiUsageEvents: AiUsageEventRecord[];
   runnerTasks: RunnerTaskRecord[];
   automationTokens: AutomationTokenRecord[];
+  oauthAccessTokens: OAuthAccessTokenRecord[];
   automationEvents: AutomationEventRecord[];
 }
 
@@ -336,6 +353,8 @@ export interface AccountDeletionResult {
     runs: number;
     agentRuns: number;
     automationTokens: number;
+    oauthAuthorizationCodes: number;
+    oauthAccessTokens: number;
     automationEvents: number;
   };
 }

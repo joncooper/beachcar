@@ -328,6 +328,7 @@ async function smokeAccountExportAndDeletion() {
   assert(Array.isArray(account.runs) && account.runs.some((run) => run.id === friendPublished.progress.publishedRunId), "Expected account export to include the Workflow-published run.");
   assert(Array.isArray(account.runs) && account.runs.some((run) => run.id === mcpRun.runId), "Expected account export to include the MCP-published run.");
   assert(Array.isArray(account.automationTokens) && account.automationTokens.some((token) => token.id === mcpRun.tokenId && token.revokedAt), "Expected account export to include revoked automation tokens.");
+  assert(Array.isArray(account.oauthAccessTokens) && account.oauthAccessTokens.some((token) => token.id === mcpRun.oauthAccessTokenId && token.revokedAt), "Expected account export to include revoked OAuth access tokens.");
   assert(Array.isArray(account.automationEvents) && account.automationEvents.some((event) => event.eventType === "tool.publish_run"), "Expected account export to include automation events.");
   assert(account.feedback?.kind === "auction-watch-feedback", "Expected account export to include feedback export payload.");
   assert(Array.isArray(account.agentRuns) && account.agentRuns.some((run) => run.id === friendRun.id), "Expected account export to include agent run history.");
@@ -345,6 +346,7 @@ async function smokeAccountExportAndDeletion() {
   assert(deleted.deleted.runs >= 1, "Expected account deletion to remove user-scoped runs.");
   assert(deleted.deleted.agentRuns >= 1, "Expected account deletion to remove agent runs.");
   assert(deleted.deleted.automationTokens >= 1, "Expected account deletion to remove automation tokens.");
+  assert(deleted.deleted.oauthAccessTokens >= 1, "Expected account deletion to remove OAuth access tokens.");
   assert(deleted.deleted.automationEvents >= 1, "Expected account deletion to remove automation events.");
 
   const deletedMe = await requestJson("/api/me", { email: friendEmail });
@@ -367,12 +369,21 @@ async function smokeRemoteMcp(friendEmail) {
     typeof status.protectedResourceMetadataEndpoint === "string" && status.protectedResourceMetadataEndpoint.endsWith("/.well-known/oauth-protected-resource/mcp"),
     "Expected automation status to include the OAuth protected-resource metadata endpoint.",
   );
-  assert(status.oauth?.status === "metadata_ready", "Expected automation status to describe OAuth metadata readiness.");
+  assert(status.oauth?.status === "authorization_code_ready", "Expected automation status to describe OAuth authorization-code readiness.");
+  assert(typeof status.oauth?.authorizationServerMetadataEndpoint === "string", "Expected automation status to include the OAuth authorization-server metadata endpoint.");
+  assert(typeof status.oauth?.authorizationEndpoint === "string", "Expected automation status to include the OAuth authorization endpoint.");
+  assert(typeof status.oauth?.tokenEndpoint === "string", "Expected automation status to include the OAuth token endpoint.");
+  assert(typeof status.oauth?.registrationEndpoint === "string", "Expected automation status to include the OAuth registration endpoint.");
 
   const metadata = await requestJson("/.well-known/oauth-protected-resource/mcp", { email: friendEmail });
   assert(metadata.resource === status.mcpEndpoint, "Expected protected-resource metadata to describe the MCP endpoint as the resource.");
+  assert(Array.isArray(metadata.authorization_servers) && metadata.authorization_servers.includes(baseUrl), "Expected protected-resource metadata to advertise this authorization server.");
   assert(Array.isArray(metadata.scopes_supported) && metadata.scopes_supported.includes("runs:publish"), "Expected protected-resource metadata to list MCP scopes.");
   assert(Array.isArray(metadata.bearer_methods_supported) && metadata.bearer_methods_supported.includes("header"), "Expected metadata to advertise header bearer tokens.");
+  const authServer = await requestJson("/.well-known/oauth-authorization-server", { email: friendEmail });
+  assert(authServer.authorization_endpoint === `${baseUrl}/oauth/authorize`, "Expected authorization-server metadata to advertise the authorization endpoint.");
+  assert(authServer.token_endpoint === `${baseUrl}/oauth/token`, "Expected authorization-server metadata to advertise the token endpoint.");
+  assert(Array.isArray(authServer.code_challenge_methods_supported) && authServer.code_challenge_methods_supported.includes("S256"), "Expected authorization-server metadata to advertise S256 PKCE support.");
 
   const unauthorized = await rawRequest("/mcp", {
     method: "POST",
@@ -382,6 +393,8 @@ async function smokeRemoteMcp(friendEmail) {
   assert(unauthorized.status === 401, `Expected unauthenticated MCP request to return HTTP 401; received ${unauthorized.status}.`);
   assert(challenge.includes("resource_metadata="), "Expected unauthenticated MCP response to advertise resource metadata.");
   assert(challenge.includes("/.well-known/oauth-protected-resource/mcp"), "Expected MCP auth challenge to point at the protected-resource metadata endpoint.");
+
+  const oauthRun = await smokeOAuthMcp(friendEmail, status.mcpEndpoint);
 
   const created = await requestJson("/api/automation/tokens", {
     email: friendEmail,
@@ -451,7 +464,67 @@ async function smokeRemoteMcp(friendEmail) {
   const revokedStatus = await requestJson("/api/automation/status", { email: friendEmail });
   assert(revokedStatus.tokens.some((token) => token.id === created.record.id && token.revokedAt), "Expected automation status to show the revoked token.");
 
-  return { runId, tokenId: created.record.id, gatewayRequestId };
+  return { runId, tokenId: created.record.id, oauthAccessTokenId: oauthRun.oauthAccessTokenId, gatewayRequestId };
+}
+
+async function smokeOAuthMcp(friendEmail, resource) {
+  const scope = "setup:read sources:read runs:publish usage:write events:read";
+  const redirectUri = "http://127.0.0.1:8787/oauth/callback-smoke";
+  const registered = await requestJson("/oauth/register", {
+    method: "POST",
+    body: {
+      client_name: "Local smoke OAuth MCP client",
+      redirect_uris: [redirectUri],
+      scope,
+      token_endpoint_auth_method: "none",
+    },
+  });
+  assert(typeof registered.client_id === "string", "Expected OAuth client registration to return a client_id.");
+  const verifier = randomBase64Url(48);
+  const challenge = await pkceChallenge(verifier);
+  const authorizeUrl = new URL(`${baseUrl}/oauth/authorize`);
+  authorizeUrl.searchParams.set("response_type", "code");
+  authorizeUrl.searchParams.set("client_id", registered.client_id);
+  authorizeUrl.searchParams.set("redirect_uri", redirectUri);
+  authorizeUrl.searchParams.set("scope", scope);
+  authorizeUrl.searchParams.set("state", "local-smoke-oauth");
+  authorizeUrl.searchParams.set("resource", resource);
+  authorizeUrl.searchParams.set("code_challenge", challenge);
+  authorizeUrl.searchParams.set("code_challenge_method", "S256");
+  const authorize = await fetch(authorizeUrl, {
+    headers: { "X-Beachcar-Test-Email": friendEmail },
+    redirect: "manual",
+  });
+  const location = authorize.headers.get("location") || "";
+  const redirected = location ? new URL(location) : null;
+  const code = redirected?.searchParams.get("code") || "";
+  assert(authorize.status === 302 && code, `Expected OAuth authorize to redirect with a code; received HTTP ${authorize.status}.`);
+  assert(redirected?.searchParams.get("state") === "local-smoke-oauth", "Expected OAuth authorize to preserve state.");
+  const token = await requestJson("/oauth/token", {
+    method: "POST",
+    body: {
+      grant_type: "authorization_code",
+      code,
+      client_id: registered.client_id,
+      redirect_uri: redirectUri,
+      resource,
+      code_verifier: verifier,
+    },
+  });
+  assert(typeof token.access_token === "string" && token.access_token.startsWith("bcoauth_"), "Expected OAuth token exchange to return a Beachcar OAuth access token.");
+  const oauthTools = await mcpRequest(token.access_token, "tools/list");
+  assert(Array.isArray(oauthTools.tools) && oauthTools.tools.some((tool) => tool.name === "publish_run"), "Expected OAuth MCP tools/list to expose publish_run.");
+  await requestJson("/oauth/revoke", {
+    method: "POST",
+    body: { token: token.access_token },
+  });
+  const revoked = await rawRequest("/mcp", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token.access_token}` },
+    body: { jsonrpc: "2.0", id: "smoke-oauth-revoked", method: "tools/list" },
+  });
+  assert(revoked.status === 401, `Expected revoked OAuth access token to be rejected; received HTTP ${revoked.status}.`);
+  return { oauthAccessTokenId: token.access_token.match(/^bcoauth_([^.]*)\./)?.[1] || null };
 }
 
 async function mcpTool(token, name, args) {
@@ -550,6 +623,23 @@ async function readResponse(response) {
 function numberFromEnv(key, fallback) {
   const parsed = Number(process.env[key] || "");
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+async function pkceChallenge(verifier) {
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  return base64Url(new Uint8Array(hash));
+}
+
+function randomBase64Url(byteLength) {
+  const bytes = new Uint8Array(byteLength);
+  crypto.getRandomValues(bytes);
+  return base64Url(bytes);
+}
+
+function base64Url(bytes) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
 function unquote(value) {

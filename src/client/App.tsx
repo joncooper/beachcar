@@ -626,9 +626,13 @@ function demoAutomationStatus(): AutomationStatus {
     bundleEndpoint: "https://beachcar-watch.example.workers.dev/api/automation/bundle",
     protectedResourceMetadataEndpoint: "https://beachcar-watch.example.workers.dev/.well-known/oauth-protected-resource/mcp",
     oauth: {
-      status: "metadata_ready",
+      status: "authorization_code_ready",
       protectedResourceMetadataEndpoint: "https://beachcar-watch.example.workers.dev/.well-known/oauth-protected-resource/mcp",
-      message: "OAuth protected-resource discovery is available; this preview uses revocable scoped automation tokens until the authorization flow is enabled.",
+      authorizationServerMetadataEndpoint: "https://beachcar-watch.example.workers.dev/.well-known/oauth-authorization-server",
+      authorizationEndpoint: "https://beachcar-watch.example.workers.dev/oauth/authorize",
+      tokenEndpoint: "https://beachcar-watch.example.workers.dev/oauth/token",
+      registrationEndpoint: "https://beachcar-watch.example.workers.dev/oauth/register",
+      message: "OAuth protected-resource discovery and authorization-code + PKCE endpoints are available; scoped automation tokens remain available for preview clients.",
     },
     defaultScopes: ["setup:read", "sources:read", "runs:publish", "usage:write", "events:read"],
     tokens: [
@@ -2014,6 +2018,12 @@ function AutomationSettingsPanel(props: { demoStatus?: AutomationStatus }) {
         <ShieldCheck size={18} aria-hidden="true" />
         <span>{status?.protectedResourceMetadataEndpoint || status?.oauth.protectedResourceMetadataEndpoint || "Loading OAuth resource metadata..."}</span>
       </div>
+      {status?.oauth.authorizationServerMetadataEndpoint ? (
+        <div className="automation-endpoint">
+          <ShieldCheck size={18} aria-hidden="true" />
+          <span>{status.oauth.authorizationServerMetadataEndpoint}</span>
+        </div>
+      ) : null}
       <div className="automation-actions">
         <button disabled={pending !== null} type="button" onClick={createToken}>
           <KeyRound size={16} aria-hidden="true" />

@@ -3,6 +3,7 @@ import { normalizeListing } from "../shared/normalize";
 import { userIdForEmail } from "./auth";
 import {
   authenticateAutomationToken,
+  authenticateOAuthAccessToken,
   exportFeedback,
   getAiUsageEvents,
   getAiUsageSummary,
@@ -13,6 +14,7 @@ import {
   recordAiUsageEvent,
   recordAutomationEvent,
   touchAutomationToken,
+  touchOAuthAccessToken,
   type AuthenticatedAutomationToken,
   type UserScope,
 } from "./db";
@@ -184,7 +186,11 @@ export async function handleMcpRequest(request: Request, env: Env, ctx: Executio
   if (!session) return mcpUnauthorizedError(request, rpc.id);
   if (session.user.status !== "active") return jsonRpcError(rpc.id, -32003, "User account is not active", 403);
 
-  await touchAutomationToken(env.DB, session.token.id);
+  if (session.token.kind === "oauth") {
+    await touchOAuthAccessToken(env.DB, session.token.id);
+  } else {
+    await touchAutomationToken(env.DB, session.token.id);
+  }
 
   if (rpc.method === "initialize") {
     return jsonRpcResult(rpc.id, {
@@ -359,7 +365,9 @@ async function publishRun(session: McpSession, env: Env, ctx: ExecutionContext, 
     sourceSummary: {
       ...providedSummary,
       publisher: "remote-mcp",
-      automationTokenId: session.token.id,
+      automationTokenId: session.token.automationTokenId ?? (session.token.kind === "oauth" ? null : session.token.id),
+      oauthAccessTokenId: session.token.kind === "oauth" ? session.token.id : null,
+      oauthClientId: session.token.clientId || null,
       automationTokenLabel: session.token.label,
       publishedAt: new Date().toISOString(),
     },
@@ -384,7 +392,9 @@ async function recordUsage(session: McpSession, env: Env, args: Record<string, u
   assertScope(session, "usage:write");
   const metadata = {
     ...recordFromUnknown(args.metadata),
-    automationTokenId: session.token.id,
+    automationTokenId: session.token.automationTokenId ?? (session.token.kind === "oauth" ? null : session.token.id),
+    oauthAccessTokenId: session.token.kind === "oauth" ? session.token.id : null,
+    oauthClientId: session.token.clientId || null,
     automationTokenLabel: session.token.label,
   };
   const event = await recordAiUsageEvent(env.DB, {
@@ -426,7 +436,9 @@ async function listAutomationEvents(session: McpSession, env: Env, args: Record<
 async function authenticateMcpSession(request: Request, env: Env): Promise<McpSession | null> {
   const rawToken = bearerToken(request);
   if (!rawToken) return null;
-  const token = await authenticateAutomationToken(env.DB, rawToken);
+  const token = rawToken.startsWith("bcoauth_")
+    ? await authenticateOAuthAccessToken(env.DB, rawToken, new URL("/mcp", request.url).toString())
+    : await authenticateAutomationToken(env.DB, rawToken);
   if (!token) return null;
   const user = await getUserPayload(env.DB, token.userId);
   return {
@@ -442,10 +454,15 @@ async function authenticateMcpSession(request: Request, env: Env): Promise<McpSe
 async function recordToolEvent(env: Env, session: McpSession, eventType: string, metadata: Record<string, unknown>): Promise<void> {
   await recordAutomationEvent(env.DB, {
     userId: session.token.userId,
-    tokenId: session.token.id,
+    tokenId: session.token.kind === "oauth" ? null : session.token.id,
     actor: "remote-mcp",
     eventType,
-    metadata,
+    metadata: {
+      ...metadata,
+      authKind: session.token.kind || "manual",
+      oauthAccessTokenId: session.token.kind === "oauth" ? session.token.id : null,
+      oauthClientId: session.token.clientId || null,
+    },
   });
 }
 

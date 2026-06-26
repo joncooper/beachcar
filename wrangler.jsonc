@@ -72,6 +72,9 @@
       "migrations_dir": "./migrations"
     }
   ],
+  "images": {
+    "binding": "IMAGE_TRANSFORMER"
+  },
   "r2_buckets": [
     {
       "binding": "IMAGES",

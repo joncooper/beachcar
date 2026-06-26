@@ -56,7 +56,9 @@ const result = {
 };
 
 await runPool(selectedTasks, concurrency, async (task) => {
-  const response = await fetch(`${baseUrl}/api/images/${encodeURIComponent(task.imageKey)}?variant=${encodeURIComponent(task.variant)}`, {
+  const params = new URLSearchParams({ variant: task.variant });
+  if (force) params.set("refresh", "1");
+  const response = await fetch(`${baseUrl}/api/images/${encodeURIComponent(task.imageKey)}?${params}`, {
     headers: imageAccessHeaders(),
   });
   const body = await response.arrayBuffer().catch(() => new ArrayBuffer(0));

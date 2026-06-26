@@ -83,7 +83,7 @@ struct ShadeDossierOverlay: View {
 
   private var hero: some View {
     ZStack(alignment: .bottomLeading) {
-      CachedRemoteImage(url: api.resolvedImageURL(car.images.first ?? "", variant: .deck)) { img in
+      CachedRemoteImage(url: api.resolvedImageURL(car.displayImages.first ?? "", variant: .deck)) { img in
         img.resizable().scaledToFill()
       } placeholder: {
         BC.imageBg

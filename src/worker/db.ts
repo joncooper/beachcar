@@ -1593,8 +1593,14 @@ export async function mergeListingsIntoRun(
   let inserted = 0;
 
   for (const raw of listings) {
-    const listing = normalizeListing(raw);
-    const listingKey = await listingKeyFor(listing.site, listing.url, listing.title);
+    const candidate = normalizeListing(raw);
+    const explicitKey = typeof raw.listingKey === "string" && raw.listingKey.trim() ? raw.listingKey.trim() : null;
+    const listingKey = explicitKey || (await listingKeyFor(candidate.site, candidate.url, candidate.title));
+    const existing = await db
+      .prepare("SELECT sort_order, payload_json FROM run_listings WHERE run_id = ? AND listing_key = ?")
+      .bind(runId, listingKey)
+      .first<{ sort_order: number; payload_json: string }>();
+    const listing = existing ? normalizeListing(mergeListingPayload(existing.payload_json, raw)) : candidate;
     const now = new Date().toISOString();
     const payloadJson = JSON.stringify({ ...listing, listingKey });
 
@@ -1612,11 +1618,6 @@ export async function mergeListingsIntoRun(
       )
       .bind(listingKey, listing.site, listing.title, listing.url, listing.lane, now, now, payloadJson)
       .run();
-
-    const existing = await db
-      .prepare("SELECT sort_order FROM run_listings WHERE run_id = ? AND listing_key = ?")
-      .bind(runId, listingKey)
-      .first<{ sort_order: number }>();
 
     if (existing) {
       await db
@@ -1653,6 +1654,34 @@ export async function mergeListingsIntoRun(
   }
 
   return { runId, patched, inserted, images };
+}
+
+function mergeListingPayload(existingPayloadJson: string, patch: Partial<AuctionListing>): Partial<AuctionListing> {
+  let existing: Partial<AuctionListing> = {};
+  try {
+    const parsed = JSON.parse(existingPayloadJson) as unknown;
+    if (isPlainRecord(parsed)) existing = parsed as Partial<AuctionListing>;
+  } catch {
+    existing = {};
+  }
+
+  const merged: Partial<AuctionListing> = { ...existing, ...patch };
+  const existingDossier = isPlainRecord(existing.dossier) ? existing.dossier : {};
+  const patchDossier = isPlainRecord(patch.dossier) ? patch.dossier : null;
+  if (patchDossier) {
+    const dossier: Record<string, unknown> = { ...existingDossier, ...patchDossier };
+    for (const key of ["specs", "beachUse"]) {
+      const baseNested = isPlainRecord(existingDossier[key]) ? existingDossier[key] : {};
+      const patchNested = isPlainRecord(patchDossier[key]) ? patchDossier[key] : null;
+      if (patchNested) dossier[key] = { ...baseNested, ...patchNested };
+    }
+    merged.dossier = dossier as AuctionListing["dossier"];
+  }
+  return merged;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 /** Resolves the concrete published run id for an agent run, via progress.publishedRunId. */

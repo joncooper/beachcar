@@ -58,9 +58,11 @@ struct ShadeListOverlay: View {
               .padding(.horizontal, 24).padding(.vertical, 48)
           } else {
             ForEach(rows, id: \.car.id) { row in
-              ListRow(car: row.car, index: row.index, isCurrent: row.index == controller.idx,
-                      feedback: feedbackByKey[row.car.key], api: api)
-                .onTapGesture { controller.jump(to: row.index) }
+              Button { controller.jump(to: row.index) } label: {
+                ListRow(car: row.car, index: row.index, isCurrent: row.index == controller.idx,
+                        feedback: feedbackByKey[row.car.key], api: api)
+              }
+                .buttonStyle(.plain)
                 .accessibilityIdentifier("shade-list-row-\(row.car.id)")
             }
           }
@@ -76,7 +78,6 @@ struct ShadeListOverlay: View {
     .offset(y: offsetY)
     .animation(pulling ? nil : .overlaySpring, value: controller.listOpen)
     .allowsHitTesting(controller.listOpen)
-    .accessibilityIdentifier("shade-list-overlay")
   }
 
   private var header: some View {
@@ -219,7 +220,7 @@ private struct ListRow: View {
 
   @ViewBuilder
   private var thumbnail: some View {
-    if let first = car.images.first {
+    if let first = car.displayImages.first {
       CachedRemoteImage(url: api.resolvedImageURL(first, variant: .thumb)) { img in
         img.resizable().scaledToFill()
       } placeholder: {

@@ -41,13 +41,17 @@ struct PhotoCarousel: View {
   var showsThumbnails = true
   var emptyStyle: PhotoEmptyStyle = .standard
 
+  private var imageURLs: [String] {
+    listing.displayImages
+  }
+
   var body: some View {
     ZStack(alignment: .topTrailing) {
-      if listing.images.isEmpty {
+      if imageURLs.isEmpty {
         PhotoPlaceholder(style: emptyStyle)
       } else {
         TabView(selection: $selectedImage) {
-          ForEach(Array(listing.images.enumerated()), id: \.offset) { index, image in
+          ForEach(Array(imageURLs.enumerated()), id: \.offset) { index, image in
             CachedRemoteImage(url: api.resolvedImageURL(image, variant: .deck)) { image in
               image
                 .resizable()
@@ -73,12 +77,12 @@ struct PhotoCarousel: View {
         .tabViewStyle(.page(indexDisplayMode: .never))
       }
 
-      if showsPhotoBadge && !listing.images.isEmpty {
+      if showsPhotoBadge && !imageURLs.isEmpty {
         HStack(spacing: 8) {
-          Text("Photo \(selectedImage + 1)/\(listing.images.count)")
+          Text("Photo \(selectedImage + 1)/\(imageURLs.count)")
             .font(.caption.weight(.black))
           HStack(spacing: 4) {
-            ForEach(0..<min(listing.images.count, 5), id: \.self) { index in
+            ForEach(0..<min(imageURLs.count, 5), id: \.self) { index in
               Circle()
                 .fill(index == selectedImage ? .white : .white.opacity(0.35))
                 .frame(width: 5, height: 5)
@@ -94,9 +98,9 @@ struct PhotoCarousel: View {
     }
     .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
     .overlay(alignment: .bottomLeading) {
-      if showsThumbnails && listing.images.count > 1 {
+      if showsThumbnails && imageURLs.count > 1 {
         HStack(spacing: 7) {
-          ForEach(Array(listing.images.prefix(5).enumerated()), id: \.element) { index, image in
+          ForEach(Array(imageURLs.prefix(5).enumerated()), id: \.offset) { index, image in
             CachedRemoteImage(url: api.resolvedImageURL(image, variant: .thumb)) { image in
               image.resizable().scaledToFill()
             } placeholder: {
@@ -122,7 +126,7 @@ struct PhotoCarousel: View {
     .onChange(of: listing.key) { _, _ in
       selectedImage = 0
     }
-    .onChange(of: listing.images.count) { _, count in
+    .onChange(of: imageURLs.count) { _, count in
       if count == 0 {
         selectedImage = 0
       } else if selectedImage >= count {

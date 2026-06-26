@@ -379,7 +379,6 @@ private struct InviteGateView: View {
         .disabled(isSaving)
       }
     }
-    .accessibilityIdentifier("invite-gate")
   }
 }
 

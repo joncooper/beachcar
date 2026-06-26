@@ -68,7 +68,8 @@ private struct PhotoStrip: View {
   let geo: FeedGeometry
 
   private var photoIdx: Int { controller.photo(for: car.key) }
-  private var count: Int { max(car.images.count, 1) }
+  private var images: [String] { car.displayImages }
+  private var count: Int { max(images.count, 1) }
   private var isCurrent: Bool { index == controller.idx }
 
   private var stripOffset: CGFloat {
@@ -140,8 +141,8 @@ private struct PhotoStrip: View {
 
   @ViewBuilder
   private func image(at j: Int) -> some View {
-    if car.images.indices.contains(j) {
-      CachedRemoteImage(url: api.resolvedImageURL(car.images[j], variant: .deck)) { img in
+    if images.indices.contains(j) {
+      CachedRemoteImage(url: api.resolvedImageURL(images[j], variant: .deck)) { img in
         img.resizable()
       } placeholder: {
         ZStack { BC.imageBg; ProgressView().tint(BC.muted) }

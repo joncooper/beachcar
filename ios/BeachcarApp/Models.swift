@@ -335,6 +335,8 @@ struct AuctionListing: Codable, Identifiable, Hashable {
   let concerns: String
   let currentTake: String?
   let images: [String]
+  let originalImages: [String]
+  let imageStatus: [ListingImageStatus]
   let feedback: FeedbackRecord?
   /// Rich detail for the dossier. Optional and forward-compatible: today's runs
   /// don't include it, so dossier sections backed by it hide gracefully. When the
@@ -372,6 +374,8 @@ struct AuctionListing: Codable, Identifiable, Hashable {
     case concerns
     case currentTake
     case images
+    case originalImages
+    case imageStatus
     case feedback
     case dossier
   }
@@ -404,13 +408,32 @@ struct AuctionListing: Codable, Identifiable, Hashable {
     concerns = try container.decodeIfPresent(String.self, forKey: .concerns) ?? ""
     currentTake = try container.decodeLossyStringIfPresent(forKey: .currentTake)
     images = try container.decodeIfPresent([String].self, forKey: .images) ?? []
+    originalImages = try container.decodeIfPresent([String].self, forKey: .originalImages) ?? []
+    imageStatus = try container.decodeIfPresent([ListingImageStatus].self, forKey: .imageStatus) ?? []
     feedback = try container.decodeIfPresent(FeedbackRecord.self, forKey: .feedback)
     dossier = try container.decodeIfPresent(ShadeDossierData.self, forKey: .dossier)
+  }
+
+  var displayImages: [String] {
+    let cached = imageStatus
+      .filter { $0.copied || $0.status == "copied" }
+      .map(\.url)
+      .filter { !$0.isEmpty }
+    return cached.isEmpty ? images : cached
   }
 
   var isWildcard: Bool {
     discoveryKind?.lowercased() == "wildcard"
   }
+}
+
+struct ListingImageStatus: Codable, Hashable {
+  let imageKey: String
+  let sourceUrl: String
+  let url: String
+  let copied: Bool
+  let status: String
+  let error: String?
 }
 
 // MARK: - Rich dossier payload (forward-compatible)

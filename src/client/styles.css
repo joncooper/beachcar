@@ -328,6 +328,14 @@ img {
   gap: 8px;
 }
 
+.automation-list-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .automation-token-list article {
   min-height: 44px;
   border: 1px solid rgba(20, 32, 28, 0.1);

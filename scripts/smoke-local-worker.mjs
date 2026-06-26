@@ -374,6 +374,7 @@ async function smokeRemoteMcp(friendEmail) {
   assert(typeof status.oauth?.authorizationEndpoint === "string", "Expected automation status to include the OAuth authorization endpoint.");
   assert(typeof status.oauth?.tokenEndpoint === "string", "Expected automation status to include the OAuth token endpoint.");
   assert(typeof status.oauth?.registrationEndpoint === "string", "Expected automation status to include the OAuth registration endpoint.");
+  assert(Array.isArray(status.oauthAccessTokens), "Expected automation status to include OAuth access-token records.");
 
   const metadata = await requestJson("/.well-known/oauth-protected-resource/mcp", { email: friendEmail });
   assert(metadata.resource === status.mcpEndpoint, "Expected protected-resource metadata to describe the MCP endpoint as the resource.");
@@ -512,8 +513,28 @@ async function smokeOAuthMcp(friendEmail, resource) {
     },
   });
   assert(typeof token.access_token === "string" && token.access_token.startsWith("bcoauth_"), "Expected OAuth token exchange to return a Beachcar OAuth access token.");
+  const oauthAccessTokenId = token.access_token.match(/^bcoauth_([^.]*)\./)?.[1] || "";
+  assert(oauthAccessTokenId, "Expected OAuth access token to include a token id.");
   const oauthTools = await mcpRequest(token.access_token, "tools/list");
   assert(Array.isArray(oauthTools.tools) && oauthTools.tools.some((tool) => tool.name === "publish_run"), "Expected OAuth MCP tools/list to expose publish_run.");
+  const oauthStatus = await requestJson("/api/automation/status", { email: friendEmail });
+  const activeConnection = oauthStatus.oauthAccessTokens.find((record) => record.id === oauthAccessTokenId);
+  assert(activeConnection && !activeConnection.revokedAt, "Expected automation status to show the active OAuth connection.");
+  assert(activeConnection.clientName === "Local smoke OAuth MCP client", "Expected OAuth connection list to include the registered client name.");
+  const revokedConnection = await requestJson(`/api/automation/oauth-tokens/${encodeURIComponent(oauthAccessTokenId)}`, {
+    email: friendEmail,
+    method: "DELETE",
+  });
+  assert(revokedConnection.revokedAt, "Expected signed-in OAuth connection revoke to return a revoked record.");
+  const revokedStatus = await requestJson("/api/automation/status", { email: friendEmail });
+  assert(
+    revokedStatus.oauthAccessTokens.some((record) => record.id === oauthAccessTokenId && record.revokedAt),
+    "Expected automation status to show the revoked OAuth connection.",
+  );
+  assert(
+    revokedStatus.recentEvents.some((event) => event.eventType === "oauth_connection.revoked"),
+    "Expected automation events to include OAuth connection revocation.",
+  );
   await requestJson("/oauth/revoke", {
     method: "POST",
     body: { token: token.access_token },
@@ -524,7 +545,7 @@ async function smokeOAuthMcp(friendEmail, resource) {
     body: { jsonrpc: "2.0", id: "smoke-oauth-revoked", method: "tools/list" },
   });
   assert(revoked.status === 401, `Expected revoked OAuth access token to be rejected; received HTTP ${revoked.status}.`);
-  return { oauthAccessTokenId: token.access_token.match(/^bcoauth_([^.]*)\./)?.[1] || null };
+  return { oauthAccessTokenId };
 }
 
 async function mcpTool(token, name, args) {

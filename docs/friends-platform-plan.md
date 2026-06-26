@@ -50,7 +50,7 @@ The repo now has the first local friend-beta slice implemented:
 - SwiftUI iOS app using ClerkKit and the same Worker API, with invite/onboarding gates, per-user latest-run cache, image prefetching, and run-status UI.
 - Cloudflare Agents SDK Durable Object plus Workflow binding for per-user run requests and schedule state.
 - Cloudflare Container runner scaffold and runner-task queue for Codex SDK/browser-heavy follow-up work.
-- Hosted remote MCP preview at `/mcp`, with revocable scoped automation tokens, OAuth protected-resource metadata discovery, local-first authorization-code + PKCE endpoints, user-visible automation events, and a downloadable friend skill for cloud agents.
+- Hosted remote MCP preview at `/mcp`, with revocable scoped automation tokens, OAuth protected-resource metadata discovery, local-first authorization-code + PKCE endpoints, user-visible OAuth connection revocation, user-visible automation events, and a downloadable friend skill for cloud agents.
 - Daily AI/publisher compatibility flow that imports normalized JSON and mirrors listing images.
 - PWA onboarding and Preferences include structured taste calibration plus freeform notes, with selected archetypes composed into the existing automation preference context.
 

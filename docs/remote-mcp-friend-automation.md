@@ -16,7 +16,7 @@ flowchart LR
   Settings --> Token["Scoped automation token shown once"]
   Settings --> Skill["Download Beachcar skill"]
   Agent["Codex / Claude / cloud agent"] --> MCP["Worker /mcp JSON-RPC"]
-  MCP --> Auth["automation_tokens hash check"]
+  MCP --> Auth["manual or OAuth token hash check"]
   MCP --> Events["automation_events"]
   MCP --> D1["D1 user profile, feedback, runs, AI usage"]
   MCP --> R2["R2 image cache via publish_run"]
@@ -30,9 +30,10 @@ flowchart LR
 
 Website routes:
 
-- `GET /api/automation/status`: returns MCP endpoint, OAuth status, default scopes, redacted tokens, and recent automation events.
+- `GET /api/automation/status`: returns MCP endpoint, OAuth status, default scopes, redacted manual/OAuth tokens, and recent automation events.
 - `POST /api/automation/tokens`: creates a token, returns the secret once, stores only a hash.
 - `DELETE /api/automation/tokens/:id`: revokes one token for the signed-in user.
+- `DELETE /api/automation/oauth-tokens/:id`: revokes one OAuth connection for the signed-in user without requiring the raw bearer token.
 - `GET /api/automation/events`: returns recent user-scoped automation events.
 - `GET /api/automation/bundle`: returns a generated `SKILL.md` with the current MCP endpoint filled in.
 
@@ -89,6 +90,7 @@ OAuth access tokens are also user-owned:
 - Token metadata: client id, scopes, `/mcp` resource audience, created time, last used time, expiry, and revoked time.
 - Authorization codes expire after 10 minutes and are single-use.
 - Access tokens expire after 1 hour and are rejected unless their resource audience exactly matches the hosted `/mcp` endpoint.
+- The Preferences panel lists active/revoked OAuth connections by registered client name and can revoke them by id.
 - OAuth-authenticated MCP tool events set `token_id` to `null` and include `authKind`, `oauthAccessTokenId`, and `oauthClientId` in event metadata.
 
 No raw provider/model key is accepted by this system. AI cost attribution is recorded through `record_usage`; actual model payment depends on the friend or owner automation setup.
@@ -101,9 +103,10 @@ Preferences now includes **Connect automation**:
 - Creates a token for a friend cloud agent.
 - Displays the token once with copy affordance.
 - Downloads the Beachcar daily-run skill.
-- Lists recent active/revoked tokens.
+- Lists recent active/revoked manual tokens and OAuth connections.
+- Revokes OAuth connections by id without showing or storing raw access tokens.
 - Shows recent automation events.
-- Explains that OAuth is planned and the current preview uses scoped tokens.
+- Shows OAuth discovery and authorization-server endpoints while retaining scoped tokens for fallback clients.
 
 ## Skill
 
@@ -144,7 +147,6 @@ Bring a Trailer RSS ingestion is persisted in D1:
 Local authorization-code + PKCE is implemented and verified through `bun run cloudflare:verify`. Remaining work before broader use:
 
 1. Validate the OAuth flow on a deployed Worker with a real Clerk bearer session and at least one real MCP client.
-2. Add user-visible OAuth connection/revocation controls in Preferences once client behavior is proven.
-3. Decide whether refresh tokens are useful; the first implementation intentionally issues short-lived access tokens only.
-4. Preserve `automation_events` as the user-visible activity log.
-5. Keep `publish_run`, `record_usage`, and source tools unchanged so cloud agents do not need a new workflow.
+2. Decide whether refresh tokens are useful; the first implementation intentionally issues short-lived access tokens only.
+3. Preserve `automation_events` as the user-visible activity log.
+4. Keep `publish_run`, `record_usage`, and source tools unchanged so cloud agents do not need a new workflow.

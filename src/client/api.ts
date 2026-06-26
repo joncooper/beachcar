@@ -18,6 +18,7 @@ import type {
   SourceCacheIngestResult,
   UserAiSettings,
   UserPayload,
+  OAuthAccessTokenRecord,
 } from "../shared/types";
 
 const latestRunCachePrefix = "beachcar-watch:last-run";
@@ -104,6 +105,10 @@ export async function createAutomationToken(label: string): Promise<AutomationTo
 
 export async function revokeAutomationToken(id: string): Promise<AutomationTokenRecord> {
   return requestJson<AutomationTokenRecord>(`/api/automation/tokens/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function revokeOAuthConnection(id: string): Promise<OAuthAccessTokenRecord> {
+  return requestJson<OAuthAccessTokenRecord>(`/api/automation/oauth-tokens/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 export async function getAutomationBundle(): Promise<AutomationBundle> {

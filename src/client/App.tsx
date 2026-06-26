@@ -47,6 +47,7 @@ import {
   putSourceSettings,
   requestAgentRun,
   revokeAutomationToken,
+  revokeOAuthConnection,
   setAuthTokenGetter,
 } from "./api";
 import { signInWithGoogle, useClerkBrowser } from "./clerk-browser";
@@ -64,6 +65,7 @@ import type {
   FeedbackRecord,
   InvitePayload,
   Lane,
+  OAuthAccessTokenRecord,
   RunPayload,
   SourceCacheAdminStatus,
   SourceSetting,
@@ -635,6 +637,19 @@ function demoAutomationStatus(): AutomationStatus {
       message: "OAuth protected-resource discovery and authorization-code + PKCE endpoints are available; scoped automation tokens remain available for preview clients.",
     },
     defaultScopes: ["setup:read", "sources:read", "runs:publish", "usage:write", "events:read"],
+    oauthAccessTokens: [
+      {
+        id: "oauth-token-demo",
+        userId: "email:friend@example.com",
+        clientId: "beachcar-oauth-client-demo",
+        clientName: "Codex cloud agent",
+        resource: "https://beachcar-watch.example.workers.dev/mcp",
+        scopes: ["setup:read", "sources:read", "runs:publish", "usage:write", "events:read"],
+        lastUsedAt: now,
+        expiresAt: "2027-06-25T13:00:00.000Z",
+        createdAt: now,
+      },
+    ],
     tokens: [
       {
         id: "automation-token-demo",
@@ -1974,6 +1989,32 @@ function AutomationSettingsPanel(props: { demoStatus?: AutomationStatus }) {
     }
   }
 
+  async function revokeOAuthToken(id: string) {
+    if (props.demoStatus) {
+      const revokedAt = new Date().toISOString();
+      setStatus((current) =>
+        current
+          ? {
+              ...current,
+              oauthAccessTokens: current.oauthAccessTokens.map((token) => (token.id === id ? { ...token, revokedAt } : token)),
+            }
+          : current,
+      );
+      setMessage("OAuth connection revoked.");
+      return;
+    }
+    setPending(id);
+    try {
+      await revokeOAuthConnection(id);
+      setStatus(await getAutomationStatus());
+      setMessage("OAuth connection revoked.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not revoke OAuth connection");
+    } finally {
+      setPending(null);
+    }
+  }
+
   async function copyToken() {
     if (!created?.token) return;
     try {
@@ -2003,12 +2044,16 @@ function AutomationSettingsPanel(props: { demoStatus?: AutomationStatus }) {
 
   const activeTokens = (status?.tokens || []).filter((token) => !token.revokedAt);
   const revokedTokens = (status?.tokens || []).filter((token) => token.revokedAt);
+  const oauthTokens = status?.oauthAccessTokens || [];
+  const activeOAuthTokens = oauthTokens.filter(isOAuthConnectionActive);
+  const inactiveOAuthTokens = oauthTokens.filter((token) => !isOAuthConnectionActive(token));
+  const activeConnectionCount = activeTokens.length + activeOAuthTokens.length;
 
   return (
     <section className="automation-settings setup-span" aria-label="Connect automation">
       <div className="setup-section-title">
         <span>Connect automation</span>
-        <small>{activeTokens.length ? `${activeTokens.length} active` : "none active"}</small>
+        <small>{activeConnectionCount ? `${activeConnectionCount} active` : "none active"}</small>
       </div>
       <div className="automation-endpoint">
         <Bot size={18} aria-hidden="true" />
@@ -2052,7 +2097,36 @@ function AutomationSettingsPanel(props: { demoStatus?: AutomationStatus }) {
         </div>
       ) : null}
       {status?.oauth ? <p className="automation-note">{status.oauth.message}</p> : null}
+      {oauthTokens.length ? (
+        <div className="automation-token-list" aria-label="OAuth connections">
+          <div className="automation-list-heading">
+            <strong>OAuth connections</strong>
+            <small>{activeOAuthTokens.length ? `${activeOAuthTokens.length} active` : "none active"}</small>
+          </div>
+          {[...activeOAuthTokens, ...inactiveOAuthTokens].slice(0, 5).map((token) => (
+            <article key={token.id}>
+              <span>
+                <strong>{oauthConnectionName(token)}</strong>
+                <small>{oauthConnectionDetail(token)}</small>
+              </span>
+              {token.revokedAt ? (
+                <em>revoked</em>
+              ) : isOAuthConnectionExpired(token) ? (
+                <em>expired</em>
+              ) : (
+                <button disabled={pending !== null} type="button" onClick={() => void revokeOAuthToken(token.id)}>
+                  Revoke
+                </button>
+              )}
+            </article>
+          ))}
+        </div>
+      ) : null}
       <div className="automation-token-list">
+        <div className="automation-list-heading">
+          <strong>Fallback tokens</strong>
+          <small>{activeTokens.length ? `${activeTokens.length} active` : "none active"}</small>
+        </div>
         {[...activeTokens, ...revokedTokens].slice(0, 5).map((token) => (
           <article key={token.id}>
             <span>
@@ -3118,6 +3192,26 @@ function shortDateTime(value: string): string {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return value;
   return date.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function isOAuthConnectionExpired(token: OAuthAccessTokenRecord): boolean {
+  const expiresAt = Date.parse(token.expiresAt);
+  return Number.isFinite(expiresAt) && expiresAt <= Date.now();
+}
+
+function isOAuthConnectionActive(token: OAuthAccessTokenRecord): boolean {
+  return !token.revokedAt && !isOAuthConnectionExpired(token);
+}
+
+function oauthConnectionName(token: OAuthAccessTokenRecord): string {
+  return token.clientName || token.clientId.replace(/^beachcar-oauth-client-/, "OAuth client ");
+}
+
+function oauthConnectionDetail(token: OAuthAccessTokenRecord): string {
+  if (token.revokedAt) return `Revoked ${shortDateTime(token.revokedAt)}`;
+  if (isOAuthConnectionExpired(token)) return `Expired ${shortDateTime(token.expiresAt)}`;
+  if (token.lastUsedAt) return `Used ${shortDateTime(token.lastUsedAt)}`;
+  return `Expires ${shortDateTime(token.expiresAt)}`;
 }
 
 function FilterChip(props: { active: boolean; label: string; onClick: () => void }) {

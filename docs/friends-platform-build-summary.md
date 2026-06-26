@@ -576,6 +576,14 @@ Improvement: Added `0010_mcp_oauth.sql`, D1 helpers for OAuth clients/codes/acce
 
 Verification: Applied `0010_mcp_oauth.sql` locally. `bun run cloudflare:verify -- --url http://127.0.0.1:8787` registered a public client, completed authorization-code + S256 PKCE with local test auth, exchanged a short-lived access token, used it for MCP `tools/list`, revoked it, and verified the revoked token was rejected. Direct curl probes verified both protected-resource metadata and authorization-server metadata.
 
+### App/architecture pass 51: OAuth connection management
+
+Review: OAuth access tokens were revocable only through `/oauth/revoke`, which requires the raw bearer token. That is fine for MCP clients, but it left signed-in users without a Preferences control to see or revoke connected cloud agents.
+
+Improvement: Added redacted OAuth access-token records to `/api/automation/status`, joined registered OAuth client names into those records, added `DELETE /api/automation/oauth-tokens/:id` for signed-in revocation, and recorded `oauth_connection.revoked` automation events. The Connect automation panel now separates OAuth connections from fallback manual tokens, shows active/expired/revoked state, and can revoke OAuth connections without exposing raw tokens.
+
+Verification: `bun run typecheck`, `node --check scripts/smoke-local-worker.mjs`, and in-app browser verification passed. The Worker settings demo rendered OAuth connections, the registered client name, fallback tokens, and OAuth PKCE endpoint text with no console errors or horizontal overflow at desktop and 390px mobile widths.
+
 ## Screenshots
 
 Invite gate, desktop:

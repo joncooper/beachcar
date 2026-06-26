@@ -195,6 +195,7 @@ export interface OAuthAccessTokenRecord {
   id: string;
   userId: string;
   clientId: string;
+  clientName?: string | null;
   resource: string;
   scopes: AutomationScope[];
   lastUsedAt?: string | null;
@@ -233,6 +234,7 @@ export interface AutomationStatus {
   };
   defaultScopes: AutomationScope[];
   tokens: AutomationTokenRecord[];
+  oauthAccessTokens: OAuthAccessTokenRecord[];
   recentEvents: AutomationEventRecord[];
 }
 

@@ -33,6 +33,7 @@ import {
   importRun,
   listAdminUsers,
   failRunnerTask,
+  listOAuthAccessTokens,
   markAgentRunFailed,
   markAgentRunPublished,
   listAutomationTokens,
@@ -40,6 +41,7 @@ import {
   recordAutomationEvent,
   createPreferenceEvent,
   revokeAutomationToken,
+  revokeOAuthAccessTokenById,
   type UserScope,
   upsertAiSettings,
   upsertProfile,
@@ -188,6 +190,7 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url:
       },
       defaultScopes: defaultAutomationScopes,
       tokens: await listAutomationTokens(env.DB, authUser.id),
+      oauthAccessTokens: await listOAuthAccessTokens(env.DB, authUser.id),
       recentEvents: await getAutomationEvents(env.DB, authUser.id, 20),
     });
   }
@@ -214,6 +217,19 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url:
       actor: "user",
       eventType: "automation_token.revoked",
       metadata: { label: token.label },
+    });
+    return jsonResponse(token);
+  }
+
+  const oauthTokenMatch = url.pathname.match(/^\/api\/automation\/oauth-tokens\/([^/]+)$/);
+  if (oauthTokenMatch && request.method === "DELETE") {
+    const token = await revokeOAuthAccessTokenById(env.DB, authUser.id, decodeURIComponent(oauthTokenMatch[1]));
+    await recordAutomationEvent(env.DB, {
+      userId: authUser.id,
+      tokenId: null,
+      actor: "user",
+      eventType: "oauth_connection.revoked",
+      metadata: { clientId: token.clientId, resource: token.resource },
     });
     return jsonResponse(token);
   }

@@ -175,6 +175,7 @@ interface OAuthAccessTokenRow {
   id: string;
   user_id: string;
   client_id: string;
+  client_name?: string | null;
   token_hash: string;
   resource: string;
   scopes_json: string;
@@ -1034,9 +1035,27 @@ export async function revokeOAuthAccessToken(db: D1Database, rawToken: string): 
   return Boolean(result.meta.changes);
 }
 
+export async function revokeOAuthAccessTokenById(db: D1Database, userId: string, id: string): Promise<OAuthAccessTokenRecord> {
+  const revokedAt = new Date().toISOString();
+  await db
+    .prepare("UPDATE oauth_access_tokens SET revoked_at = COALESCE(revoked_at, ?) WHERE id = ? AND user_id = ?")
+    .bind(revokedAt, id, userId)
+    .run();
+  const record = await getOAuthAccessTokenById(db, userId, id);
+  if (!record) throw new Error("OAuth connection not found");
+  return record;
+}
+
 export async function listOAuthAccessTokens(db: D1Database, userId: string, limit = 100): Promise<OAuthAccessTokenRecord[]> {
   const { results } = await db
-    .prepare("SELECT * FROM oauth_access_tokens WHERE user_id = ? ORDER BY created_at DESC LIMIT ?")
+    .prepare(
+      `SELECT oauth_access_tokens.*, oauth_clients.client_name AS client_name
+       FROM oauth_access_tokens
+       LEFT JOIN oauth_clients ON oauth_clients.client_id = oauth_access_tokens.client_id
+       WHERE oauth_access_tokens.user_id = ?
+       ORDER BY oauth_access_tokens.created_at DESC
+       LIMIT ?`,
+    )
     .bind(userId, Math.max(1, Math.min(500, Math.floor(limit))))
     .all<OAuthAccessTokenRow>();
   return results.map(oauthAccessTokenFromRow);
@@ -2187,6 +2206,7 @@ function oauthAccessTokenFromRow(row: OAuthAccessTokenRow): OAuthAccessTokenReco
     id: row.id,
     userId: row.user_id,
     clientId: row.client_id,
+    clientName: row.client_name,
     resource: row.resource,
     scopes: parseAutomationScopes(row.scopes_json),
     lastUsedAt: row.last_used_at,
@@ -2315,7 +2335,15 @@ function isAutomationScope(value: unknown): value is AutomationScope {
 }
 
 async function getOAuthAccessTokenById(db: D1Database, userId: string, id: string): Promise<OAuthAccessTokenRecord | null> {
-  const row = await db.prepare("SELECT * FROM oauth_access_tokens WHERE user_id = ? AND id = ?").bind(userId, id).first<OAuthAccessTokenRow>();
+  const row = await db
+    .prepare(
+      `SELECT oauth_access_tokens.*, oauth_clients.client_name AS client_name
+       FROM oauth_access_tokens
+       LEFT JOIN oauth_clients ON oauth_clients.client_id = oauth_access_tokens.client_id
+       WHERE oauth_access_tokens.user_id = ? AND oauth_access_tokens.id = ?`,
+    )
+    .bind(userId, id)
+    .first<OAuthAccessTokenRow>();
   return row ? oauthAccessTokenFromRow(row) : null;
 }
 

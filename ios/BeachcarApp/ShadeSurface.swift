@@ -41,6 +41,8 @@ struct ShadeSurface: View {
       }
       .frame(width: geo.width, height: geo.height)
       .ignoresSafeArea()
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("shade-surface")
     }
     .onAppear { configure() }
     .onChange(of: cars.count) { _, count in controller.carCount = count }
@@ -71,7 +73,6 @@ struct ShadeSurface: View {
     // Keep child text/controls visible to the accessibility tree (and XCUITest)
     // even though the container owns the feed gestures.
     .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("shade-surface")
   }
 
   @ViewBuilder
@@ -141,7 +142,7 @@ struct ShadeSurface: View {
     controller.currentCarInfo = { [weak store] in
       guard let list = store?.run?.listings, list.indices.contains(controller.idx) else { return nil }
       let car = list[controller.idx]
-      return (car.key, max(car.images.count, 1))
+      return (car.key, max(car.displayImages.count, 1))
     }
     controller.persist = { [weak store] action in
       guard let store, let list = store.run?.listings, list.indices.contains(controller.idx) else { return }

@@ -3486,8 +3486,8 @@ function DossierDetail(props: { dossier?: AuctionListing["dossier"] }) {
         <section className="detail-section is-good">
           <p>Equipment &amp; highlights</p>
           <ul>
-            {d.equipment.map((item) => (
-              <li key={item}>{item}</li>
+            {d.equipment.map((item, index) => (
+              <li key={`${index}-${item}`}>{item}</li>
             ))}
           </ul>
         </section>
@@ -3497,8 +3497,8 @@ function DossierDetail(props: { dossier?: AuctionListing["dossier"] }) {
         <section className="detail-section is-good">
           <p>Recent service</p>
           <ul>
-            {d.service.map((item) => (
-              <li key={item}>{item}</li>
+            {d.service.map((item, index) => (
+              <li key={`${index}-${item}`}>{item}</li>
             ))}
           </ul>
         </section>

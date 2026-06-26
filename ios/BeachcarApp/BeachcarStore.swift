@@ -15,7 +15,7 @@ final class BeachcarStore: ObservableObject {
   private let offlineMode: Bool
   private var prefetchTask: Task<Void, Never>?
   private static let pendingPreferenceNotesKey = "beachcar.pendingPreferenceNotes.v1"
-  private static let latestRunCachePrefix = "beachcar.latestRun.v1"
+  private static let latestRunCachePrefix = "beachcar.latestRun.v2"
 
   init(
     api: AuctionAPI = AuctionAPI(baseURL: AppConfig.auctionBaseURL),
@@ -284,7 +284,7 @@ final class BeachcarStore: ObservableObject {
   private func prefetchURLs(for payload: RunPayload) -> [URL] {
     var urls: [URL] = []
     for listing in payload.listings.prefix(5) {
-      for image in listing.images.prefix(2) {
+      for image in listing.displayImages.prefix(2) {
         if let deck = api.resolvedImageURL(image, variant: .deck) {
           urls.append(deck)
         }

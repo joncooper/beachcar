@@ -84,10 +84,10 @@ struct ListingDetailBackView: View {
           api: api,
           selectedImage: $selectedImage,
           showsPhotoBadge: false,
-          showsThumbnails: listing.images.count > 1,
+          showsThumbnails: listing.displayImages.count > 1,
           emptyStyle: .compact
         )
-        .frame(height: listing.images.isEmpty ? 150 : 218)
+        .frame(height: listing.displayImages.isEmpty ? 150 : 218)
 
         HStack(spacing: 8) {
           Chip(text: listing.site, style: .neutral)

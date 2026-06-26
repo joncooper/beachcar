@@ -48,7 +48,7 @@ struct ListingCardView: View {
   }
 
   private func frontCard(availableWidth: CGFloat, availableHeight: CGFloat) -> some View {
-    let hasImages = !listing.images.isEmpty
+    let hasImages = !listing.displayImages.isEmpty
     let bodyHeight = hasImages
       ? min(max(availableHeight * 0.34, 306), 382)
       : min(max(availableHeight * 0.50, 382), 452)
@@ -164,7 +164,7 @@ struct ListingCardView: View {
             .font(.caption.weight(.semibold))
             .lineLimit(1)
             .foregroundStyle(BeachcarColors.secondary)
-        } else if listing.images.isEmpty {
+        } else if listing.displayImages.isEmpty {
           Text("image pending")
             .font(.caption.weight(.semibold))
             .foregroundStyle(BeachcarColors.muted)

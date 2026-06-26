@@ -35,7 +35,8 @@ export async function serveImage(env: Env, imageKey: string, url: URL): Promise<
 
   const variant = imageVariantFromUrl(url);
   if (variant) {
-    return serveImageVariant(env, row, variant);
+    const refresh = url.searchParams.get("refresh") === "1" || url.searchParams.get("force") === "1";
+    return serveImageVariant(env, row, variant, { refresh });
   }
 
   const object = await env.IMAGES.get(row.r2_key);
@@ -130,9 +131,9 @@ export async function mirrorImage(env: Env, listingKey: string, sourceUrl: strin
   return jsonResponse({ imageKey, url: `/api/images/${encodeURIComponent(imageKey)}`, copied: true });
 }
 
-async function serveImageVariant(env: Env, row: ImageRecord, variant: ImageVariantName): Promise<Response> {
+async function serveImageVariant(env: Env, row: ImageRecord, variant: ImageVariantName, options: { refresh?: boolean } = {}): Promise<Response> {
   const existing = await getImageVariant(env.DB, row.image_key, variant);
-  if (existing?.status === "created") {
+  if (!options.refresh && existing?.status === "created") {
     const object = await env.IMAGES.get(existing.r2_key);
     if (object) {
       const response = imageObjectResponse(object);
@@ -142,7 +143,7 @@ async function serveImageVariant(env: Env, row: ImageRecord, variant: ImageVaria
     }
   }
 
-  const body = await createImageVariant(env, row, variant);
+  const body = await createImageVariant(env, row, variant, options);
   if (!body) {
     const missing = `Image variant ${variant} is marked created but missing from storage`;
     await markImageVariantFailed(env.DB, {
@@ -165,15 +166,18 @@ async function serveImageVariant(env: Env, row: ImageRecord, variant: ImageVaria
   });
 }
 
-async function createImageVariant(env: Env, row: ImageRecord, variant: ImageVariantName): Promise<Blob | null> {
+async function createImageVariant(env: Env, row: ImageRecord, variant: ImageVariantName, options: { refresh?: boolean } = {}): Promise<Blob | null> {
   const existing = await getImageVariant(env.DB, row.image_key, variant);
-  if (existing?.status === "created") {
+  if (!options.refresh && existing?.status === "created") {
     const object = await env.IMAGES.get(existing.r2_key);
     if (object) return null;
   }
 
   const spec = imageVariants[variant];
   const fallbackR2Key = imageVariantR2KeyFor(row.image_key, variant, row.content_type);
+  const transformed = await createImageVariantWithBinding(env, row, variant);
+  if (transformed) return transformed;
+
   const response = await fetch(row.source_url, {
     headers: imageFetchHeaders(row.source_url),
     cf: {
@@ -218,6 +222,52 @@ async function createImageVariant(env: Env, row: ImageRecord, variant: ImageVari
   });
 
   return body;
+}
+
+async function createImageVariantWithBinding(env: Env, row: ImageRecord, variant: ImageVariantName): Promise<Blob | null> {
+  const transformer = env.IMAGE_TRANSFORMER;
+  if (!transformer) return null;
+
+  const sourceObject = await env.IMAGES.get(row.r2_key);
+  const source = sourceObject?.body || (await fetchSourceImage(row)).body;
+  if (!source) return null;
+
+  const spec = imageVariants[variant];
+  const result = await transformer
+    .input(source)
+    .transform({ fit: "scale-down", width: spec.width })
+    .output({ format: "image/webp", quality: spec.quality });
+
+  const contentType = result.contentType();
+  const body = await new Response(result.image()).arrayBuffer();
+  const blob = new Blob([body], { type: contentType });
+  const r2Key = imageVariantR2KeyFor(row.image_key, variant, contentType);
+  await env.IMAGES.put(r2Key, body, {
+    httpMetadata: { contentType },
+    customMetadata: { sourceUrl: row.source_url, listingKey: row.listing_key, imageKey: row.image_key, variant },
+  });
+  await markImageVariantCreated(env.DB, {
+    imageKey: row.image_key,
+    variant,
+    r2Key,
+    width: spec.width,
+    height: null,
+    contentType,
+    byteLength: body.byteLength,
+  });
+
+  return blob;
+}
+
+async function fetchSourceImage(row: ImageRecord): Promise<Response> {
+  const response = await fetch(row.source_url, {
+    headers: imageFetchHeaders(row.source_url),
+    cf: { cacheTtl: 86400, cacheEverything: true },
+  });
+  if (!response.ok || !response.body) {
+    throw new Error(`Fetch failed: ${response.status}`);
+  }
+  return response;
 }
 
 function imageObjectResponse(object: R2ObjectBody): Response {

@@ -616,6 +616,14 @@ Improvement: Added `.deploy.env.example`, ignored `.deploy.env`, and `bun run de
 
 Verification: `node --check scripts/validate-deploy-env.mjs` and `bun run deploy:env:check` passed in report mode.
 
+### App/architecture pass 56: guarded remote rollout orchestrator
+
+Review: Once Clerk values and explicit approval are available, the remaining rollout would still require a sequence of manual commands where it is easy to forget client rebuild, dry-run deploy, secret setting, or verification.
+
+Improvement: Added `bun run deploy:remote`. Default mode prints the rollout plan only. `--dry-run` validates `.deploy.env`, builds production assets, and runs the Cloudflare deploy dry-run without mutating remote state. `--execute --yes` applies migrations, deploys the Worker, sets Worker secrets from `.deploy.env` through a temporary `wrangler secret bulk` JSON file, deletes that file, and runs remote verification.
+
+Verification: `node --check scripts/run-remote-rollout.mjs` passed and normal preflight now syntax-checks the orchestrator.
+
 ## Screenshots
 
 Invite gate, desktop:

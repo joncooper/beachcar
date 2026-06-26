@@ -30,6 +30,7 @@
     "preflight:full": "bun scripts/preflight-local.mjs --smoke --ios",
     "deploy:check": "bun scripts/check-deploy-readiness.mjs",
     "deploy:env:check": "bun scripts/validate-deploy-env.mjs",
+    "deploy:remote": "bun scripts/run-remote-rollout.mjs",
     "cloudflare:check": "bun scripts/check-cloudflare-resources.mjs",
     "cloudflare:plan": "bun scripts/plan-cloudflare-deploy.mjs",
     "cloudflare:bootstrap": "bun scripts/bootstrap-cloudflare-rollout.mjs",

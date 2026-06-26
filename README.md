@@ -143,11 +143,23 @@ bun run cloudflare:bootstrap -- --write-config --owner-emails "owner@example.com
 
 `BOOTSTRAP_OWNER_EMAILS` accepts a comma-separated owner list and overrides the legacy single `ALLOWED_EMAIL` var. The first owner is the legacy-data owner; all listed owners bootstrap as active. Other signed-in users are created as `invited` and must accept an invite code before they can load runs or save feedback.
 
-Apply migrations and set Worker secrets when you are ready to deploy:
+Prepare local deploy values:
 
 ```bash
 cp .deploy.env.example .deploy.env
 bun run deploy:env:check
+bun run deploy:remote -- --dry-run
+```
+
+After explicit approval, the guarded rollout command runs migrations, deploys, sets Worker secrets from `.deploy.env`, and verifies the deployed Worker:
+
+```bash
+bun run deploy:remote -- --execute --yes
+```
+
+Manual fallback:
+
+```bash
 bunx wrangler secret put PUBLISH_TOKEN
 bunx wrangler secret put CLERK_SECRET_KEY
 bunx wrangler secret put CLERK_JWT_ISSUER

@@ -99,9 +99,11 @@ Local deploy handoff:
 ```bash
 cp .deploy.env.example .deploy.env
 bun run deploy:env:check
+bun run deploy:remote -- --dry-run
 ```
 
 `.deploy.env` is ignored by git. The validator hides values and checks required Clerk/Worker secret shapes plus optional AI Gateway settings.
+After explicit approval, `bun run deploy:remote -- --execute --yes` applies migrations, deploys, sets Worker secrets from a temporary file, and verifies the deployed Worker.
 
 Worker vars:
 

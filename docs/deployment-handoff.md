@@ -54,7 +54,16 @@ I approve applying remote D1 migrations, setting Worker secrets, deploying the b
 
 ## Remote Rollout Commands
 
-After approval and `.deploy.env` is filled:
+After approval and `.deploy.env` is filled, run the guarded orchestrator:
+
+```bash
+bun run deploy:remote -- --dry-run
+bun run deploy:remote -- --execute --yes
+```
+
+The orchestrator validates `.deploy.env`, builds the production client, dry-runs the Worker bundle, applies remote D1 migrations, deploys the Worker, sets Worker secrets through a temporary `wrangler secret bulk` JSON file, and runs remote verification.
+
+The underlying manual commands are:
 
 ```bash
 bun run db:migrate:remote

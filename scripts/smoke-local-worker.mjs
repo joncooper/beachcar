@@ -7,7 +7,7 @@ await loadEnvFile(resolve(".publish.env"));
 
 const baseUrl = (process.env.AUCTION_WATCH_URL || "http://127.0.0.1:8787").replace(/\/+$/, "");
 const publishToken = process.env.PUBLISH_TOKEN || "";
-const smokeEmail = (process.env.SMOKE_TEST_EMAIL || process.env.ALLOWED_EMAIL || "you@example.com").trim().toLowerCase();
+const smokeEmail = firstEmail(process.env.SMOKE_TEST_EMAIL, process.env.BOOTSTRAP_OWNER_EMAILS, process.env.ALLOWED_EMAILS, process.env.ALLOWED_EMAIL, "you@example.com");
 const pollAttempts = numberFromEnv("SMOKE_WORKFLOW_POLLS", 60);
 const pollDelayMs = numberFromEnv("SMOKE_WORKFLOW_POLL_MS", 300);
 
@@ -16,12 +16,12 @@ if (!publishToken) {
 }
 
 if (!smokeEmail || !smokeEmail.includes("@")) {
-  fail("Set SMOKE_TEST_EMAIL or ALLOWED_EMAIL to a valid local smoke-test email.");
+  fail("Set SMOKE_TEST_EMAIL, BOOTSTRAP_OWNER_EMAILS, ALLOWED_EMAILS, or ALLOWED_EMAIL to a valid local smoke-test email.");
 }
 
 const me = await requestJson("/api/me");
 assert(me.email === smokeEmail, `Expected /api/me email ${smokeEmail}; received ${me.email || "(missing)"}`);
-assert(me.status === "active", `Expected ${smokeEmail} to be active. Set ALLOWED_EMAIL=${smokeEmail} for local smoke tests.`);
+assert(me.status === "active", `Expected ${smokeEmail} to be active. Set BOOTSTRAP_OWNER_EMAILS=${smokeEmail} or ALLOWED_EMAIL=${smokeEmail} for local smoke tests.`);
 
 const profilePayload = {
   displayName: "Local Smoke Owner",
@@ -654,6 +654,17 @@ async function readResponse(response) {
 function numberFromEnv(key, fallback) {
   const parsed = Number(process.env[key] || "");
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function firstEmail(...values) {
+  return (
+    values
+      .filter(Boolean)
+      .join(",")
+      .split(/[,\s]+/)
+      .map((email) => email.trim().toLowerCase())
+      .find(Boolean) || ""
+  );
 }
 
 async function pkceChallenge(verifier) {

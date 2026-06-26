@@ -83,11 +83,11 @@ function buildPlan(check, wranglerConfig) {
   });
 
   steps.push({
-    title: "Set production owner email",
+    title: "Set production owner email list",
     kind: "file-edit",
     status: "required",
-    commands: ['# Replace vars.ALLOWED_EMAIL in wrangler.jsonc with the real owner email'],
-    detail: "Current deploy readiness still treats the example owner email as a friend-release blocker.",
+    commands: ["# Replace vars.BOOTSTRAP_OWNER_EMAILS or vars.ALLOWED_EMAIL in wrangler.jsonc with the real owner email(s)"],
+    detail: "Current deploy readiness treats example bootstrap owner emails as a friend-release blocker. Multiple comma-separated owner emails are supported.",
   });
 
   steps.push({

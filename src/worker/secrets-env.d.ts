@@ -1,5 +1,7 @@
 interface Env {
   PUBLISH_TOKEN?: string;
+  BOOTSTRAP_OWNER_EMAILS?: string;
+  ALLOWED_EMAILS?: string;
   CLERK_SECRET_KEY?: string;
   CLERK_JWT_ISSUER?: string;
   TEAM_DOMAIN?: string;

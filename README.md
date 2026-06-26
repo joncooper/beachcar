@@ -9,7 +9,7 @@ The default example is a beach-car/runabout watchlist, but the app is intentiona
 - Cloudflare Worker serving a React PWA and JSON API.
 - D1 database for invited users, profiles, source settings, AI settings, daily runs, listings, image metadata, usage events, runner tasks, and per-user feedback memory.
 - R2 image cache with generated `thumb`, `deck`, and `full` variant URLs so listing photos stay fast on mobile.
-- Clerk authentication with an `ALLOWED_EMAIL` bootstrap owner and invite-only friend access.
+- Clerk authentication with bootstrap owner emails and invite-only friend access.
 - Cloudflare Agents and Workflows for per-user run requests, schedule state, source discovery, image warmup, and run-status reporting.
 - Cloudflare Container runner scaffold for Codex SDK/browser-heavy source work that should not run inside a Worker.
 - Native SwiftUI iOS app for invite/onboarding states, cached image-first review, and run-status visibility.
@@ -127,32 +127,34 @@ See `docs/ios.md` for the native UX model, Clerk setup, and simulator/device not
 
 ## Cloudflare Setup
 
-Create resources:
+Inspect the logged-in Cloudflare account without changing anything:
 
 ```bash
-bunx wrangler d1 create beachcar-watch
-bunx wrangler r2 bucket create beachcar-watch-images
+bun run cloudflare:bootstrap
 ```
 
-Copy the D1 `database_id` into `wrangler.jsonc`, then set the bootstrap owner email:
+Create missing resources and write the discovered D1 id into `wrangler.jsonc` only when you are intentionally ready to mutate the Cloudflare account:
 
-```jsonc
-"vars": {
-  "ALLOWED_EMAIL": "you@example.com",
-  "ENVIRONMENT": "production"
-}
+```bash
+bun run cloudflare:bootstrap -- --yes --apply-resources --write-config
 ```
 
-`ALLOWED_EMAIL` is not the only allowed account anymore. It identifies the first active owner; other signed-in users are created as `invited` and must accept an invite code before they can load runs or save feedback.
+Set the bootstrap owner email list in config:
+
+```bash
+bun run cloudflare:bootstrap -- --write-config --owner-emails "owner@example.com"
+```
+
+`BOOTSTRAP_OWNER_EMAILS` accepts a comma-separated owner list and overrides the legacy single `ALLOWED_EMAIL` var. The first owner is the legacy-data owner; all listed owners bootstrap as active. Other signed-in users are created as `invited` and must accept an invite code before they can load runs or save feedback.
 
 Apply migrations and set Worker secrets when you are ready to deploy:
 
 ```bash
-bun run db:migrate:remote
 bunx wrangler secret put PUBLISH_TOKEN
 bunx wrangler secret put CLERK_SECRET_KEY
 bunx wrangler secret put CLERK_JWT_ISSUER
-bun run deploy
+bun run cloudflare:bootstrap -- --yes --migrate --dry-run-deploy
+bun run cloudflare:bootstrap -- --yes --migrate --dry-run-deploy --deploy
 ```
 
 `CLERK_JWT_ISSUER` is your Clerk issuer URL, usually like `https://your-instance.clerk.accounts.dev`.

@@ -10,7 +10,31 @@ Resources:
 
 You may rename these, but keep `package.json` scripts and `wrangler.jsonc` in sync.
 
-After running `bunx wrangler d1 create beachcar-watch`, copy the returned `database_id` into `wrangler.jsonc`.
+Use the bootstrap helper for rollout work:
+
+```bash
+bun run cloudflare:bootstrap
+```
+
+Default mode is read-only. It inspects the configured D1, R2, and Worker state and prints the next commands without creating, migrating, or deploying anything.
+
+When you are intentionally ready to mutate Cloudflare resources, use explicit flags:
+
+```bash
+bun run cloudflare:bootstrap -- --yes --apply-resources --write-config
+bun run cloudflare:bootstrap -- --yes --migrate --dry-run-deploy
+bun run cloudflare:bootstrap -- --yes --migrate --dry-run-deploy --deploy
+```
+
+The final command is the only one that deploys the Worker. The helper refuses remote mutations unless `--yes` and the matching action flag are present.
+
+Set production bootstrap owner emails with:
+
+```bash
+bun run cloudflare:bootstrap -- --write-config --owner-emails "owner@example.com"
+```
+
+`BOOTSTRAP_OWNER_EMAILS` accepts a comma-separated owner list and overrides the legacy single `ALLOWED_EMAIL` var. The first owner is used for legacy-data compatibility; every listed owner is activated automatically on first sign-in.
 
 If a differently named D1 database already exists in the account, inspect its tables and applied migrations before reusing it. Do not point `wrangler.jsonc` at a non-empty legacy database unless the schema matches the migrations in this repo.
 
@@ -70,5 +94,5 @@ Worker secrets:
 
 Worker vars:
 
-- `ALLOWED_EMAIL`
+- `BOOTSTRAP_OWNER_EMAILS` or legacy `ALLOWED_EMAIL`
 - `ENVIRONMENT`

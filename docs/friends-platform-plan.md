@@ -46,7 +46,7 @@ The repo now has the first local friend-beta slice implemented:
 - Cloudflare Worker serving a React PWA and JSON API.
 - D1 for invited users, profiles, source settings, AI settings, usage events, Agent runs, runner tasks, user-scoped runs, listings, feedback, preference events, and image metadata.
 - R2 image cache with `/api/images/:imageKey?variant=thumb|deck|full` delivery and generated image variants.
-- Clerk auth with `ALLOWED_EMAIL` as the bootstrap owner, plus invite-only friend access.
+- Clerk auth with bootstrap owner emails, plus invite-only friend access.
 - SwiftUI iOS app using ClerkKit and the same Worker API, with invite/onboarding gates, per-user latest-run cache, image prefetching, and run-status UI.
 - Cloudflare Agents SDK Durable Object plus Workflow binding for per-user run requests and schedule state.
 - Cloudflare Container runner scaffold and runner-task queue for Codex SDK/browser-heavy follow-up work.
@@ -333,7 +333,7 @@ Client behavior:
 ### Phase 1: Multi-user Core
 
 - Done locally: add users, invites, profiles, user-scoped feedback/events/runs.
-- Done locally: change auth from single `ALLOWED_EMAIL` allowlist to bootstrap owner plus invite/user lookup.
+- Done locally: change auth from single `ALLOWED_EMAIL` allowlist to bootstrap owner email lists plus invite/user lookup.
 - Done locally: update `/api/me` to return user, profile, onboarding status, capabilities, source settings, AI settings, and usage summary.
 - Done locally: migrate existing single-user data to the owner user row.
 - Done locally: keep daily publishing admin token working for the owner account.

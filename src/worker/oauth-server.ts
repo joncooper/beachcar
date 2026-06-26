@@ -1,5 +1,5 @@
 import { defaultAutomationScopes, ensureUser, registerOAuthClient, createOAuthAuthorizationCode, exchangeOAuthAuthorizationCode, revokeOAuthAccessToken } from "./db";
-import { AuthError, requireUser, userIdForEmail } from "./auth";
+import { AuthError, isBootstrapOwnerId, requireUser } from "./auth";
 import { errorResponse, jsonResponse } from "./http";
 import { mcpEndpoint } from "./oauth-metadata";
 
@@ -102,7 +102,7 @@ async function handleOAuthAuthorize(request: Request, env: Env, url: URL): Promi
   if (!resource || resource !== mcpEndpoint(request)) return oauthError("invalid_target", "resource must match this Beachcar MCP endpoint", redirectUri, state);
 
   const authUser = await requireUser(request, env);
-  const user = await ensureUser(env.DB, authUser, { isOwner: authUser.id === userIdForEmail(env.ALLOWED_EMAIL || "") });
+  const user = await ensureUser(env.DB, authUser, { isOwner: isBootstrapOwnerId(authUser.id, env) });
   if (user.status !== "active") throw new AuthError(user.status === "disabled" ? "Account disabled" : "Invite required", 403);
 
   const issued = await createOAuthAuthorizationCode(env.DB, {

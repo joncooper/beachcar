@@ -77,7 +77,7 @@ async function runWorkerSmoke() {
 }
 
 async function waitForWorker(url) {
-  const email = (inheritedEnv.SMOKE_TEST_EMAIL || inheritedEnv.ALLOWED_EMAIL || "you@example.com").trim().toLowerCase();
+  const email = firstEmail(inheritedEnv.SMOKE_TEST_EMAIL, inheritedEnv.BOOTSTRAP_OWNER_EMAILS, inheritedEnv.ALLOWED_EMAILS, inheritedEnv.ALLOWED_EMAIL, "you@example.com");
   const deadline = Date.now() + 45_000;
   let lastError = null;
   while (Date.now() < deadline) {
@@ -93,6 +93,17 @@ async function waitForWorker(url) {
     await delay(500);
   }
   throw new Error(`Local Worker did not become ready at ${url}: ${lastError?.message || "timeout"}`);
+}
+
+function firstEmail(...values) {
+  return (
+    values
+      .filter(Boolean)
+      .join(",")
+      .split(/[,\s]+/)
+      .map((email) => email.trim().toLowerCase())
+      .find(Boolean) || ""
+  );
 }
 
 async function stopWorker(child) {

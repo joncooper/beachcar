@@ -11,6 +11,13 @@ const env = await loadEnvHints([".env.local", ".dev.vars", ".publish.env"]);
 const migrationFiles = await safeReaddir(resolve("migrations"));
 const runnerPackage = await readOptionalJson(resolve("runner/package.json"));
 const packageJson = await readOptionalJson(resolve("package.json"));
+const explicitBootstrapOwnerEmails = emailList(
+  wrangler?.vars?.BOOTSTRAP_OWNER_EMAILS,
+  wrangler?.vars?.ALLOWED_EMAILS,
+  stringEnv("BOOTSTRAP_OWNER_EMAILS"),
+  stringEnv("ALLOWED_EMAILS"),
+);
+const bootstrapOwnerEmails = explicitBootstrapOwnerEmails.length ? explicitBootstrapOwnerEmails : emailList(wrangler?.vars?.ALLOWED_EMAIL, stringEnv("ALLOWED_EMAIL"));
 
 check("wrangler.jsonc is readable", !!wrangler, "Add wrangler.jsonc before deployment.");
 check("Worker compatibility date is current for this build", compareDate(wrangler?.compatibility_date, "2026-06-25") >= 0, "Set compatibility_date to 2026-06-25 or later.");
@@ -43,11 +50,11 @@ check("Workflow binding exists", hasClassBinding(wrangler?.workflows, "BeachcarR
 check("Source cache cron trigger exists", Array.isArray(wrangler?.triggers?.crons) && wrangler.triggers.crons.includes("*/15 * * * *"), "Add a scheduled trigger to refresh public source caches.");
 check("Container image config exists", Array.isArray(wrangler?.containers) && wrangler.containers.some((entry) => entry.class_name === "BeachcarRunnerContainer"), "Add the BeachcarRunnerContainer containers config.");
 check("Local dev keeps containers disabled by default", wrangler?.dev?.enable_containers === false, "Set dev.enable_containers=false so local smoke stays Docker-free.");
-check("Bootstrap owner email is configured", !!wrangler?.vars?.ALLOWED_EMAIL, "Set vars.ALLOWED_EMAIL to the owner email.");
+check("Bootstrap owner email is configured", bootstrapOwnerEmails.length > 0, "Set vars.BOOTSTRAP_OWNER_EMAILS, vars.ALLOWED_EMAILS, or vars.ALLOWED_EMAIL to at least one owner email.");
 check(
   "Bootstrap owner email is not the example address",
-  wrangler?.vars?.ALLOWED_EMAIL && wrangler.vars.ALLOWED_EMAIL !== "you@example.com",
-  "Replace vars.ALLOWED_EMAIL with the real bootstrap owner before inviting friends.",
+  bootstrapOwnerEmails.length > 0 && bootstrapOwnerEmails.every((email) => !isExampleEmail(email)),
+  "Replace bootstrap owner placeholders with the real owner email(s) before inviting friends.",
   "required-before-friends",
 );
 check("Production environment var is set", wrangler?.vars?.ENVIRONMENT === "production", "Set vars.ENVIRONMENT to production.");
@@ -106,6 +113,23 @@ function hasEnv(name) {
 
 function stringEnv(name) {
   return (process.env[name] || env[name] || "").trim();
+}
+
+function emailList(...values) {
+  return Array.from(
+    new Set(
+      values
+        .filter(Boolean)
+        .join(",")
+        .split(/[,\s]+/)
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function isExampleEmail(email) {
+  return email === "you@example.com" || email.endsWith("@example.com");
 }
 
 function hasBinding(bindings, name) {

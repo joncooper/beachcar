@@ -2,7 +2,7 @@ import { getAgentByName } from "agents";
 import { getContainer } from "@cloudflare/containers";
 import type { UserProfile } from "../shared/types";
 import type { ImportPayload } from "../shared/types";
-import { AuthError, requirePublisher, requireUser, userIdForEmail } from "./auth";
+import { AuthError, isBootstrapOwnerId, primaryBootstrapOwnerId, requirePublisher, requireUser } from "./auth";
 import {
   acceptInvite,
   assertAiBudgetAvailable,
@@ -506,15 +506,14 @@ async function handleAdmin(request: Request, env: Env, ctx: ExecutionContext, ur
 }
 
 function scopeForUser(user: { id: string; email: string }, env: Env): UserScope {
-  const legacyOwnerId = userIdForEmail(env.ALLOWED_EMAIL || "");
   return {
     userId: user.id,
-    includeLegacyData: user.id === legacyOwnerId,
+    includeLegacyData: user.id === primaryBootstrapOwnerId(env),
   };
 }
 
 function isBootstrapOwner(user: { id: string }, env: Env): boolean {
-  return user.id === userIdForEmail(env.ALLOWED_EMAIL || "");
+  return isBootstrapOwnerId(user.id, env);
 }
 
 function requireActiveUser(user: { status: string }): void {
@@ -528,7 +527,7 @@ function adminScope(url: URL, env: Env, userId?: string): UserScope {
   if (requestedUserId.trim()) {
     return { userId: requestedUserId.trim(), includeLegacyData: false };
   }
-  return { userId: userIdForEmail(env.ALLOWED_EMAIL || ""), includeLegacyData: true };
+  return { userId: primaryBootstrapOwnerId(env), includeLegacyData: true };
 }
 
 function isMcpProtectedResourceMetadataPath(pathname: string): boolean {
@@ -662,7 +661,7 @@ async function syncAgentRunState(env: Env, agentRun: NonNullable<Awaited<ReturnT
 function scopeForUserId(userId: string, env: Env): UserScope {
   return {
     userId,
-    includeLegacyData: userId === userIdForEmail(env.ALLOWED_EMAIL || ""),
+    includeLegacyData: userId === primaryBootstrapOwnerId(env),
   };
 }
 

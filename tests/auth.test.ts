@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeEmail, requireUser, userIdForEmail } from "../src/worker/auth";
+import { bootstrapOwnerEmails, isBootstrapOwnerId, normalizeEmail, primaryBootstrapOwnerId, requireUser, userIdForEmail } from "../src/worker/auth";
 
 describe("auth user identity", () => {
   it("uses normalized email ids so providers merge into one beta user", () => {
@@ -18,6 +18,26 @@ describe("auth user identity", () => {
       email: "friend@example.com",
       provider: "local",
     });
+  });
+
+  it("supports multiple configured bootstrap owner emails", () => {
+    const env = {
+      BOOTSTRAP_OWNER_EMAILS: " Owner@Example.com, jon@dockett.ai ",
+      ALLOWED_EMAIL: "legacy@example.com",
+    } as Env;
+
+    expect(bootstrapOwnerEmails(env)).toEqual(["owner@example.com", "jon@dockett.ai"]);
+    expect(primaryBootstrapOwnerId(env)).toBe("email:owner@example.com");
+    expect(isBootstrapOwnerId("email:jon@dockett.ai", env)).toBe(true);
+    expect(isBootstrapOwnerId("email:legacy@example.com", env)).toBe(false);
+    expect(isBootstrapOwnerId("email:friend@example.com", env)).toBe(false);
+  });
+
+  it("keeps ALLOWED_EMAIL as a backward-compatible owner fallback", () => {
+    const env = { ALLOWED_EMAIL: " Legacy@Example.com " } as Env;
+
+    expect(bootstrapOwnerEmails(env)).toEqual(["legacy@example.com"]);
+    expect(primaryBootstrapOwnerId(env)).toBe("email:legacy@example.com");
   });
 
   it("does not use local test-email fallback on production hostnames", async () => {

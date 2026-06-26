@@ -1,6 +1,6 @@
 # Friends Platform Acceptance Audit
 
-Date: 2026-06-25
+Date: 2026-06-26
 
 This audit maps the original request to current worktree evidence. It intentionally separates local completion from remote/deployed validation because no production deploys were allowed for this build.
 
@@ -24,6 +24,7 @@ This audit maps the original request to current worktree evidence. It intentiona
 | Admin operational visibility | `GET /api/admin/ops-summary` and the admin console summarize user counts, onboarding, runs, Agent run states, runner-task backlog, image original/variant counts and bytes, AI spend/events, and BaT cache status. |
 | Repeatable local verification | `bun run preflight` runs typecheck, Vitest, container syntax, runner simulator syntax, service-worker syntax, non-deploying readiness reporting, and client build. `bun run preflight:local` previously passed the full local Worker smoke. |
 | Non-deploying rollout readiness check | `bun run deploy:check` inspects local Cloudflare config, migrations, script wiring, and env hints without network calls or secret output. |
+| Guarded Cloudflare rollout bootstrap | `bun run cloudflare:bootstrap` inspects the logged-in Cloudflare account read-only by default, can write discovered D1 ids and owner emails into config, and requires explicit `--yes` plus action flags before resource creation, migrations, or deploy. |
 | Local/remote deployed-surface verifier | `bun run cloudflare:verify` checks a local or deployed Worker URL for app shell delivery, MCP server metadata, OAuth protected-resource metadata, unauthenticated MCP challenge behavior, and remote rejection of local test-auth headers without mutating Cloudflare resources. |
 | PWA screen visual verification | In-app browser audit covered invite, onboarding, admin, preferences, and Run Detail demo routes at desktop and 390px mobile widths with no horizontal overflow; Run Detail screenshots are saved in `docs/screenshots/friends-platform/`. |
 
@@ -43,6 +44,8 @@ This audit maps the original request to current worktree evidence. It intentiona
 - Browser verification: Vite settings demo rendered both `/mcp` and `/.well-known/oauth-protected-resource/mcp` endpoints with no page errors or horizontal overflow at desktop or 390px mobile widths.
 - Cloudflare resource inspection: `bun run cloudflare:check` ran read-only against account `b8873e78bf5e48fcdc91e87f2324cf55`; it found the configured R2 bucket exists, the configured Worker is not deployed yet, and the configured D1 name/id are not ready because only the similar legacy `beach-car-watch` database exists.
 - Cloudflare deployment plan: `bun run cloudflare:plan` and `bun run cloudflare:plan --json` generated an ordered rehearsal plan from the read-only account inspection, separating read-only, file-edit, and mutating steps without executing D1 creation, migrations, secrets, or deploys.
+- Cloudflare rollout bootstrap: `bun run cloudflare:bootstrap` ran read-only against account `b8873e78bf5e48fcdc91e87f2324cf55`, confirmed D1 `beachcar-watch` is missing and R2 `beachcar-watch-images` exists, and printed explicit apply/migrate/deploy commands without mutating Cloudflare.
+- Production resource mutation attempt: `bunx wrangler d1 create beachcar-watch` was not run because the approval reviewer rejected remote D1 creation as a real Cloudflare account mutation after the earlier no-deploy constraint; the repo now has an explicit bootstrap command ready for a follow-up approval.
 - Cloudflare deployed-surface verifier: `bun run cloudflare:verify -- --url http://127.0.0.1:8787` verified a local Worker app shell, MCP metadata, OAuth protected-resource metadata, unauthorized MCP challenge, local test auth, and admin source-cache status via `.dev.vars`. Optional signed-in and authenticated MCP-token checks were reported as warnings because no real Clerk or automation token was supplied for this command.
 - Friend skill validation: `uv run --with PyYAML python /Users/jdc/.codex/skills/.system/skill-creator/scripts/quick_validate.py .agents/skills/beachcar-daily-run` passed after adding hosted-MCP setup, source fallback, usage-accounting, and done-definition guidance to both the repo skill and generated bundle.
 - Local MCP OAuth authorization-code verification: `bun run cloudflare:verify -- --url http://127.0.0.1:8787` dynamically registered a public client, completed authorization-code + S256 PKCE with local test auth, exchanged for a short-lived OAuth access token, used it for MCP `tools/list`, revoked it, and verified the revoked token was rejected.
@@ -53,7 +56,7 @@ This audit maps the original request to current worktree evidence. It intentiona
 
 | Item | Why not proven | Required evidence before real friend use |
 | --- | --- | --- |
-| Production deploy | User explicitly prohibited real Worker deploys. | Intentional deploy, remote D1 migrations, `bun run cloudflare:verify` against the deployed URL, remote `/api/me`, invite, onboarding, run, export/delete smoke. |
+| Production deploy | Earlier no-deploy/no-real-mutation constraint still blocks Worker deploys and D1 creation without explicit follow-up approval. | Intentional D1 creation, config update, remote D1 migrations, Worker deploy, `bun run cloudflare:verify` against the deployed URL, remote `/api/me`, invite, onboarding, run, export/delete smoke. |
 | Deployed Container runner | Cloudflare Container was scaffolded locally but not deployed. | Deployed `BEACHCAR_RUNNER_CONTAINER` handles a runner task and records usage. |
 | Credentialed Codex SDK run | Codex mode is now configurable, but no real Codex/OpenAI credentialed run was executed. | Configure `BEACHCAR_RUNNER_MODE=codex` and credentials, run a non-sensitive public-source task, verify normalized JSON/blocked result. |
 | Real AI Gateway spend policy | Local adapter and usage ledger are implemented; remote Gateway budget/BYOK policy was not exercised. | Gateway request with user/run metadata, BYOK alias if used, budget enforcement/logging in Cloudflare. |
@@ -63,4 +66,4 @@ This audit maps the original request to current worktree evidence. It intentiona
 
 ## Current Recommendation
 
-The worktree is locally ready for a deliberate deployment rehearsal, but not yet proven for inviting real friends. The next step is to execute the `bun run cloudflare:plan` steps intentionally: choose/create the production D1 binding, apply remote migrations, deploy the Worker, set remote Worker secrets, set the real bootstrap owner email, configure Clerk secrets, and configure AI Gateway credentials. The first deploy rehearsal should use managed AI Gateway budgets and deterministic Container mode before enabling credentialed Codex mode.
+The worktree is locally ready for a deliberate deployment rehearsal, but not yet proven for inviting real friends. The next step is to run the guarded bootstrap path with explicit approval: `bun run cloudflare:bootstrap -- --yes --apply-resources --write-config`, then configure `BOOTSTRAP_OWNER_EMAILS`, set Clerk/PUBLISH_TOKEN secrets, apply remote migrations with dry-run deploy validation, and finally deploy with `--deploy`. The first deploy rehearsal should use managed AI Gateway budgets and deterministic Container mode before enabling credentialed Codex mode.

@@ -24,7 +24,7 @@ The app uses Clerk native iOS auth:
 - `UserButton(signedOutContent:)`
 - Google auth through Clerk
 
-The Worker uses `ALLOWED_EMAIL` only to bootstrap the owner. Other signed-in users are created as `invited` and must accept an invite code before they can load runs, save feedback, or submit preference notes.
+The Worker uses `BOOTSTRAP_OWNER_EMAILS` or legacy `ALLOWED_EMAIL` only to bootstrap owner accounts. Other signed-in users are created as `invited` and must accept an invite code before they can load runs, save feedback, or submit preference notes.
 
 The native app checks `/api/me` after sign-in:
 

@@ -7,7 +7,16 @@ const envPath = path.join(root, ".env.local");
 const apiBase = "https://api.clerk.com/v1";
 const env = await loadEnv(envPath);
 const secretKey = process.env.CLERK_SECRET_KEY || env.CLERK_SECRET_KEY;
-const email = process.env.CLERK_DEV_EMAIL || process.env.ALLOWED_EMAIL || env.CLERK_DEV_EMAIL || env.ALLOWED_EMAIL;
+const email = firstEmail(
+  process.env.CLERK_DEV_EMAIL,
+  env.CLERK_DEV_EMAIL,
+  process.env.BOOTSTRAP_OWNER_EMAILS,
+  env.BOOTSTRAP_OWNER_EMAILS,
+  process.env.ALLOWED_EMAILS,
+  env.ALLOWED_EMAILS,
+  process.env.ALLOWED_EMAIL,
+  env.ALLOWED_EMAIL,
+);
 const appUrl =
   process.env.CLERK_DEV_APP_URL || process.env.AUCTION_WATCH_URL || env.CLERK_DEV_APP_URL || env.AUCTION_WATCH_URL || "http://127.0.0.1:8787/";
 
@@ -15,7 +24,7 @@ if (!secretKey) {
   throw new Error("Missing CLERK_SECRET_KEY in .env.local");
 }
 if (!email) {
-  throw new Error("Set CLERK_DEV_EMAIL or ALLOWED_EMAIL before creating a Clerk dev token");
+  throw new Error("Set CLERK_DEV_EMAIL, BOOTSTRAP_OWNER_EMAILS, ALLOWED_EMAILS, or ALLOWED_EMAIL before creating a Clerk dev token");
 }
 
 const user = await getOrCreateUser();
@@ -114,6 +123,17 @@ function clerkFetch(pathname, init = {}) {
 function hasEmail(user, target) {
   const normalized = target.toLowerCase();
   return (user.email_addresses || []).some((entry) => entry.email_address?.toLowerCase() === normalized);
+}
+
+function firstEmail(...values) {
+  return (
+    values
+      .filter(Boolean)
+      .join(",")
+      .split(/[,\s]+/)
+      .map((value) => value.trim().toLowerCase())
+      .find(Boolean) || ""
+  );
 }
 
 async function loadEnv(file) {

@@ -14,7 +14,7 @@ export async function requireUser(request: Request, env: Env): Promise<AuthUser>
   const host = new URL(request.url).hostname;
   const isLocalRequest = host === "localhost" || host === "127.0.0.1" || host === "::1";
   if (isLocalRequest && !env.CLERK_SECRET_KEY && !env.TEAM_DOMAIN && !env.POLICY_AUD) {
-    const email = normalizeEmail(request.headers.get("x-beachcar-test-email") || env.ALLOWED_EMAIL);
+    const email = normalizeEmail(request.headers.get("x-beachcar-test-email") || primaryBootstrapOwnerEmail(env));
     return { id: userIdForEmail(email), email, provider: "local", subject: email };
   }
 
@@ -76,6 +76,31 @@ export function userIdForEmail(email: string): string {
 
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
+}
+
+export function bootstrapOwnerEmails(env: Env): string[] {
+  const explicitValues = [env.BOOTSTRAP_OWNER_EMAILS, env.ALLOWED_EMAILS].filter(Boolean).join(",");
+  const values = explicitValues || env.ALLOWED_EMAIL || "";
+  return Array.from(
+    new Set(
+      values
+        .split(/[,\s]+/)
+        .map(normalizeEmail)
+        .filter(Boolean),
+    ),
+  );
+}
+
+export function primaryBootstrapOwnerEmail(env: Env): string {
+  return bootstrapOwnerEmails(env)[0] || "";
+}
+
+export function primaryBootstrapOwnerId(env: Env): string {
+  return userIdForEmail(primaryBootstrapOwnerEmail(env));
+}
+
+export function isBootstrapOwnerId(userId: string, env: Env): boolean {
+  return bootstrapOwnerEmails(env).some((email) => userId === userIdForEmail(email));
 }
 
 export async function requirePublisher(request: Request, env: Env): Promise<void> {

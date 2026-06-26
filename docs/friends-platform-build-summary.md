@@ -592,6 +592,14 @@ Improvement: Added `AdminOpsSummary`, `getAdminOpsSummary()`, and `GET /api/admi
 
 Verification: `bun run typecheck` passed. A local Worker call to `/api/admin/ops-summary` returned live D1 counts for users, runs, completed runner tasks, image variants, AI events, and source-cache items. The admin demo rendered Ops summary, Runner backlog, Image bytes, AI today, and BaT status with no console errors or horizontal overflow at desktop and 390px mobile widths.
 
+### App/architecture pass 53: production rollout bootstrap guardrails
+
+Review: The next real friend trial needs Cloudflare resource creation, D1 migration, secrets, and deploy, but the repo still required hand-editing `wrangler.jsonc` and guessing a single bootstrap owner email before those steps. A remote D1 create was not performed in this pass because the approval reviewer treated it as a real account mutation after the earlier no-deploy constraint.
+
+Improvement: Added `bun run cloudflare:bootstrap`, a read-only-by-default rollout helper that inspects the configured Cloudflare account, prints missing D1/R2/Worker state, and requires explicit `--yes` plus action flags before any remote mutation. It can create missing D1/R2 resources, write the discovered D1 id into `wrangler.jsonc`, set `BOOTSTRAP_OWNER_EMAILS`, apply remote D1 migrations, run a deploy dry-run, and deploy only when `--deploy` is present. Runtime auth now supports `BOOTSTRAP_OWNER_EMAILS` / `ALLOWED_EMAILS` as explicit owner lists while keeping `ALLOWED_EMAIL` as a backward-compatible fallback.
+
+Verification: `bun run cloudflare:bootstrap` ran read-only against account `b8873e78bf5e48fcdc91e87f2324cf55`, confirmed D1 `beachcar-watch` is still missing and R2 `beachcar-watch-images` exists, and printed the explicit apply/migrate/deploy commands without creating, migrating, or deploying resources. Worker/test typechecks and script syntax checks passed.
+
 ## Screenshots
 
 Invite gate, desktop:

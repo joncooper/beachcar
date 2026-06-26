@@ -9,7 +9,7 @@ await loadEnvFile(resolve(".publish.env"));
 
 const jsonOutput = hasFlag("--json");
 const baseUrl = normalizeBaseUrl(valueArg("--url") || process.env.BEACHCAR_DEPLOY_URL || "http://127.0.0.1:8787");
-const testEmail = valueArg("--email") || process.env.SMOKE_TEST_EMAIL || process.env.ALLOWED_EMAIL || "you@example.com";
+const testEmail = firstEmail(valueArg("--email"), process.env.SMOKE_TEST_EMAIL, process.env.BOOTSTRAP_OWNER_EMAILS, process.env.ALLOWED_EMAILS, process.env.ALLOWED_EMAIL, "you@example.com");
 const clerkToken = valueArg("--clerk-token") || process.env.BEACHCAR_CLERK_TOKEN || "";
 const publishToken = valueArg("--publish-token") || process.env.PUBLISH_TOKEN || "";
 const mcpToken = valueArg("--mcp-token") || process.env.BEACHCAR_MCP_TOKEN || "";
@@ -369,6 +369,17 @@ function hasFlag(name) {
 function valueArg(name) {
   const index = args.indexOf(name);
   return index >= 0 ? args[index + 1] || "" : "";
+}
+
+function firstEmail(...values) {
+  return (
+    values
+      .filter(Boolean)
+      .join(",")
+      .split(/[,\s]+/)
+      .map((email) => email.trim().toLowerCase())
+      .find(Boolean) || ""
+  );
 }
 
 async function pkceChallenge(verifier) {

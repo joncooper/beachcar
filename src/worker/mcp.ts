@@ -1,6 +1,6 @@
 import type { ImportPayload } from "../shared/types";
 import { normalizeListing } from "../shared/normalize";
-import { userIdForEmail } from "./auth";
+import { primaryBootstrapOwnerId } from "./auth";
 import {
   authenticateAutomationToken,
   authenticateOAuthAccessToken,
@@ -446,7 +446,7 @@ async function authenticateMcpSession(request: Request, env: Env): Promise<McpSe
     user,
     scope: {
       userId: token.userId,
-      includeLegacyData: token.userId === userIdForEmail(env.ALLOWED_EMAIL || ""),
+      includeLegacyData: token.userId === primaryBootstrapOwnerId(env),
     },
   };
 }

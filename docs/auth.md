@@ -13,13 +13,13 @@ Required Worker secrets:
 
 Required Worker var:
 
-- `ALLOWED_EMAIL`
+- `BOOTSTRAP_OWNER_EMAILS` or legacy `ALLOWED_EMAIL`
 
-`ALLOWED_EMAIL` is now the bootstrap owner, not the only allowed account. The Worker verifies the session JWT, fetches the Clerk user with `CLERK_SECRET_KEY`, normalizes the user's primary email, and maps it to a stable beta user id: `email:<normalized email>`.
+`BOOTSTRAP_OWNER_EMAILS` accepts a comma-separated list and overrides the legacy single `ALLOWED_EMAIL` fallback. The first configured owner is the legacy-data owner; every configured owner is automatically activated on first sign-in. The Worker verifies the session JWT, fetches the Clerk user with `CLERK_SECRET_KEY`, normalizes the user's primary email, and maps it to a stable beta user id: `email:<normalized email>`.
 
 Authorization is handled in D1:
 
-- The bootstrap owner matching `ALLOWED_EMAIL` is automatically active.
+- Bootstrap owners matching `BOOTSTRAP_OWNER_EMAILS`, `ALLOWED_EMAILS`, or legacy `ALLOWED_EMAIL` are automatically active.
 - Other signed-in users are created with `invited` status.
 - Invited users can only call `/api/me` and `POST /api/invites/accept` until they accept an invite code.
 - Active users can read/write only their own profile, latest run, feedback, and preference events.
@@ -29,7 +29,7 @@ Authorization is handled in D1:
 - Disabled users can still call `/api/me` to see account status, but other user routes return `Account disabled`.
 - Admin/publisher routes still require `PUBLISH_TOKEN`.
 
-For local development without Clerk secrets, non-production localhost requests may fall back to `ALLOWED_EMAIL`.
+For local development without Clerk secrets, non-production localhost requests may fall back to the first configured bootstrap owner.
 
 Admin invite routes:
 

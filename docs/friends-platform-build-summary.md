@@ -536,6 +536,14 @@ Improvement: Added `/.well-known/oauth-protected-resource/mcp` and host-level pr
 
 Verification: `bun run typecheck`, `bun run test`, `bun run preflight:local`, and `bunx wrangler deploy --dry-run` passed. The local Worker smoke proved automation status includes the protected-resource metadata endpoint, the well-known metadata body describes `/mcp`, and an unauthenticated MCP request returns a 401 with the metadata challenge. Browser verification against the Vite settings demo showed both `/mcp` and `/.well-known/oauth-protected-resource/mcp` endpoints with no page errors or horizontal overflow at desktop or 390px mobile widths.
 
+### App/architecture pass 46: Read-only Cloudflare resource inspection
+
+Review: `bun run deploy:check` was useful for local config, but it did not inspect the actual Cloudflare account. The current account already had similarly named D1/R2 resources, so a deployment rehearsal could easily target the wrong database or assume a Worker existed when it did not.
+
+Improvement: Added `scripts/check-cloudflare-resources.mjs` and `bun run cloudflare:check`. The script runs read-only Wrangler commands for `whoami`, D1 list, R2 bucket list, Worker secret listing, and deployment metadata where available. It reports account id, configured resource matches, missing Worker/secrets, D1 name/id mismatches, and supports `--json`/`--strict`. The command is intentionally opt-in and is not part of deterministic `preflight`.
+
+Verification: `node --check scripts/check-cloudflare-resources.mjs` passed. `bun run cloudflare:check` ran read-only against account `b8873e78bf5e48fcdc91e87f2324cf55` and reported 7 ok checks plus 4 expected todos: no exact D1 named `beachcar-watch`, placeholder D1 id, no deployed Worker named `beachcar-watch`, and remote Worker secrets unavailable until the Worker exists. No Cloudflare resources were created, changed, or deployed.
+
 ## Screenshots
 
 Invite gate, desktop:

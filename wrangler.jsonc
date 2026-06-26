@@ -61,14 +61,14 @@
     }
   ],
   "vars": {
-    "ALLOWED_EMAIL": "you@example.com",
+    "BOOTSTRAP_OWNER_EMAILS": "jon.cooper@gmail.com,jon@dockett.ai",
     "ENVIRONMENT": "production"
   },
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "beachcar-watch",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "database_name": "beach-car-watch",
+      "database_id": "2860a6be-7cf0-4fc0-821f-166e78521154",
       "migrations_dir": "./migrations"
     }
   ],

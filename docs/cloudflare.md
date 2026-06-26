@@ -5,7 +5,7 @@ Beachcar uses one Cloudflare Worker with Static Assets, D1, and R2.
 Resources:
 
 - Worker: `beachcar-watch` by default.
-- D1: `beachcar-watch`.
+- D1: `beach-car-watch` for the current rollout branch.
 - R2: `beachcar-watch-images`.
 
 You may rename these, but keep `package.json` scripts and `wrangler.jsonc` in sync.
@@ -17,6 +17,8 @@ bun run cloudflare:bootstrap
 ```
 
 Default mode is read-only. It inspects the configured D1, R2, and Worker state and prints the next commands without creating, migrating, or deploying anything.
+
+This branch is currently configured to reuse the existing `beach-car-watch` D1 database (`2860a6be-7cf0-4fc0-821f-166e78521154`). Read-only inspection showed it is non-empty and has applied migrations `0001`-`0004`, matching the pre-friend-beta schema in this repo. Apply migrations `0005`-`0010` before deploying the Worker.
 
 When you are intentionally ready to mutate Cloudflare resources, use explicit flags:
 
@@ -83,8 +85,8 @@ Current read-only account findings from 2026-06-26:
 - Logged in account: `b8873e78bf5e48fcdc91e87f2324cf55`.
 - Configured Worker `beachcar-watch` is not deployed yet, so remote Worker secrets cannot be inspected.
 - Configured R2 bucket `beachcar-watch-images` exists.
-- Configured D1 name `beachcar-watch` does not exist yet; a similar legacy database `beach-car-watch` exists with id `2860a6be-7cf0-4fc0-821f-166e78521154`.
-- `wrangler.jsonc` still uses the placeholder D1 `database_id`; choose whether to create `beachcar-watch` or intentionally reuse/migrate the legacy database before deploying.
+- Configured D1 database `beach-car-watch` exists with id `2860a6be-7cf0-4fc0-821f-166e78521154`.
+- `beach-car-watch` has migrations `0001`-`0004` applied; remote migrations `0005`-`0010` are still pending.
 
 Worker secrets:
 

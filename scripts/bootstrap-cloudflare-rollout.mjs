@@ -37,6 +37,7 @@ const d1Binding = wrangler?.d1_databases?.[0] || {};
 const d1Name = stringValue(d1Binding.database_name) || "beachcar-watch";
 const r2Name = stringValue(wrangler?.r2_buckets?.[0]?.bucket_name) || "beachcar-watch-images";
 const workerName = stringValue(wrangler?.name) || "beachcar-watch";
+const configuredOwnerEmails = ownerEmails.length ? ownerEmails : configuredBootstrapOwnerEmails(wrangler);
 
 let check = await inspectCloudflare();
 let exactD1 = findD1(check, d1Name);
@@ -125,7 +126,7 @@ async function printNextSteps(state) {
   } else if (isPlaceholder(wrangler?.d1_databases?.[0]?.database_id)) {
     console.log(`- Write D1 id into wrangler.jsonc: bun scripts/bootstrap-cloudflare-rollout.mjs --write-config`);
   }
-  if (!ownerEmails.length) {
+  if (!configuredOwnerEmails.length) {
     console.log(`- Set owner emails in config: bun scripts/bootstrap-cloudflare-rollout.mjs --write-config --owner-emails "owner@example.com"`);
   }
   console.log("- Add required Worker secrets with Wrangler: PUBLISH_TOKEN, CLERK_SECRET_KEY, CLERK_JWT_ISSUER.");
@@ -207,6 +208,12 @@ function normalizeEmailList(value) {
         .filter((email) => email.includes("@")),
     ),
   );
+}
+
+function configuredBootstrapOwnerEmails(config) {
+  const vars = config?.vars || {};
+  const explicit = normalizeEmailList([vars.BOOTSTRAP_OWNER_EMAILS, vars.ALLOWED_EMAILS].filter(Boolean).join(","));
+  return explicit.length ? explicit : normalizeEmailList(vars.ALLOWED_EMAIL || "");
 }
 
 function redactOwners(emails) {

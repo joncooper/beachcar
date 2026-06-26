@@ -133,11 +133,7 @@ Inspect the logged-in Cloudflare account without changing anything:
 bun run cloudflare:bootstrap
 ```
 
-Create missing resources and write the discovered D1 id into `wrangler.jsonc` only when you are intentionally ready to mutate the Cloudflare account:
-
-```bash
-bun run cloudflare:bootstrap -- --yes --apply-resources --write-config
-```
+This branch is currently configured to reuse the existing compatible D1 database `beach-car-watch` (`2860a6be-7cf0-4fc0-821f-166e78521154`). It already has migrations `0001`-`0004`; apply the remaining migrations before deploying the friend beta.
 
 Set the bootstrap owner email list in config:
 
@@ -153,7 +149,8 @@ Apply migrations and set Worker secrets when you are ready to deploy:
 bunx wrangler secret put PUBLISH_TOKEN
 bunx wrangler secret put CLERK_SECRET_KEY
 bunx wrangler secret put CLERK_JWT_ISSUER
-bun run cloudflare:bootstrap -- --yes --migrate --dry-run-deploy
+bun run db:migrate:remote
+bun run cloudflare:bootstrap -- --dry-run-deploy
 bun run cloudflare:bootstrap -- --yes --migrate --dry-run-deploy --deploy
 ```
 

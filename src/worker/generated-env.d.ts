@@ -1,5 +1,5 @@
 /* eslint-disable */
-// Starter Env bindings. Regenerate with `bun run cf:types` after updating wrangler.jsonc.
+// Starter Env bindings. Run `bun run cf:types` after updating wrangler.jsonc to compare with Wrangler's generated view.
 interface __BaseEnv_Env {
 	BeachcarAgent: DurableObjectNamespace<import("./agents/beachcar-agent").BeachcarAgent>;
 	BEACHCAR_RUNNER_CONTAINER: DurableObjectNamespace<import("./containers/beachcar-runner-container").BeachcarRunnerContainer>;
@@ -7,7 +7,7 @@ interface __BaseEnv_Env {
 	IMAGES: R2Bucket;
 	DB: D1Database;
 	ASSETS: Fetcher;
-	ALLOWED_EMAIL: string;
+	BOOTSTRAP_OWNER_EMAILS: string;
 	ENVIRONMENT: string;
 	PUBLISH_TOKEN?: string;
 	CLERK_SECRET_KEY?: string;
@@ -37,5 +37,5 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "ALLOWED_EMAIL" | "ENVIRONMENT" | "PUBLISH_TOKEN">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "BOOTSTRAP_OWNER_EMAILS" | "ENVIRONMENT" | "PUBLISH_TOKEN">> {}
 }

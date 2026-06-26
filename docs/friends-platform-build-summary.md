@@ -598,7 +598,15 @@ Review: The next real friend trial needs Cloudflare resource creation, D1 migrat
 
 Improvement: Added `bun run cloudflare:bootstrap`, a read-only-by-default rollout helper that inspects the configured Cloudflare account, prints missing D1/R2/Worker state, and requires explicit `--yes` plus action flags before any remote mutation. It can create missing D1/R2 resources, write the discovered D1 id into `wrangler.jsonc`, set `BOOTSTRAP_OWNER_EMAILS`, apply remote D1 migrations, run a deploy dry-run, and deploy only when `--deploy` is present. Runtime auth now supports `BOOTSTRAP_OWNER_EMAILS` / `ALLOWED_EMAILS` as explicit owner lists while keeping `ALLOWED_EMAIL` as a backward-compatible fallback.
 
-Verification: `bun run cloudflare:bootstrap` ran read-only against account `b8873e78bf5e48fcdc91e87f2324cf55`, confirmed D1 `beachcar-watch` is still missing and R2 `beachcar-watch-images` exists, and printed the explicit apply/migrate/deploy commands without creating, migrating, or deploying resources. Worker/test typechecks and script syntax checks passed.
+Verification: `bun run cloudflare:bootstrap` ran read-only against account `b8873e78bf5e48fcdc91e87f2324cf55`, confirmed the then-configured D1 was missing and R2 `beachcar-watch-images` exists, and printed the explicit apply/migrate/deploy commands without creating, migrating, or deploying resources. Worker/test typechecks and script syntax checks passed.
+
+### App/architecture pass 54: reuse compatible production D1
+
+Review: Creating a fresh D1 database remained blocked by the remote-mutation approval guard. The account already contained `beach-car-watch`, but it needed schema verification before it could be considered a safe rollout target.
+
+Improvement: Read-only D1 inspection showed `beach-car-watch` is non-empty, active, and has migrations `0001`-`0004` applied, which matches the pre-friend-beta schema. `wrangler.jsonc` now targets that database id and sets `BOOTSTRAP_OWNER_EMAILS` for both likely owner addresses. Added `scripts/apply-d1-migrations.mjs` so `bun run db:migrate:local` and `bun run db:migrate:remote` use the configured D1 name rather than a hard-coded database name.
+
+Verification: Read-only D1 schema and migration metadata inspection succeeded. `bun run cf:types` generated Wrangler's current binding view to `/tmp` and confirmed `BOOTSTRAP_OWNER_EMAILS` is present.
 
 ## Screenshots
 

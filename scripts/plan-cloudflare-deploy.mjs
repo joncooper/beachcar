@@ -35,6 +35,8 @@ function buildPlan(check, wranglerConfig) {
   const similarD1 = check.resources.d1.find((db) => normalizeName(db?.name) === normalizeName(configuredD1Name)) || null;
   const r2Exists = check.resources.r2Buckets.includes(configuredR2Name);
   const workerExists = checkStatus(check, "Configured Worker exists remotely") === "ok";
+  const ownerEmails = configuredBootstrapOwnerEmails(wranglerConfig);
+  const ownerEmailReady = ownerEmails.length > 0 && ownerEmails.every((email) => !isExampleEmail(email));
 
   const steps = [];
 
@@ -85,9 +87,11 @@ function buildPlan(check, wranglerConfig) {
   steps.push({
     title: "Set production owner email list",
     kind: "file-edit",
-    status: "required",
+    status: ownerEmailReady ? "ready" : "required",
     commands: ["# Replace vars.BOOTSTRAP_OWNER_EMAILS or vars.ALLOWED_EMAIL in wrangler.jsonc with the real owner email(s)"],
-    detail: "Current deploy readiness treats example bootstrap owner emails as a friend-release blocker. Multiple comma-separated owner emails are supported.",
+    detail: ownerEmailReady
+      ? `Bootstrap owner email list is configured for ${ownerEmails.length} owner(s).`
+      : "Current deploy readiness treats example bootstrap owner emails as a friend-release blocker. Multiple comma-separated owner emails are supported.",
   });
 
   steps.push({
@@ -149,7 +153,9 @@ function buildPlan(check, wranglerConfig) {
     generatedAt: new Date().toISOString(),
     accountId: check.accountId,
     workerName,
-    recommendation: `Create a fresh D1 database named ${configuredD1Name} unless you intentionally decide to inspect and reuse a legacy similarly named database.`,
+    recommendation: exactD1
+      ? `Use configured D1 ${configuredD1Name} (${exactD1.uuid}) and apply pending migrations before deploy.`
+      : `Create a fresh D1 database named ${configuredD1Name} unless you intentionally decide to inspect and reuse a legacy similarly named database.`,
     currentFindings: check.checks.filter((entry) => entry.status !== "ok"),
     steps,
     mutatingCommandsPresent: steps.some((step) => step.kind === "mutating"),
@@ -167,6 +173,29 @@ function normalizeName(value) {
 
 function stringValue(value) {
   return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function configuredBootstrapOwnerEmails(config) {
+  const vars = config?.vars || {};
+  const explicit = emailList(vars.BOOTSTRAP_OWNER_EMAILS, vars.ALLOWED_EMAILS);
+  return explicit.length ? explicit : emailList(vars.ALLOWED_EMAIL);
+}
+
+function emailList(...values) {
+  return Array.from(
+    new Set(
+      values
+        .filter(Boolean)
+        .join(",")
+        .split(/[,\s]+/)
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function isExampleEmail(email) {
+  return email === "you@example.com" || email.endsWith("@example.com");
 }
 
 async function readJsonc(path) {

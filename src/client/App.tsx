@@ -620,9 +620,11 @@ function demoAutomationStatus(): AutomationStatus {
   return {
     mcpEndpoint: "https://beachcar-watch.example.workers.dev/mcp",
     bundleEndpoint: "https://beachcar-watch.example.workers.dev/api/automation/bundle",
+    protectedResourceMetadataEndpoint: "https://beachcar-watch.example.workers.dev/.well-known/oauth-protected-resource/mcp",
     oauth: {
-      status: "planned",
-      message: "Remote MCP OAuth is planned; this preview uses revocable scoped automation tokens.",
+      status: "metadata_ready",
+      protectedResourceMetadataEndpoint: "https://beachcar-watch.example.workers.dev/.well-known/oauth-protected-resource/mcp",
+      message: "OAuth protected-resource discovery is available; this preview uses revocable scoped automation tokens until the authorization flow is enabled.",
     },
     defaultScopes: ["setup:read", "sources:read", "runs:publish", "usage:write", "events:read"],
     tokens: [
@@ -2003,6 +2005,10 @@ function AutomationSettingsPanel(props: { demoStatus?: AutomationStatus }) {
       <div className="automation-endpoint">
         <Bot size={18} aria-hidden="true" />
         <span>{status?.mcpEndpoint || "Loading MCP endpoint..."}</span>
+      </div>
+      <div className="automation-endpoint">
+        <ShieldCheck size={18} aria-hidden="true" />
+        <span>{status?.protectedResourceMetadataEndpoint || status?.oauth.protectedResourceMetadataEndpoint || "Loading OAuth resource metadata..."}</span>
       </div>
       <div className="automation-actions">
         <button disabled={pending !== null} type="button" onClick={createToken}>

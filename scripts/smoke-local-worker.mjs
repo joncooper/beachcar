@@ -363,7 +363,25 @@ async function smokeAccountExportAndDeletion() {
 async function smokeRemoteMcp(friendEmail) {
   const status = await requestJson("/api/automation/status", { email: friendEmail });
   assert(typeof status.mcpEndpoint === "string" && status.mcpEndpoint.endsWith("/mcp"), "Expected automation status to include the MCP endpoint.");
-  assert(status.oauth?.status === "planned", "Expected automation status to describe the OAuth follow-up.");
+  assert(
+    typeof status.protectedResourceMetadataEndpoint === "string" && status.protectedResourceMetadataEndpoint.endsWith("/.well-known/oauth-protected-resource/mcp"),
+    "Expected automation status to include the OAuth protected-resource metadata endpoint.",
+  );
+  assert(status.oauth?.status === "metadata_ready", "Expected automation status to describe OAuth metadata readiness.");
+
+  const metadata = await requestJson("/.well-known/oauth-protected-resource/mcp", { email: friendEmail });
+  assert(metadata.resource === status.mcpEndpoint, "Expected protected-resource metadata to describe the MCP endpoint as the resource.");
+  assert(Array.isArray(metadata.scopes_supported) && metadata.scopes_supported.includes("runs:publish"), "Expected protected-resource metadata to list MCP scopes.");
+  assert(Array.isArray(metadata.bearer_methods_supported) && metadata.bearer_methods_supported.includes("header"), "Expected metadata to advertise header bearer tokens.");
+
+  const unauthorized = await rawRequest("/mcp", {
+    method: "POST",
+    body: { jsonrpc: "2.0", id: "smoke-unauthorized", method: "tools/list" },
+  });
+  const challenge = unauthorized.headers.get("www-authenticate") || "";
+  assert(unauthorized.status === 401, `Expected unauthenticated MCP request to return HTTP 401; received ${unauthorized.status}.`);
+  assert(challenge.includes("resource_metadata="), "Expected unauthenticated MCP response to advertise resource metadata.");
+  assert(challenge.includes("/.well-known/oauth-protected-resource/mcp"), "Expected MCP auth challenge to point at the protected-resource metadata endpoint.");
 
   const created = await requestJson("/api/automation/tokens", {
     email: friendEmail,
@@ -485,7 +503,7 @@ async function rawRequest(path, options = {}) {
     headers,
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
   });
-  return { status: response.status, body: await readResponse(response) };
+  return { status: response.status, headers: response.headers, body: await readResponse(response) };
 }
 
 async function rawBinaryRequest(path, options = {}) {

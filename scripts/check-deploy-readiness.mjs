@@ -23,6 +23,11 @@ check(
 );
 check("R2 image bucket binding is configured", hasBinding(wrangler?.r2_buckets, "IMAGES"), "Add IMAGES R2 bucket binding.");
 check("Assets binding is configured", wrangler?.assets?.binding === "ASSETS", "Configure the ASSETS binding for the PWA.");
+check(
+  "Well-known metadata routes run through Worker",
+  Array.isArray(wrangler?.assets?.run_worker_first) && wrangler.assets.run_worker_first.includes("/.well-known/*"),
+  "Add /.well-known/* to assets.run_worker_first so OAuth protected-resource metadata is not served by the SPA fallback.",
+);
 check("BeachcarAgent Durable Object binding exists", hasClassBinding(wrangler?.durable_objects?.bindings, "BeachcarAgent"), "Add BeachcarAgent Durable Object binding.");
 check(
   "Container Durable Object binding exists",

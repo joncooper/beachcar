@@ -18,6 +18,7 @@ import {
 } from "./db";
 import { jsonResponse } from "./http";
 import { prewarmImportedImages } from "./image-cache";
+import { mcpProtectedResourceMetadataEndpoint, mcpWwwAuthenticateHeader } from "./oauth-metadata";
 import { searchBringATrailerCache } from "./source-cache";
 import type { SourceCandidate } from "./workflows/source-discovery";
 
@@ -156,6 +157,7 @@ export async function handleMcpRequest(request: Request, env: Env, ctx: Executio
       name: "beachcar-remote-mcp",
       transport: "streamable-http-json-rpc",
       endpoint: new URL("/mcp", request.url).toString(),
+      protectedResourceMetadataEndpoint: mcpProtectedResourceMetadataEndpoint(request),
       authorization: "Bearer automation token from Beachcar Preferences > Connect Automation",
       tools: mcpToolDefinitions.map(({ name, description }) => ({ name, description })),
     });
@@ -179,7 +181,7 @@ export async function handleMcpRequest(request: Request, env: Env, ctx: Executio
   if (rpc.id === undefined) return new Response(null, { status: 202 });
 
   const session = await authenticateMcpSession(request, env);
-  if (!session) return jsonRpcError(rpc.id, -32001, "Unauthorized automation token", 401);
+  if (!session) return mcpUnauthorizedError(request, rpc.id);
   if (session.user.status !== "active") return jsonRpcError(rpc.id, -32003, "User account is not active", 403);
 
   await touchAutomationToken(env.DB, session.token.id);
@@ -457,6 +459,18 @@ function jsonRpcResult(id: JsonRpcId, result: unknown): Response {
 
 function jsonRpcError(id: JsonRpcId, code: number, message: string, status = 200): Response {
   return jsonResponse({ jsonrpc: "2.0", id, error: { code, message } }, { status });
+}
+
+function mcpUnauthorizedError(request: Request, id: JsonRpcId): Response {
+  return jsonResponse(
+    { jsonrpc: "2.0", id, error: { code: -32001, message: "Unauthorized automation token" } },
+    {
+      status: 401,
+      headers: {
+        "WWW-Authenticate": mcpWwwAuthenticateHeader(request, "invalid_token", "Missing, invalid, or revoked Beachcar automation token"),
+      },
+    },
+  );
 }
 
 function protocolVersionFromParams(params: unknown): string {

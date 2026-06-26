@@ -18,6 +18,7 @@ This audit maps the original request to current worktree evidence. It intentiona
 | Per-user mobile support | iOS decodes `/api/me`, gates invite/onboarding/disabled states, caches latest runs per user, uses cached remote images, and shows Agent run status. |
 | Image resizing/cache/preload | Worker serves `thumb`, `deck`, and `full` variants with immutable cache headers; PWA service worker caches image endpoints only in a bounded image cache; PWA and iOS prefetch nearby images. Unit tests now simulate the service worker and prove authenticated JSON is not cached, repeated image requests hit the dedicated image cache, and the cache trims to 180 entries. |
 | Public source cache | Bring a Trailer public RSS candidates are ingested into D1 through `source_items` and `source_ingestion_runs`; cron/admin/MCP paths refresh and search the cache; the admin console shows freshness, item counts, latest ingest status, and manual refresh controls. |
+| Remote MCP OAuth discovery | Hosted MCP remains token-based, but `/mcp` now advertises protected-resource metadata, `/.well-known/oauth-protected-resource/mcp` returns the `/mcp` resource metadata, and unauthorized MCP requests include a `WWW-Authenticate` metadata challenge. |
 | Daily automation compatibility | Existing admin import remains, plus user-specific import and runner-task claim/complete/fail APIs. |
 | Repeatable local verification | `bun run preflight` runs typecheck, Vitest, container syntax, runner simulator syntax, service-worker syntax, non-deploying readiness reporting, and client build. `bun run preflight:local` previously passed the full local Worker smoke. |
 | Non-deploying rollout readiness check | `bun run deploy:check` inspects local Cloudflare config, migrations, script wiring, and env hints without network calls or secret output. |
@@ -35,6 +36,8 @@ This audit maps the original request to current worktree evidence. It intentiona
 - Curl verification: local source-cache status returned 20 BaT RSS items, manual ingest returned a 20-item ingestion, and the scheduled test endpoint returned successfully.
 - Browser verification: Worker admin page rendered the Source cache panel, BaT feed URL, Refresh status and Ingest BaT RSS controls with no horizontal overflow at desktop or 390px mobile widths.
 - Browser verification: Vite onboarding/settings demos rendered Taste calibration controls, six default selections, and a state-changing checkbox interaction with no page errors or horizontal overflow at desktop or 390px mobile widths. The in-app browser bridge timed out before reaching Vite, so this check used the local `agent-browser` helper.
+- Local MCP OAuth metadata verification: `bun run preflight:local` proved the well-known route, metadata body, and unauthenticated MCP `WWW-Authenticate` challenge; `bunx wrangler deploy --dry-run` passed after adding `/.well-known/*` to `assets.run_worker_first`.
+- Browser verification: Vite settings demo rendered both `/mcp` and `/.well-known/oauth-protected-resource/mcp` endpoints with no page errors or horizontal overflow at desktop or 390px mobile widths.
 - `bunx wrangler deploy --dry-run`: built Worker assets and the Bun-based Container image without deploying.
 
 ## Not Proven In This Environment
@@ -45,6 +48,7 @@ This audit maps the original request to current worktree evidence. It intentiona
 | Deployed Container runner | Cloudflare Container was scaffolded locally but not deployed. | Deployed `BEACHCAR_RUNNER_CONTAINER` handles a runner task and records usage. |
 | Credentialed Codex SDK run | Codex mode is now configurable, but no real Codex/OpenAI credentialed run was executed. | Configure `BEACHCAR_RUNNER_MODE=codex` and credentials, run a non-sensitive public-source task, verify normalized JSON/blocked result. |
 | Real AI Gateway spend policy | Local adapter and usage ledger are implemented; remote Gateway budget/BYOK policy was not exercised. | Gateway request with user/run metadata, BYOK alias if used, budget enforcement/logging in Cloudflare. |
+| Full MCP OAuth authorization flow | Protected-resource metadata discovery and 401 challenges are implemented, but authorization server endpoints and short-lived access-token issuance are not. | OAuth authorization-code + PKCE flow issues a scoped token audience-bound to `/mcp`, then a cloud MCP client connects without a manually copied automation token. |
 | Remote image transform behavior | Local smoke warmed image variants; deployed Worker/Images behavior was not exercised. | Remote image variant creation for large real listing photos, cache headers, and R2 variant rows. |
 | iOS UI tests | CoreSimulator timed out in this environment. | `bun run ios:test-ui` passes invite, onboarding, and active deck fixtures. |
 

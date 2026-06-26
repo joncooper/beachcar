@@ -528,6 +528,14 @@ Improvement: Added reusable taste-calibration controls to onboarding and Prefere
 
 Verification: `bun run typecheck`, `bun run test`, and `bun run preflight` passed. Local browser verification against the Vite onboarding and settings demo routes showed the calibration controls, six default selections, state-changing checkbox interaction, no browser page errors, and no horizontal overflow at desktop or 390px mobile widths. The in-app browser bridge timed out before reaching the Vite server, so the rendered UI verification used the local `agent-browser` helper instead.
 
+### App/architecture pass 45: Remote MCP OAuth metadata readiness
+
+Review: Remote MCP used revocable bearer automation tokens, but did not expose OAuth protected-resource metadata or a `WWW-Authenticate` discovery challenge. That made future OAuth clients harder to connect incrementally and hid a Worker/assets routing issue for well-known paths.
+
+Improvement: Added `/.well-known/oauth-protected-resource/mcp` and host-level protected-resource metadata routes for the `/mcp` resource, added metadata endpoint display to Preferences > Connect automation, added `WWW-Authenticate: Bearer resource_metadata="..."` on unauthorized MCP JSON-RPC requests, and added `/.well-known/*` to `assets.run_worker_first` so Cloudflare Assets does not serve the SPA fallback for metadata. `bun run deploy:check` now verifies this routing invariant.
+
+Verification: `bun run typecheck`, `bun run test`, `bun run preflight:local`, and `bunx wrangler deploy --dry-run` passed. The local Worker smoke proved automation status includes the protected-resource metadata endpoint, the well-known metadata body describes `/mcp`, and an unauthenticated MCP request returns a 401 with the metadata challenge. Browser verification against the Vite settings demo showed both `/mcp` and `/.well-known/oauth-protected-resource/mcp` endpoints with no page errors or horizontal overflow at desktop or 390px mobile widths.
+
 ## Screenshots
 
 Invite gate, desktop:

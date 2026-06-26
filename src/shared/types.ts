@@ -209,8 +209,10 @@ export interface AutomationEventRecord {
 export interface AutomationStatus {
   mcpEndpoint: string;
   bundleEndpoint: string;
+  protectedResourceMetadataEndpoint: string;
   oauth: {
-    status: "planned";
+    status: "planned" | "metadata_ready";
+    protectedResourceMetadataEndpoint?: string;
     message: string;
   };
   defaultScopes: AutomationScope[];

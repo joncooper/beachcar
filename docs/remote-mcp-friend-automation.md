@@ -41,6 +41,12 @@ Remote MCP route:
 - `GET /mcp`: returns server/tool metadata for setup.
 - `POST /mcp`: accepts JSON-RPC requests with `Authorization: Bearer <automation-token>`.
 
+OAuth discovery routes:
+
+- `GET /.well-known/oauth-protected-resource/mcp`: returns OAuth protected-resource metadata for the hosted `/mcp` endpoint.
+- `GET /.well-known/oauth-protected-resource`: returns the same metadata as a host-level compatibility fallback.
+- Unauthorized `/mcp` JSON-RPC requests return `WWW-Authenticate: Bearer resource_metadata="..."` so MCP clients can discover the protected-resource metadata URL.
+
 MCP methods:
 
 - `initialize`
@@ -108,10 +114,10 @@ Bring a Trailer RSS ingestion is persisted in D1:
 
 ## OAuth Follow-Up
 
-The preview bearer-token flow should become OAuth before broader use:
+The preview bearer-token flow now has OAuth protected-resource discovery metadata, but it still needs a real authorization-code flow before broader use:
 
-1. Add MCP OAuth metadata and authorization endpoints.
-2. Issue short-lived access tokens with the same scope vocabulary.
+1. Add authorization server metadata and authorization/token endpoints.
+2. Issue short-lived access tokens with the same scope vocabulary and audience binding to `/mcp`.
 3. Keep refresh/revoke flows in the user's Connect Automation screen.
 4. Preserve `automation_events` as the user-visible activity log.
 5. Keep `publish_run`, `record_usage`, and source tools unchanged so cloud agents do not need a new workflow.

@@ -50,6 +50,7 @@ import { errorResponse, jsonResponse, readJson } from "./http";
 import { mirrorImage, prewarmImportedImages, serveImage, uploadImage } from "./image-cache";
 import { automationBundleMarkdown } from "./automation-bundle";
 import { handleMcpRequest } from "./mcp";
+import { handleMcpProtectedResourceMetadata, mcpEndpoint, mcpProtectedResourceMetadataEndpoint } from "./oauth-metadata";
 import { ingestBringATrailerRssCache } from "./source-cache";
 export { BeachcarAgent } from "./agents/beachcar-agent";
 export { BeachcarRunnerContainer } from "./containers/beachcar-runner-container";
@@ -59,6 +60,9 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     try {
+      if (isMcpProtectedResourceMetadataPath(url.pathname)) {
+        return handleMcpProtectedResourceMetadata(request);
+      }
       if (url.pathname === "/mcp") {
         return await handleMcpRequest(request, env, ctx);
       }
@@ -159,8 +163,10 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url:
     return jsonResponse({
       ...automationEndpoints(request),
       oauth: {
-        status: "planned",
-        message: "Remote MCP OAuth is the target production handshake; this preview uses revocable scoped automation tokens.",
+        status: "metadata_ready",
+        protectedResourceMetadataEndpoint: mcpProtectedResourceMetadataEndpoint(request),
+        message:
+          "OAuth protected-resource discovery is available; full authorization-code OAuth is still planned. This preview uses revocable scoped automation tokens.",
       },
       defaultScopes: defaultAutomationScopes,
       tokens: await listAutomationTokens(env.DB, authUser.id),
@@ -486,11 +492,16 @@ function adminScope(url: URL, env: Env, userId?: string): UserScope {
   return { userId: userIdForEmail(env.ALLOWED_EMAIL || ""), includeLegacyData: true };
 }
 
-function automationEndpoints(request: Request): { mcpEndpoint: string; bundleEndpoint: string } {
+function isMcpProtectedResourceMetadataPath(pathname: string): boolean {
+  return pathname === "/.well-known/oauth-protected-resource" || pathname === "/.well-known/oauth-protected-resource/mcp";
+}
+
+function automationEndpoints(request: Request): { mcpEndpoint: string; bundleEndpoint: string; protectedResourceMetadataEndpoint: string } {
   const url = new URL(request.url);
   return {
-    mcpEndpoint: new URL("/mcp", url.origin).toString(),
+    mcpEndpoint: mcpEndpoint(request),
     bundleEndpoint: new URL("/api/automation/bundle", url.origin).toString(),
+    protectedResourceMetadataEndpoint: mcpProtectedResourceMetadataEndpoint(request),
   };
 }
 

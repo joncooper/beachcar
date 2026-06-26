@@ -31,6 +31,7 @@
     "deploy:check": "bun scripts/check-deploy-readiness.mjs",
     "cloudflare:check": "bun scripts/check-cloudflare-resources.mjs",
     "cloudflare:plan": "bun scripts/plan-cloudflare-deploy.mjs",
+    "cloudflare:verify": "bun scripts/verify-cloudflare-deploy.mjs",
     "images:audit": "bun scripts/audit-image-cache.mjs",
     "ios:generate": "xcodegen generate --spec ios/project.yml",
     "ios:resolve": "xcodebuild -resolvePackageDependencies -project ios/Beachcar.xcodeproj -scheme Beachcar",

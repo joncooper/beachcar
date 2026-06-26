@@ -26,6 +26,7 @@ await runScript("Typecheck", "typecheck");
 await runScript("Unit tests", "test");
 await runScript("Container runner syntax", "container-runner:check");
 await run("Runner task simulator syntax", "node", ["--check", "scripts/run-runner-task-local.mjs"]);
+await run("Cloudflare verifier syntax", "node", ["--check", "scripts/verify-cloudflare-deploy.mjs"]);
 await run("Service worker syntax", "node", ["--check", "public/sw.js"]);
 await runScript("Deploy readiness report", "deploy:check");
 await runScript("Client build", "build", { env: buildEnv });

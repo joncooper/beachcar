@@ -22,6 +22,7 @@ This audit maps the original request to current worktree evidence. It intentiona
 | Daily automation compatibility | Existing admin import remains, plus user-specific import and runner-task claim/complete/fail APIs. |
 | Repeatable local verification | `bun run preflight` runs typecheck, Vitest, container syntax, runner simulator syntax, service-worker syntax, non-deploying readiness reporting, and client build. `bun run preflight:local` previously passed the full local Worker smoke. |
 | Non-deploying rollout readiness check | `bun run deploy:check` inspects local Cloudflare config, migrations, script wiring, and env hints without network calls or secret output. |
+| Local/remote deployed-surface verifier | `bun run cloudflare:verify` checks a local or deployed Worker URL for app shell delivery, MCP server metadata, OAuth protected-resource metadata, unauthenticated MCP challenge behavior, and remote rejection of local test-auth headers without mutating Cloudflare resources. |
 | PWA screen visual verification | In-app browser audit covered invite, onboarding, admin, preferences, and Run Detail demo routes at desktop and 390px mobile widths with no horizontal overflow; Run Detail screenshots are saved in `docs/screenshots/friends-platform/`. |
 
 ## Verified This Pass
@@ -40,13 +41,14 @@ This audit maps the original request to current worktree evidence. It intentiona
 - Browser verification: Vite settings demo rendered both `/mcp` and `/.well-known/oauth-protected-resource/mcp` endpoints with no page errors or horizontal overflow at desktop or 390px mobile widths.
 - Cloudflare resource inspection: `bun run cloudflare:check` ran read-only against account `b8873e78bf5e48fcdc91e87f2324cf55`; it found the configured R2 bucket exists, the configured Worker is not deployed yet, and the configured D1 name/id are not ready because only the similar legacy `beach-car-watch` database exists.
 - Cloudflare deployment plan: `bun run cloudflare:plan` and `bun run cloudflare:plan --json` generated an ordered rehearsal plan from the read-only account inspection, separating read-only, file-edit, and mutating steps without executing D1 creation, migrations, secrets, or deploys.
+- Cloudflare deployed-surface verifier: `bun run cloudflare:verify -- --url http://127.0.0.1:8787` verified a local Worker app shell, MCP metadata, OAuth protected-resource metadata, unauthorized MCP challenge, local test auth, and admin source-cache status via `.dev.vars`. Optional signed-in and authenticated MCP-token checks were reported as warnings because no real Clerk or automation token was supplied for this command.
 - `bunx wrangler deploy --dry-run`: built Worker assets and the Bun-based Container image without deploying.
 
 ## Not Proven In This Environment
 
 | Item | Why not proven | Required evidence before real friend use |
 | --- | --- | --- |
-| Production deploy | User explicitly prohibited real deploys. | Intentional deploy, remote D1 migrations, remote `/api/me`, invite, onboarding, run, export/delete smoke. |
+| Production deploy | User explicitly prohibited real Worker deploys. | Intentional deploy, remote D1 migrations, `bun run cloudflare:verify` against the deployed URL, remote `/api/me`, invite, onboarding, run, export/delete smoke. |
 | Deployed Container runner | Cloudflare Container was scaffolded locally but not deployed. | Deployed `BEACHCAR_RUNNER_CONTAINER` handles a runner task and records usage. |
 | Credentialed Codex SDK run | Codex mode is now configurable, but no real Codex/OpenAI credentialed run was executed. | Configure `BEACHCAR_RUNNER_MODE=codex` and credentials, run a non-sensitive public-source task, verify normalized JSON/blocked result. |
 | Real AI Gateway spend policy | Local adapter and usage ledger are implemented; remote Gateway budget/BYOK policy was not exercised. | Gateway request with user/run metadata, BYOK alias if used, budget enforcement/logging in Cloudflare. |

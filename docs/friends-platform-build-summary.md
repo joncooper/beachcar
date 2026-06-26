@@ -552,6 +552,14 @@ Improvement: Added `scripts/plan-cloudflare-deploy.mjs` and `bun run cloudflare:
 
 Verification: `node --check scripts/plan-cloudflare-deploy.mjs`, `bun run cloudflare:plan`, and `bun run cloudflare:plan --json` passed. Both planner modes ran only the read-only Cloudflare inspector and printed the expected mutating commands without executing them.
 
+### App/architecture pass 48: deployed-surface verification harness
+
+Review: The rehearsal plan had concrete post-deploy curl checks, but there was no single command that could verify a localhost Worker and later the deployed Worker URL with the same assertions. That made it easy for MCP metadata, auth challenge headers, app-shell delivery, or production test-header safety to drift between local smoke and remote rollout.
+
+Improvement: Added `scripts/verify-cloudflare-deploy.mjs` and `bun run cloudflare:verify`. The verifier accepts `--url` or `BEACHCAR_DEPLOY_URL`, checks the app shell, `GET /mcp`, `/.well-known/oauth-protected-resource/mcp`, unauthenticated MCP JSON-RPC challenge behavior, and remote rejection of `X-Beachcar-Test-Email`. Optional `BEACHCAR_CLERK_TOKEN`, `PUBLISH_TOKEN`, and `BEACHCAR_MCP_TOKEN` extend the smoke to signed-in API, admin source-cache status, and authenticated MCP `tools/list`. The script supports `--json` and `--strict` and does not create, migrate, or deploy Cloudflare resources.
+
+Verification: `node --check scripts/verify-cloudflare-deploy.mjs` passed. Local Worker verification with `bun run cloudflare:verify -- --url http://127.0.0.1:8787` proved the public app, MCP/OAuth surfaces, local test auth, and admin source-cache status; optional signed-in and authenticated MCP-token checks reported warnings when no Clerk or automation token was provided.
+
 ## Screenshots
 
 Invite gate, desktop:

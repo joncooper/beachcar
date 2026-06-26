@@ -513,7 +513,7 @@ function splitConcernText(value?: string): string[] {
 
 export function App(props: { clerkPublishableKey: string }) {
   const searchParams = new URLSearchParams(window.location.search);
-  const demoMode = import.meta.env.DEV ? searchParams.get("demo") : null;
+  const demoMode = import.meta.env.DEV || isLocalDemoHost() ? searchParams.get("demo") : null;
   if (searchParams.get("admin") === "1") {
     return <AdminConsole demo={false} />;
   }
@@ -546,6 +546,10 @@ export function App(props: { clerkPublishableKey: string }) {
     return <OnboardingGate email="friend@example.com" error={null} isPending={false} onSubmit={() => undefined} />;
   }
   return <AuthenticatedApp clerkPublishableKey={props.clerkPublishableKey} />;
+}
+
+function isLocalDemoHost(): boolean {
+  return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
 }
 
 function demoSettingsUser(): UserPayload {

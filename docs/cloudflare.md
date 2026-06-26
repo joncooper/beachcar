@@ -40,6 +40,20 @@ Machine-readable output is available for automation or review:
 bun run cloudflare:plan --json
 ```
 
+After a local or remote Worker is running, verify the public app and MCP surface with:
+
+```bash
+BEACHCAR_DEPLOY_URL=https://beachcar-watch.<your-subdomain>.workers.dev bun run cloudflare:verify
+```
+
+The verifier does not create, migrate, or deploy anything. It checks the app shell, `GET /mcp`, OAuth protected-resource metadata, the unauthenticated MCP `WWW-Authenticate` challenge, and remote rejection of `X-Beachcar-Test-Email`. Optional environment variables extend the smoke:
+
+- `BEACHCAR_CLERK_TOKEN`: verifies signed-in `/api/me` and `/api/automation/status`.
+- `PUBLISH_TOKEN`: verifies admin source-cache status.
+- `BEACHCAR_MCP_TOKEN`: verifies authenticated MCP `tools/list`.
+
+Use `--json` for machine-readable output and `--strict` to make missing optional tokens fail the command.
+
 Current read-only account findings from 2026-06-26:
 
 - Logged in account: `b8873e78bf5e48fcdc91e87f2324cf55`.

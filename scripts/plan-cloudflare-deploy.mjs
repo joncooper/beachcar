@@ -136,12 +136,13 @@ function buildPlan(check, wranglerConfig) {
     kind: "read-only",
     status: "after-deploy-and-secrets",
     commands: [
+      `BEACHCAR_DEPLOY_URL=https://${workerName}.<your-subdomain>.workers.dev bun run cloudflare:verify`,
       "bun scripts/check-cloudflare-resources.mjs --strict",
       `curl -fsS https://${workerName}.<your-subdomain>.workers.dev/.well-known/oauth-protected-resource/mcp`,
       `curl -sS -D - -o /tmp/beachcar-mcp-unauth.json -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":"verify","method":"tools/list"}' https://${workerName}.<your-subdomain>.workers.dev/mcp`,
       "# Then open the deployed app in a browser, sign in with Clerk, accept an invite, complete onboarding, request a run, and verify the latest run.",
     ],
-    detail: "Replace the workers.dev hostname with the actual deployed URL. The MCP curl should return 401 plus a WWW-Authenticate metadata challenge; authenticated app smoke needs a real Clerk session.",
+    detail: "Replace the workers.dev hostname with the actual deployed URL. The verifier checks the app shell, MCP discovery, auth challenge, and production test-header safety; authenticated app smoke needs a real Clerk session.",
   });
 
   return {

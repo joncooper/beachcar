@@ -199,6 +199,15 @@ DAILY_JSON=outputs/daily-run-2026-06-20.json bun run publish:daily
 ```
 
 The publish script imports the run first, then copies queued listing images to R2 through the admin image API.
+It also warms `deck` and `thumb` image variants by default so the iOS/PWA review flow does not pay the first-view transform cost. Set `SKIP_IMAGE_WARM=1` to skip that step, or tune it with `IMAGE_WARM_VARIANTS`, `IMAGE_WARM_CONCURRENCY`, and `IMAGE_WARM_LIMIT`.
+
+Backfill variants for an already published run:
+
+```bash
+bun run images:warm -- --execute
+```
+
+Use `bun run images:warm -- --all --execute` to backfill every copied image in the deployed D1/R2 cache.
 
 ## Friend Beta Flow
 

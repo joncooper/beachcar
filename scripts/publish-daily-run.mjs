@@ -10,6 +10,10 @@ const baseUrl = (process.env.AUCTION_WATCH_URL || "").replace(/\/+$/, "");
 const publishToken = process.env.PUBLISH_TOKEN || "";
 const accessClientId = process.env.CF_ACCESS_CLIENT_ID || "";
 const accessClientSecret = process.env.CF_ACCESS_CLIENT_SECRET || "";
+const imageWarmVariants = parseVariantList(process.env.IMAGE_WARM_VARIANTS || "deck,thumb");
+const imageWarmConcurrency = positiveInteger(process.env.IMAGE_WARM_CONCURRENCY, 6);
+const imageWarmLimit = positiveInteger(process.env.IMAGE_WARM_LIMIT, 0);
+const skipImageWarm = booleanEnv(process.env.SKIP_IMAGE_WARM) || booleanEnv(process.env.IMAGE_WARM_SKIP);
 
 if (!baseUrl) {
   fail("Set AUCTION_WATCH_URL to the deployed Worker URL, for example https://beachcar-watch.<subdomain>.workers.dev");
@@ -80,6 +84,21 @@ for (const image of images) {
 
 console.log(`Done. Copied ${copied}/${images.length} images to R2${failed ? `, ${failed} failed` : ""}.`);
 
+if (imageWarmVariants.length && !skipImageWarm) {
+  const warmResult = await warmImageVariants(images, {
+    concurrency: imageWarmConcurrency,
+    limit: imageWarmLimit,
+    variants: imageWarmVariants,
+  });
+  console.log(
+    `Warmed ${warmResult.ok}/${warmResult.total} image variants (${imageWarmVariants.join(", ")})` +
+      (warmResult.failed ? `, ${warmResult.failed} failed` : "") +
+      `. ${warmResult.hit} hit, ${warmResult.miss} created/missed.`,
+  );
+} else {
+  console.log("Image variant warmup skipped.");
+}
+
 async function copyImage(image) {
   const imageResponse = await fetch(image.sourceUrl, {
     headers: {
@@ -115,6 +134,71 @@ async function copyImage(image) {
   }
 }
 
+async function warmImageVariants(images, options) {
+  const uniqueImages = [];
+  const seen = new Set();
+  for (const image of images) {
+    if (!image?.imageKey) continue;
+    if (seen.has(image.imageKey)) continue;
+    seen.add(image.imageKey);
+    uniqueImages.push(image);
+  }
+  const selectedImages = options.limit > 0 ? uniqueImages.slice(0, options.limit) : uniqueImages;
+  const tasks = [];
+  for (const image of selectedImages) {
+    for (const variant of options.variants) {
+      tasks.push({ image, variant });
+    }
+  }
+
+  const result = {
+    total: tasks.length,
+    ok: 0,
+    failed: 0,
+    hit: 0,
+    miss: 0,
+  };
+
+  await runPool(tasks, Math.max(1, options.concurrency), async ({ image, variant }) => {
+    const response = await fetch(`${baseUrl}/api/images/${encodeURIComponent(image.imageKey)}?variant=${encodeURIComponent(variant)}`, {
+      headers: imageAccessHeaders(),
+    });
+    await response.arrayBuffer().catch(() => new ArrayBuffer(0));
+    if (response.ok) {
+      result.ok += 1;
+      const cacheStatus = (response.headers.get("x-beachcar-image-cache") || "").toLowerCase();
+      if (cacheStatus === "hit") result.hit += 1;
+      else result.miss += 1;
+      return;
+    }
+    result.failed += 1;
+    console.warn(`Image variant warm failed for ${image.imageKey} ${variant}: ${response.status}`);
+  });
+
+  return result;
+}
+
+async function runPool(items, concurrency, worker) {
+  let next = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (next < items.length) {
+      const item = items[next];
+      next += 1;
+      await worker(item);
+    }
+  });
+  await Promise.all(workers);
+}
+
+function imageAccessHeaders() {
+  return accessClientId && accessClientSecret
+    ? {
+        "CF-Access-Client-Id": accessClientId,
+        "CF-Access-Client-Secret": accessClientSecret,
+      }
+    : {};
+}
+
 async function readOptional(path) {
   try {
     return await readFile(path, "utf8");
@@ -146,6 +230,23 @@ async function readResponse(response) {
 function formatBody(body) {
   if (typeof body === "string") return body.slice(0, 400);
   return JSON.stringify(body).slice(0, 400);
+}
+
+function parseVariantList(value) {
+  const allowed = new Set(["thumb", "deck", "full"]);
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item, index, values) => item && allowed.has(item) && values.indexOf(item) === index);
+}
+
+function positiveInteger(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
+function booleanEnv(value) {
+  return /^(1|true|yes|on)$/i.test(String(value || "").trim());
 }
 
 function fail(message) {

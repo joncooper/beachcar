@@ -1,0 +1,804 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Beachcar Friend Setup Guide</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #1f252b;
+        --muted: #59636f;
+        --line: #d9e0e7;
+        --panel: #f7f9fb;
+        --panel-strong: #eef3f7;
+        --accent: #176b87;
+        --accent-strong: #0f4d63;
+        --good: #286a45;
+        --warn: #8a5a08;
+        --bad: #8a2f2f;
+        --code: #13202a;
+        --code-bg: #e9eef3;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: #ffffff;
+        color: var(--ink);
+        font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      main {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 32px 22px 64px;
+      }
+
+      header {
+        border-bottom: 1px solid var(--line);
+        margin-bottom: 28px;
+        padding-bottom: 22px;
+      }
+
+      h1,
+      h2,
+      h3 {
+        line-height: 1.15;
+        margin: 0;
+      }
+
+      h1 {
+        max-width: 780px;
+        font-size: clamp(2rem, 6vw, 4.3rem);
+        letter-spacing: 0;
+      }
+
+      h2 {
+        border-top: 1px solid var(--line);
+        font-size: 1.65rem;
+        margin-top: 34px;
+        padding-top: 28px;
+      }
+
+      h3 {
+        font-size: 1.1rem;
+        margin-top: 22px;
+      }
+
+      p {
+        margin: 10px 0;
+      }
+
+      a {
+        color: var(--accent-strong);
+      }
+
+      code {
+        background: var(--code-bg);
+        border-radius: 5px;
+        color: var(--code);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 0.92em;
+        padding: 0.1rem 0.3rem;
+      }
+
+      pre {
+        background: #17212b;
+        border-radius: 8px;
+        color: #eef6ff;
+        overflow-x: auto;
+        padding: 15px 16px;
+      }
+
+      pre code {
+        background: transparent;
+        color: inherit;
+        padding: 0;
+      }
+
+      table {
+        border-collapse: collapse;
+        margin: 16px 0 22px;
+        width: 100%;
+      }
+
+      th,
+      td {
+        border: 1px solid var(--line);
+        padding: 10px 12px;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        background: var(--panel-strong);
+      }
+
+      ul,
+      ol {
+        margin: 10px 0 16px;
+        padding-left: 24px;
+      }
+
+      li {
+        margin: 6px 0;
+      }
+
+      .eyebrow {
+        color: var(--accent);
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        margin-bottom: 8px;
+        text-transform: uppercase;
+      }
+
+      .lead {
+        color: var(--muted);
+        font-size: 1.1rem;
+        max-width: 820px;
+      }
+
+      .grid {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        margin: 18px 0;
+      }
+
+      .card,
+      .note,
+      .callout {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 16px;
+      }
+
+      .card {
+        background: var(--panel);
+      }
+
+      .card strong {
+        display: block;
+        margin-bottom: 6px;
+      }
+
+      .note {
+        background: #fbfcfd;
+      }
+
+      .callout {
+        background: #eef8fb;
+        border-color: #b9dce7;
+      }
+
+      .status-good {
+        color: var(--good);
+        font-weight: 700;
+      }
+
+      .status-warn {
+        color: var(--warn);
+        font-weight: 700;
+      }
+
+      .status-bad {
+        color: var(--bad);
+        font-weight: 700;
+      }
+
+      .checklist li {
+        margin-bottom: 10px;
+      }
+
+      .small {
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+
+      @media print {
+        body {
+          font-size: 12px;
+        }
+
+        main {
+          max-width: none;
+          padding: 18px;
+        }
+
+        a {
+          color: inherit;
+        }
+
+        pre {
+          white-space: pre-wrap;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">Beachcar friend beta</p>
+        <h1>Friend setup guide</h1>
+        <p class="lead">
+          A detailed runbook for setting up one friend with Beachcar: TestFlight access, Clerk and Beachcar provisioning, initial preferences,
+          remote automation, and AI payment choices.
+        </p>
+        <p class="small">Last updated: 2026-06-26. Current deployed Worker: <a href="https://beachcar-watch.jon-cooper.workers.dev">https://beachcar-watch.jon-cooper.workers.dev</a>.</p>
+      </header>
+
+      <section>
+        <h2>Current State</h2>
+        <div class="grid">
+          <article class="card">
+            <strong>Backend</strong>
+            Cloudflare Worker <code>beachcar-watch</code> is deployed at <a href="https://beachcar-watch.jon-cooper.workers.dev">beachcar-watch.jon-cooper.workers.dev</a>.
+          </article>
+          <article class="card">
+            <strong>Data</strong>
+            D1 database <code>beach-car-watch</code> has migrations <code>0001</code> through <code>0010</code> applied. R2 bucket is <code>beachcar-watch-images</code>.
+          </article>
+          <article class="card">
+            <strong>Auth</strong>
+            Clerk app is <code>Beach Car Watch</code>. Bootstrap owners are <code>jon.cooper@gmail.com</code> and <code>jon@dockett.ai</code>.
+          </article>
+          <article class="card">
+            <strong>iOS</strong>
+            Latest uploaded TestFlight build recorded locally is <code>0.1.0 (202606252208)</code>, assigned to <code>Beachcar Internal</code>.
+          </article>
+          <article class="card">
+            <strong>Automation</strong>
+            Hosted MCP is available at <a href="https://beachcar-watch.jon-cooper.workers.dev/mcp">/mcp</a>. Friends can create scoped tokens in Preferences.
+          </article>
+          <article class="card">
+            <strong>AI</strong>
+            Real app-managed AI Gateway scoring is optional. If Gateway credentials are not configured, Beachcar can still run deterministic/source-cache flows.
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2>Fast Path</h2>
+        <ol class="checklist">
+          <li>Confirm the deployed Worker and TestFlight build are healthy.</li>
+          <li>Decide how AI will be paid for this friend: owner-managed Gateway, friend-run cloud agent, owner Codex push, BYOK alias, or deterministic no-paid-AI.</li>
+          <li>Add the friend to TestFlight, or create an external testing group if they should not be an App Store Connect internal user.</li>
+          <li>Sign in to the Beachcar PWA as an owner and create a Beachcar invite code for the friend's exact sign-in email.</li>
+          <li>Send the friend the TestFlight invite/link, PWA URL, invite code, and the AI/automation instructions for the mode you chose.</li>
+          <li>Have the friend sign in, accept the invite code, complete onboarding, and open the iOS app with the same Clerk identity.</li>
+          <li>If they will run their own automation, have them open Preferences, create an automation token, download the Beachcar skill, and connect their cloud agent to the hosted MCP endpoint.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>Preflight Before Inviting</h2>
+        <p>Run these from the repo root before you send a friend a setup message. These checks do not need to reveal any secret values.</p>
+        <pre><code>git status --short --branch
+bun run preflight
+bun run cloudflare:check
+bun run ios:asc:check</code></pre>
+        <p>Expected result for the current branch:</p>
+        <ul>
+          <li><code>git status --short --branch</code> should show <code>codex/remote-mcp-friend-automation</code> and ideally no uncommitted changes except deliberate doc edits.</li>
+          <li><code>bun run preflight</code> should pass typecheck, tests, service-worker syntax, deploy readiness, and client build.</li>
+          <li><code>bun run cloudflare:check</code> should report the Worker, D1, R2, and required secrets. A warning for optional <code>BEACHCAR_AI_GATEWAY_TOKEN</code> is acceptable only if you are not testing owner-managed AI scoring.</li>
+          <li><code>bun run ios:asc:check</code> should find the <code>Beachcar</code> App Store Connect app, bundle id <code>com.joncooper.beachcar</code>, and TestFlight group <code>Beachcar Internal</code>.</li>
+        </ul>
+        <div class="note">
+          <strong>Do not give the friend these secrets:</strong> <code>PUBLISH_TOKEN</code>, <code>CLERK_SECRET_KEY</code>, Cloudflare API tokens, App Store Connect API keys, or raw OpenAI/OpenRouter provider keys.
+        </div>
+      </section>
+
+      <section>
+        <h2>Cloudflare Setup</h2>
+        <p>Beachcar currently uses one Worker for the PWA, API, MCP endpoint, OAuth metadata, Workflows, Agents, D1, and R2 image cache.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Resource</th>
+              <th>Current value</th>
+              <th>Console link</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Worker</td>
+              <td><code>beachcar-watch</code></td>
+              <td><a href="https://dash.cloudflare.com/">Cloudflare dashboard</a> - Workers &amp; Pages</td>
+            </tr>
+            <tr>
+              <td>D1</td>
+              <td><code>beach-car-watch</code>, id <code>2860a6be-7cf0-4fc0-821f-166e78521154</code></td>
+              <td><a href="https://developers.cloudflare.com/d1/">D1 docs</a></td>
+            </tr>
+            <tr>
+              <td>R2</td>
+              <td><code>beachcar-watch-images</code></td>
+              <td><a href="https://developers.cloudflare.com/r2/">R2 docs</a></td>
+            </tr>
+            <tr>
+              <td>MCP</td>
+              <td><code>https://beachcar-watch.jon-cooper.workers.dev/mcp</code></td>
+              <td><a href="https://beachcar-watch.jon-cooper.workers.dev/.well-known/oauth-protected-resource/mcp">OAuth protected-resource metadata</a></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>If you need to deploy an app update</h3>
+        <p>The guarded rollout path validates env, builds the client, applies migrations, deploys the Worker, sets Worker secrets, and verifies the remote surface.</p>
+        <pre><code>bun run deploy:remote -- --dry-run
+bun run deploy:remote -- --execute --yes
+bun run cloudflare:verify
+bun run cloudflare:check</code></pre>
+        <p>When <code>BEACHCAR_RUNNER_MODE=deterministic</code>, the rollout skips Cloudflare Container image publishing. Only add <code>--deploy-containers</code> when intentionally testing the Codex/browser-heavy Container path.</p>
+
+        <h3>Required Worker secrets</h3>
+        <ul>
+          <li><code>PUBLISH_TOKEN</code> - owner/admin import and invite operations.</li>
+          <li><code>CLERK_SECRET_KEY</code> - Clerk Backend API validation.</li>
+          <li><code>CLERK_JWT_ISSUER</code> - Clerk issuer URL, usually <code>https://...clerk.accounts.dev</code>.</li>
+        </ul>
+
+        <h3>Optional Worker secrets for owner-paid AI</h3>
+        <ul>
+          <li><code>BEACHCAR_AI_GATEWAY_TOKEN</code> or <code>CLOUDFLARE_API_TOKEN</code>.</li>
+          <li><code>BEACHCAR_AI_GATEWAY_BASE_URL</code>, or <code>CLOUDFLARE_ACCOUNT_ID</code> plus <code>BEACHCAR_AI_GATEWAY_ID</code>.</li>
+          <li><code>BEACHCAR_AI_GATEWAY_MODEL</code>, using the model id expected by the selected provider.</li>
+          <li><code>BEACHCAR_AI_ESTIMATED_MICROS_PER_1K_TOKENS</code>, if Gateway/provider responses do not return exact cost.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Clerk Setup</h2>
+        <p>Clerk owns identity. Beachcar owns friend access. That means the friend signs into Clerk first, then Beachcar decides whether that signed-in email is invited, active, or disabled.</p>
+
+        <h3>Clerk dashboard checks</h3>
+        <ol>
+          <li>Open the <a href="https://dashboard.clerk.com/">Clerk dashboard</a> and select the <code>Beach Car Watch</code> app.</li>
+          <li>Confirm Google sign-in is enabled for the web and native app sign-in flow.</li>
+          <li>Confirm the publishable key in <code>.env.local</code> and <code>.deploy.env</code> matches this Clerk instance.</li>
+          <li>For iOS, confirm Clerk Native API is enabled and the native application is configured for bundle id <code>com.joncooper.beachcar</code>.</li>
+          <li>Confirm the iOS Associated Domain used by the app is still valid. Current local docs mention <code>webcredentials:brief-coyote-47.clerk.accounts.dev</code>.</li>
+        </ol>
+
+        <h3>Beachcar invite behavior</h3>
+        <ul>
+          <li>Any signed-in non-owner user is created as <code>invited</code>.</li>
+          <li>The owner creates an invite from <code>https://beachcar-watch.jon-cooper.workers.dev/?admin=1</code>.</li>
+          <li>The invite code is single-use, stored as a hash, and must be accepted by the same email address used when the invite was created.</li>
+          <li>After invite acceptance, the friend becomes <code>active</code> and sees onboarding.</li>
+          <li>After onboarding, their profile, source settings, AI settings, feedback, runs, automation tokens, and usage ledger are scoped to their user id.</li>
+        </ul>
+
+        <h3>Create the Beachcar invite</h3>
+        <ol>
+          <li>Open <a href="https://beachcar-watch.jon-cooper.workers.dev/?admin=1">the Beachcar admin console</a>.</li>
+          <li>Paste your <code>PUBLISH_TOKEN</code> into the publish-token field. It is only kept in the browser tab.</li>
+          <li>Enter the friend's exact email address. Use the same address they will use for Google/Clerk sign-in.</li>
+          <li>Click <strong>Create invite</strong>.</li>
+          <li>Copy the invite code and send it directly to the friend. Do not send the publish token.</li>
+          <li>Click <strong>Refresh users</strong> after they sign in and accept the code.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>TestFlight Setup</h2>
+        <p>The current command-line build pipeline uses App Store Connect API-key authentication and Xcode automatic signing. The latest uploaded build should already be in the <code>Beachcar Internal</code> group.</p>
+
+        <h3>Current build check</h3>
+        <pre><code>bun run ios:asc:check</code></pre>
+        <p>Current expected values:</p>
+        <ul>
+          <li>App: <code>Beachcar</code></li>
+          <li>Bundle ID: <code>com.joncooper.beachcar</code></li>
+          <li>Internal group: <code>Beachcar Internal</code></li>
+          <li>Latest uploaded build: <code>0.1.0 (202606252208)</code></li>
+        </ul>
+
+        <h3>Internal tester path</h3>
+        <p>Use this when the friend can be added as an App Store Connect user. It is fastest because internal testing usually avoids the external beta review loop.</p>
+        <ol>
+          <li>Open <a href="https://appstoreconnect.apple.com/">App Store Connect</a>.</li>
+          <li>Add the friend under Users and Access with the least access that still allows internal TestFlight testing.</li>
+          <li>Open Apps - Beachcar - TestFlight - Internal Testing.</li>
+          <li>Add the friend to <code>Beachcar Internal</code>, or confirm the group has access to the latest build.</li>
+          <li>Ask the friend to install Apple's <a href="https://apps.apple.com/app/testflight/id899247664">TestFlight app</a> and accept the invite email.</li>
+        </ol>
+
+        <h3>External tester path</h3>
+        <p>Use this when the friend should not have App Store Connect access. This is the more realistic outside-friend path, but Apple may require beta app review before external testers can install a build.</p>
+        <ol>
+          <li>Create an external testing group in App Store Connect - Apps - Beachcar - TestFlight - External Testing.</li>
+          <li>Switch future uploads to external-eligible builds by setting <code>TESTFLIGHT_INTERNAL_ONLY=NO</code> in your local ignored <code>.env.apple.local</code>.</li>
+          <li>Upload a new build with <code>bun run ios:release</code>.</li>
+          <li>Attach the build to the external group and complete any required Beta App Review metadata.</li>
+          <li>Send the TestFlight public link or invite email after Apple marks the build available for external testing.</li>
+        </ol>
+
+        <h3>Upload a new build if needed</h3>
+        <pre><code>bun run ios:build
+bun run ios:archive
+bun run ios:testflight</code></pre>
+        <p>Or run both archive and upload:</p>
+        <pre><code>bun run ios:release</code></pre>
+        <p>Each upload needs a new build number. If omitted, the archive script uses a timestamp build number.</p>
+      </section>
+
+      <section>
+        <h2>Friend Onboarding</h2>
+        <h3>What to send</h3>
+        <p>Send one message with the following items:</p>
+        <ul>
+          <li>TestFlight invite or public link.</li>
+          <li>PWA URL: <a href="https://beachcar-watch.jon-cooper.workers.dev">https://beachcar-watch.jon-cooper.workers.dev</a>.</li>
+          <li>Beachcar invite code.</li>
+          <li>The sign-in email they must use.</li>
+          <li>Which AI mode they should select during onboarding.</li>
+          <li>If they will run their own automation, instructions to create an automation token and download the Beachcar skill after onboarding.</li>
+        </ul>
+
+        <h3>Friend steps</h3>
+        <ol>
+          <li>Install TestFlight from the App Store and accept the Beachcar TestFlight invitation.</li>
+          <li>Open the PWA URL in Safari or Chrome and sign in with Google using the invited email.</li>
+          <li>Enter the Beachcar invite code at the invite gate.</li>
+          <li>Complete onboarding: name, region, budget ceiling, stretch room, taste calibration, avoid notes, source toggles, notification preference, and AI mode.</li>
+          <li>Install/open the iOS TestFlight build and sign in with the same email.</li>
+          <li>Confirm the iOS app either shows the latest run or a no-listings state instead of the invite gate.</li>
+          <li>Use feedback controls in the iOS app or PWA: like, star, hide, avoid, and freeform notes. These feed future runs.</li>
+        </ol>
+
+        <h3>First smoke test as the owner</h3>
+        <ol>
+          <li>Open the admin console and refresh users. Confirm the friend is <code>active</code> and onboarded.</li>
+          <li>Ask the friend to open Preferences and confirm their AI mode and daily/monthly caps.</li>
+          <li>Use Run Now if the friend has budget and owner-managed/heuristic workflow is acceptable.</li>
+          <li>Open Run detail and check listings, sources, AI provider/status, cost, and runner tasks.</li>
+          <li>Confirm the same latest run appears on iOS.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>AI Options</h2>
+        <p>There are several valid operating modes. Pick one deliberately for each friend. Do not assume a ChatGPT or Codex subscription pays for backend API calls.</p>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Mode</th>
+              <th>Who pays</th>
+              <th>Best for</th>
+              <th>Beachcar tracking</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Deterministic / no paid AI</td>
+              <td>Owner pays only Cloudflare Worker, D1, R2, and bandwidth/storage.</td>
+              <td>First smoke test, source-cache-only runs, proving onboarding and app UX.</td>
+              <td>No provider spend unless external automation records usage.</td>
+            </tr>
+            <tr>
+              <td>Owner-managed AI Gateway</td>
+              <td>Owner pays via Cloudflare AI Gateway plus the configured model provider or Cloudflare billing route.</td>
+              <td>Best first paid beta mode because you control budgets centrally.</td>
+              <td>Worker records provider, model, tokens, request id, estimated/actual cost, daily/monthly budgets.</td>
+            </tr>
+            <tr>
+              <td>Friend BYOK via Gateway alias</td>
+              <td>Depends on how the Gateway provider key is configured. The friend can be the provider-key payer, but Beachcar only stores a Gateway alias, not the raw key.</td>
+              <td>Later beta with trusted friends who want their provider account charged.</td>
+              <td>Same as managed mode, with <code>gatewayKeyRef</code> and <code>cf-aig-byok-alias</code>.</td>
+            </tr>
+            <tr>
+              <td>Friend-run cloud agent through hosted MCP</td>
+              <td>Friend pays for their chosen cloud agent, Codex/Claude subscription, browser harness, and any model/API calls inside that environment.</td>
+              <td>Friends who want self-serve research automation without you running a scraper or sharing your AI keys.</td>
+              <td>MCP <code>record_usage</code> logs what the agent reports. Provider-side payment remains outside Beachcar.</td>
+            </tr>
+            <tr>
+              <td>Owner Codex pushing runs</td>
+              <td>Owner pays with local Codex subscription/API/harness and publishes data into Beachcar.</td>
+              <td>White-glove setup, debugging a friend's preferences, or one-off research runs.</td>
+              <td>Track usage manually through MCP <code>record_usage</code> or admin usage ingestion if not using MCP.</td>
+            </tr>
+            <tr>
+              <td>Cloudflare Codex integration</td>
+              <td>Cloudflare account/credits route the Codex CLI through AI Gateway. It is not the same as using a ChatGPT subscription for backend API calls.</td>
+              <td>Experimenting with Codex through Cloudflare AI Gateway, not the default Beachcar backend path.</td>
+              <td>Only applies if the runner/agent is configured to use that integration and record usage back to Beachcar.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Recommended first friend choice</h3>
+        <div class="callout">
+          For a real friend beta, start with <strong>deterministic/no paid AI</strong> or <strong>owner-managed AI Gateway with tight caps</strong>.
+          Use friend-run hosted MCP when the friend is comfortable driving their own cloud agent. Defer BYOK until you want to operationalize provider-key aliases and support.
+        </div>
+
+        <h3>Configure owner-managed AI Gateway</h3>
+        <ol>
+          <li>Open the <a href="https://dash.cloudflare.com/">Cloudflare dashboard</a> and create or select an AI Gateway for Beachcar.</li>
+          <li>Choose a provider path. Cloudflare documents native OpenAI and OpenRouter provider endpoints.</li>
+          <li>Configure provider credentials or Cloudflare's supported provider-token mechanism in the Gateway/account.</li>
+          <li>Set Beachcar deploy env values in ignored <code>.deploy.env</code> and/or Worker secrets:
+            <pre><code>BEACHCAR_AI_GATEWAY_TOKEN=...
+BEACHCAR_AI_GATEWAY_BASE_URL=https://gateway.ai.cloudflare.com/v1/&lt;account_id&gt;/&lt;gateway_id&gt;/openai
+BEACHCAR_AI_GATEWAY_MODEL=openai/gpt-4.1
+BEACHCAR_AI_ESTIMATED_MICROS_PER_1K_TOKENS=2000</code></pre>
+          </li>
+          <li>For OpenRouter through Gateway, use the OpenRouter Gateway v1 endpoint and a model id supported by OpenRouter:
+            <pre><code>BEACHCAR_AI_GATEWAY_BASE_URL=https://gateway.ai.cloudflare.com/v1/&lt;account_id&gt;/&lt;gateway_id&gt;/openrouter/v1
+BEACHCAR_AI_GATEWAY_MODEL=&lt;openrouter-model-id&gt;</code></pre>
+          </li>
+          <li>Run <code>bun run deploy:env:check</code>, then deploy intentionally with <code>bun run deploy:remote -- --execute --yes</code>.</li>
+          <li>Ask the friend to select <strong>Managed</strong> in onboarding/Preferences and set low daily/monthly caps.</li>
+          <li>Queue a run and check Run detail - AI plus Preferences - usage summary.</li>
+        </ol>
+
+        <h3>Configure friend BYOK via Gateway alias</h3>
+        <ol>
+          <li>Do not ask the friend to paste <code>sk-...</code>, <code>sk_proj...</code>, <code>sk_...</code>, or session-style provider keys into Beachcar. The app rejects raw-looking provider keys.</li>
+          <li>Create a provider-key alias through Cloudflare AI Gateway or the supported secret/provider-key mechanism.</li>
+          <li>Give the friend only the alias/reference value, not the raw key.</li>
+          <li>Ask the friend to choose <strong>BYOK</strong> and paste the alias into the AI Gateway alias field.</li>
+          <li>Keep daily/monthly budget caps set even for BYOK. Beachcar budgets gate app-run creation, but the actual provider account is still the source of truth for spend.</li>
+        </ol>
+
+        <h3>Configure friend-run hosted MCP</h3>
+        <ol>
+          <li>After onboarding, the friend opens Preferences - Connect automation.</li>
+          <li>They click <strong>Create token</strong>. The token is shown once. If lost, revoke it and create a new one.</li>
+          <li>They click <strong>Download skill</strong>. The downloaded <code>SKILL.md</code> contains the deployed MCP endpoint.</li>
+          <li>Their cloud agent should connect to <code>https://beachcar-watch.jon-cooper.workers.dev/mcp</code> with <code>Authorization: Bearer &lt;token&gt;</code>, or use OAuth protected-resource discovery if supported.</li>
+          <li>The agent should call <code>get_setup_context</code>, <code>plan_daily_research</code>, <code>search_bat_cache</code>, <code>publish_run</code>, <code>record_usage</code>, and <code>verify_latest_run</code>.</li>
+          <li>The friend can revoke manual tokens and OAuth connections from Preferences.</li>
+        </ol>
+        <p>Codex Streamable HTTP MCP config example for a friend-owned environment:</p>
+        <pre><code>[mcp_servers.beachcar]
+url = "https://beachcar-watch.jon-cooper.workers.dev/mcp"
+bearer_token_env_var = "BEACHCAR_MCP_TOKEN"</code></pre>
+        <p>Then the friend stores their token as <code>BEACHCAR_MCP_TOKEN</code> in that cloud environment. If the client supports OAuth, use the hosted metadata instead of a manually copied token.</p>
+
+        <h3>Configure owner Codex pushing</h3>
+        <p>Use this when you want to do the research for a friend from your own Codex environment and publish into their Beachcar account.</p>
+        <ol>
+          <li>Use the friend's profile and feedback from Beachcar as the prompt/context.</li>
+          <li>Prefer the friend's hosted MCP token when possible so the run, usage events, and automation activity log are user-scoped without using the owner admin token.</li>
+          <li>If using the admin import path, publish to the user-specific import route rather than the legacy owner-only route.</li>
+          <li>Record AI/browser usage through MCP <code>record_usage</code> or the admin usage ingestion endpoint so the friend and owner can see cost attribution.</li>
+          <li>Verify with <code>verify_latest_run</code>, then ask the friend to open the iOS app.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>Source Gathering</h2>
+        <p>Beachcar has two source patterns today.</p>
+        <ul>
+          <li><strong>Bring a Trailer cache first:</strong> BaT public RSS candidates are ingested into D1 every 15 minutes and are available through admin source-cache controls and MCP <code>search_bat_cache</code>.</li>
+          <li><strong>Browser-capable agent for rendered sources:</strong> Cars &amp; Bids and other rendered/fragile sites should be handled by a user-authorized browser/cloud-agent environment when needed.</li>
+        </ul>
+        <p>Agents should respect source terms, rate limits, authentication boundaries, and bot controls. They should record blocked sources in <code>sourceSummary</code> rather than inventing listings.</p>
+      </section>
+
+      <section>
+        <h2>Image Behavior</h2>
+        <p>Runs published by Workflow, admin import, or hosted MCP all use the same image path.</p>
+        <ul>
+          <li>Source image metadata is stored in D1.</li>
+          <li>The Worker mirrors originals into R2 as needed.</li>
+          <li>The Worker creates <code>thumb</code> at 320px, <code>deck</code> at 960px, and <code>full</code> at 1600px with WebP transformation where Cloudflare supports it.</li>
+          <li>Image responses use immutable cache headers.</li>
+          <li>The PWA service worker cache-firsts only <code>/api/images/...</code> responses and trims the image cache to 180 entries. Authenticated JSON API responses are not cached.</li>
+          <li>The iOS app uses an in-memory decoded image cache, a 256 MB disk URL cache, and prefetches up to 24 nearby images after a run loads.</li>
+        </ul>
+        <p>Practical expectation: the first view of a new run may warm images; subsequent swipes should be much faster.</p>
+      </section>
+
+      <section>
+        <h2>Verification Checklist</h2>
+        <ol class="checklist">
+          <li><span class="status-good">Backend:</span> <code>bun run cloudflare:check</code> reports Worker deployed, D1 migrated, R2 exists, required secrets set.</li>
+          <li><span class="status-good">Auth:</span> Friend signs in with the invited email and accepts the invite code.</li>
+          <li><span class="status-good">Onboarding:</span> Friend saves budget, region, taste, avoid notes, sources, AI mode, and caps.</li>
+          <li><span class="status-good">iOS:</span> Friend opens the TestFlight build and sees the same account state as the PWA.</li>
+          <li><span class="status-good">Run:</span> Run Now queues or the hosted MCP publishes a run; Run detail shows sources, listings, AI status, and cost.</li>
+          <li><span class="status-good">Images:</span> First cards show <code>deck</code> image variants and become fast after prefetch/cache warmup.</li>
+          <li><span class="status-good">Automation:</span> If used, Preferences shows the token/OAuth connection last-used time and recent automation events.</li>
+          <li><span class="status-warn">Spend:</span> For owner-managed AI, validate daily/monthly caps and Cloudflare AI Gateway logs before broad friend access.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>Friendly Tester Feedback</h2>
+        <p>
+          For a broader public beta, collect concrete task feedback from each friendly tester. Avoid broad questions like "do you like it?"
+          The highest-value feedback is where setup broke, where the result felt untrustworthy, where cost was unclear, and where the app failed to learn their taste.
+        </p>
+
+        <h3>Tester script</h3>
+        <ol class="checklist">
+          <li>Install Beachcar through TestFlight.</li>
+          <li>Sign into the PWA, accept the Beachcar invite, and complete onboarding.</li>
+          <li>Open the iOS app and confirm it shows the same account state as the PWA.</li>
+          <li>Review one existing or generated run.</li>
+          <li>Mark at least five listings with like, star, hide, or avoid.</li>
+          <li>Change one preference after seeing the first results.</li>
+          <li>Optional for technical testers: connect a cloud agent with the downloaded skill and publish a run through hosted MCP.</li>
+          <li>Send screenshots of any confusing screen or error state.</li>
+        </ol>
+
+        <h3>Setup friction</h3>
+        <ul>
+          <li>How long did it take from invite to usable app?</li>
+          <li>Did TestFlight, Clerk sign-in, or the Beachcar invite code confuse you?</li>
+          <li>Did the web app and iOS app feel like the same account?</li>
+          <li>What was the first point where you almost stopped?</li>
+          <li>What device, iOS version, and browser were you using?</li>
+        </ul>
+
+        <h3>Preference quality</h3>
+        <ul>
+          <li>Did onboarding capture your actual taste?</li>
+          <li>Was budget, region, and stretch budget enough?</li>
+          <li>What constraints were missing: rust tolerance, title status, distance, manual/auto, seller type, no-reserve only, site exclusions, shipping willingness, or something else?</li>
+          <li>Which three vehicles are "show me more like this" examples?</li>
+          <li>Which three vehicles are "never show me this again" examples?</li>
+          <li>Did the taste calibration choices feel useful, too broad, or too car-specific?</li>
+        </ul>
+
+        <h3>Result quality</h3>
+        <p>For every listing in the first run, ask the tester to classify it as one of these:</p>
+        <ul>
+          <li>Would seriously consider.</li>
+          <li>Interesting but not actionable.</li>
+          <li>Wrong fit.</li>
+          <li>Bad data or suspicious.</li>
+          <li>Duplicate, stale, or already ended.</li>
+        </ul>
+        <p>Then ask:</p>
+        <ul>
+          <li>Did the "why" explanation match your taste?</li>
+          <li>Were the concerns useful or generic?</li>
+          <li>Was price, bid, time-left, and location accurate enough to act?</li>
+          <li>What information did you still need before clicking through?</li>
+        </ul>
+
+        <h3>Trust and cost</h3>
+        <ul>
+          <li>Do you understand who pays for AI in your setup?</li>
+          <li>Would you trust the app with a monthly AI cap?</li>
+          <li>Would you rather use owner-managed AI, your own AI account, or your own cloud agent?</li>
+          <li>Did any AI or automation wording feel scary, vague, or too technical?</li>
+          <li>Would an activity log showing exactly what the agent did make you more comfortable?</li>
+        </ul>
+
+        <h3>Automation feedback</h3>
+        <p>Ask these only of technical testers who try the hosted MCP path.</p>
+        <ul>
+          <li>Could you connect a cloud agent using the downloaded skill?</li>
+          <li>Did OAuth or token setup make sense?</li>
+          <li>Did the agent publish a run without manual API workarounds?</li>
+          <li>Were usage and cost events visible and understandable?</li>
+          <li>What failed silently?</li>
+        </ul>
+
+        <h3>Mobile experience</h3>
+        <ul>
+          <li>Were images fast enough after the first load?</li>
+          <li>Did swiping and reviewing feel natural?</li>
+          <li>Were Like, Star, Hide, and Avoid clear?</li>
+          <li>Did cached or offline behavior work when reception was poor?</li>
+          <li>What did you expect to happen after giving feedback?</li>
+        </ul>
+
+        <h3>Public beta readiness</h3>
+        <ul>
+          <li>Would you use this weekly without owner help?</li>
+          <li>What would need to change before you recommended it to another collector?</li>
+          <li>What would you pay for, if anything?</li>
+          <li>What feels private or sensitive?</li>
+          <li>What would make you delete your account?</li>
+        </ul>
+
+        <h3>Owner tracking sheet</h3>
+        <p>For each tester, record these fields in a simple spreadsheet or Notion table:</p>
+        <ul>
+          <li>Tester name, email, device, iOS version, and browser.</li>
+          <li>Time to onboard.</li>
+          <li>Invite, TestFlight, Clerk, or iOS failures.</li>
+          <li>Number of listings reviewed.</li>
+          <li>Feedback counts: like, star, hide, and avoid.</li>
+          <li>Run quality score from the user.</li>
+          <li>AI mode used and any cost incurred.</li>
+          <li>Whether owner intervention was needed.</li>
+          <li>Top three requested changes.</li>
+        </ul>
+
+        <div class="callout">
+          Treat setup friction, result trust, and cost clarity as the likely public-beta blockers. If friendly testers need owner help at any of those points, fix that before widening access.
+        </div>
+      </section>
+
+      <section>
+        <h2>Troubleshooting</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Symptom</th>
+              <th>Likely cause</th>
+              <th>Fix</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Friend sees invite gate after signing in</td>
+              <td>Expected before accepting a Beachcar invite.</td>
+              <td>Create/share the invite code from <code>?admin=1</code>.</td>
+            </tr>
+            <tr>
+              <td>Invite code says email mismatch</td>
+              <td>Invite email differs from the Google/Clerk sign-in email.</td>
+              <td>Create a new invite for the exact signed-in email.</td>
+            </tr>
+            <tr>
+              <td>TestFlight says no build available</td>
+              <td>Friend is not in the correct internal/external group, or Apple has not finished processing/review.</td>
+              <td>Check App Store Connect - TestFlight - Groups and build processing status.</td>
+            </tr>
+            <tr>
+              <td>Run button says Budget</td>
+              <td>Daily/monthly AI usage cap is exceeded or user capability is disabled.</td>
+              <td>Raise caps in Preferences or use deterministic/friend-run MCP mode.</td>
+            </tr>
+            <tr>
+              <td>AI provider is heuristic</td>
+              <td>AI Gateway credentials are missing or Gateway returned an error.</td>
+              <td>Check <code>BEACHCAR_AI_GATEWAY_*</code> env, Cloudflare AI Gateway logs, and Run detail message.</td>
+            </tr>
+            <tr>
+              <td>MCP unauthorized</td>
+              <td>Token missing, revoked, expired, copied with whitespace, or wrong friend token.</td>
+              <td>Create a new token in the friend's Preferences and update the cloud agent secret.</td>
+            </tr>
+            <tr>
+              <td>Images are slow or missing on first run</td>
+              <td>R2 variants are still warming, source blocked image fetch, or upstream image URL is invalid.</td>
+              <td>Check admin ops image counts, Run detail source notes, and retry after warmup.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Useful Links</h2>
+        <ul>
+          <li><a href="https://beachcar-watch.jon-cooper.workers.dev">Beachcar PWA</a></li>
+          <li><a href="https://beachcar-watch.jon-cooper.workers.dev/?admin=1">Beachcar admin console</a></li>
+          <li><a href="https://appstoreconnect.apple.com/">App Store Connect</a></li>
+          <li><a href="https://developer.apple.com/help/app-store-connect/test-a-beta-version/invite-external-testers/">Apple: Invite external testers</a></li>
+          <li><a href="https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers/">Apple: Add internal testers</a></li>
+          <li><a href="https://apps.apple.com/app/testflight/id899247664">Apple TestFlight app</a></li>
+          <li><a href="https://dashboard.clerk.com/">Clerk dashboard</a></li>
+          <li><a href="https://clerk.com/docs/quickstarts/ios">Clerk iOS quickstart</a></li>
+          <li><a href="https://dash.cloudflare.com/">Cloudflare dashboard</a></li>
+          <li><a href="https://developers.cloudflare.com/ai-gateway/usage/providers/openai/">Cloudflare AI Gateway: OpenAI provider</a></li>
+          <li><a href="https://developers.cloudflare.com/ai-gateway/usage/providers/openrouter/">Cloudflare AI Gateway: OpenRouter provider</a></li>
+          <li><a href="https://developers.cloudflare.com/ai-gateway/configuration/bring-your-own-keys/">Cloudflare AI Gateway: BYOK provider keys</a></li>
+          <li><a href="https://developers.cloudflare.com/ai-gateway/features/spend-limits/">Cloudflare AI Gateway spend limits</a></li>
+          <li><a href="https://developers.cloudflare.com/ai-gateway/integrations/coding-agents/openai-codex/">Cloudflare AI Gateway: OpenAI Codex integration</a></li>
+          <li><a href="https://help.openai.com/en/articles/9039756-billing-settings-in-chatgpt-vs-platform">OpenAI: ChatGPT billing vs API platform billing</a></li>
+          <li><a href="https://developers.openai.com/codex/mcp">OpenAI Codex MCP docs</a></li>
+          <li><a href="https://developers.openai.com/codex/skills">OpenAI Codex Skills docs</a></li>
+          <li><a href="https://openrouter.ai/docs">OpenRouter docs</a></li>
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>

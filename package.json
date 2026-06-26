@@ -36,6 +36,7 @@
     "cloudflare:bootstrap": "bun scripts/bootstrap-cloudflare-rollout.mjs",
     "cloudflare:verify": "bun scripts/verify-cloudflare-deploy.mjs",
     "images:audit": "bun scripts/audit-image-cache.mjs",
+    "images:warm": "bun scripts/warm-image-variants.mjs",
     "ios:generate": "xcodegen generate --spec ios/project.yml",
     "ios:resolve": "xcodebuild -resolvePackageDependencies -project ios/Beachcar.xcodeproj -scheme Beachcar",
     "ios:build": "scripts/ios-build.sh",

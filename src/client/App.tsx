@@ -35,9 +35,11 @@ import {
   exportAccount,
   getAutomationBundle,
   getAutomationStatus,
+  getAdminSourceCacheStatus,
   getLatestAgentRun,
   getLatestRun,
   getMe,
+  ingestAdminSourceCache,
   listAdminUsers,
   putAiSettings,
   putFeedback,
@@ -63,6 +65,7 @@ import type {
   InvitePayload,
   Lane,
   RunPayload,
+  SourceCacheAdminStatus,
   SourceSetting,
   UserAiSettings,
   UserPayload,
@@ -2529,6 +2532,7 @@ function AdminConsole(props: { demo: boolean }) {
         }
       : null,
   );
+  const [sourceCache, setSourceCache] = useState<SourceCacheAdminStatus | null>(props.demo ? demoSourceCacheStatus() : null);
   const [status, setStatus] = useState<string | null>(props.demo ? "Demo data shown. Use /?admin=1 locally for live admin calls." : null);
   const [pending, setPending] = useState(false);
 
@@ -2563,6 +2567,41 @@ function AdminConsole(props: { demo: boolean }) {
       await refreshUsers(publishToken.trim());
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not create invite");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function refreshSourceCache(token = publishToken) {
+    if (props.demo) return;
+    if (!token.trim()) {
+      setStatus("Enter the publish token first.");
+      return;
+    }
+    setPending(true);
+    try {
+      setSourceCache(await getAdminSourceCacheStatus(token.trim()));
+      setStatus("Source cache refreshed.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not load source cache");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function ingestSourceCache() {
+    if (props.demo) return;
+    if (!publishToken.trim()) {
+      setStatus("Enter the publish token first.");
+      return;
+    }
+    setPending(true);
+    try {
+      const result = await ingestAdminSourceCache(publishToken.trim());
+      setStatus(`BaT cache refreshed: ${result.ingestion.itemCount} items, ${result.ingestion.newItemCount} new.`);
+      await refreshSourceCache(publishToken.trim());
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not refresh source cache");
     } finally {
       setPending(false);
     }
@@ -2614,6 +2653,43 @@ function AdminConsole(props: { demo: boolean }) {
       </section>
 
       <section className="admin-panel">
+        <div className="setup-section-title">
+          <span>Source cache</span>
+          <small>{sourceCacheFreshness(sourceCache)}</small>
+        </div>
+        <div className="source-cache-grid">
+          <article className="source-cache-card">
+            <div>
+              <strong>Bring a Trailer RSS</strong>
+              <small>{sourceCache?.sources.bringatrailer.latestIngestion?.sourceUrl || "https://bringatrailer.com/auctions/feed/"}</small>
+            </div>
+            <span className={`admin-status-pill is-${sourceCache?.sources.bringatrailer.latestIngestion?.status || "invited"}`}>
+              {sourceCache?.sources.bringatrailer.latestIngestion?.status || "not loaded"}
+            </span>
+          </article>
+          <div className="source-cache-metrics">
+            <Metric label="Cached" value={String(sourceCache?.sources.bringatrailer.itemCount ?? 0)} />
+            <Metric label="Last items" value={String(sourceCache?.sources.bringatrailer.latestIngestion?.itemCount ?? 0)} />
+            <Metric label="New" value={String(sourceCache?.sources.bringatrailer.latestIngestion?.newItemCount ?? 0)} />
+            <Metric label="Last run" value={shortSourceCacheTime(sourceCache?.sources.bringatrailer.latestIngestion?.finishedAt)} />
+          </div>
+          {sourceCache?.sources.bringatrailer.latestIngestion?.error ? (
+            <p className="admin-status is-error">{sourceCache.sources.bringatrailer.latestIngestion.error}</p>
+          ) : null}
+        </div>
+        <div className="admin-actions">
+          <button disabled={pending || props.demo} type="button" onClick={() => void refreshSourceCache()}>
+            <RefreshCw size={16} aria-hidden="true" />
+            <span>Refresh status</span>
+          </button>
+          <button disabled={pending || props.demo} type="button" onClick={() => void ingestSourceCache()}>
+            <Search size={16} aria-hidden="true" />
+            <span>Ingest BaT RSS</span>
+          </button>
+        </div>
+      </section>
+
+      <section className="admin-panel">
         <div className="admin-table">
           {users.map((user) => (
             <article key={user.id}>
@@ -2634,6 +2710,38 @@ function AdminConsole(props: { demo: boolean }) {
       </section>
     </main>
   );
+}
+
+function demoSourceCacheStatus(): SourceCacheAdminStatus {
+  return {
+    sources: {
+      bringatrailer: {
+        source: "bringatrailer",
+        itemCount: 20,
+        latestIngestion: {
+          id: "source-ingestion-demo",
+          source: "bringatrailer",
+          sourceUrl: "https://bringatrailer.com/auctions/feed/",
+          status: "ok",
+          itemCount: 20,
+          newItemCount: 3,
+          error: null,
+          startedAt: "2026-06-25T12:00:00.000Z",
+          finishedAt: "2026-06-25T12:00:01.000Z",
+        },
+      },
+    },
+  };
+}
+
+function sourceCacheFreshness(status: SourceCacheAdminStatus | null): string {
+  const finishedAt = status?.sources.bringatrailer.latestIngestion?.finishedAt;
+  if (!finishedAt) return "not loaded";
+  return `updated ${shortDateTime(finishedAt)}`;
+}
+
+function shortSourceCacheTime(value: string | undefined): string {
+  return value ? shortDateTime(value) : "not loaded";
 }
 
 function numberFromInput(value: string): number | null {

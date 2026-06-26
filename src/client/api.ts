@@ -14,6 +14,8 @@ import type {
   InvitePayload,
   PreferenceEvent,
   RunPayload,
+  SourceCacheAdminStatus,
+  SourceCacheIngestResult,
   UserAiSettings,
   UserPayload,
 } from "../shared/types";
@@ -193,6 +195,21 @@ export async function createAdminInvite(publishToken: string, email: string): Pr
 
 export async function listAdminUsers(publishToken: string): Promise<AdminUserSummary[]> {
   return requestJson<AdminUserSummary[]>("/api/admin/users", {
+    headers: { "X-Publish-Token": publishToken },
+    skipUserToken: true,
+  });
+}
+
+export async function getAdminSourceCacheStatus(publishToken: string): Promise<SourceCacheAdminStatus> {
+  return requestJson<SourceCacheAdminStatus>("/api/admin/source-cache/status", {
+    headers: { "X-Publish-Token": publishToken },
+    skipUserToken: true,
+  });
+}
+
+export async function ingestAdminSourceCache(publishToken: string): Promise<SourceCacheIngestResult> {
+  return requestJson<SourceCacheIngestResult>("/api/admin/source-cache/ingest", {
+    method: "POST",
     headers: { "X-Publish-Token": publishToken },
     skipUserToken: true,
   });

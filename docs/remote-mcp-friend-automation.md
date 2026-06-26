@@ -104,6 +104,7 @@ Bring a Trailer RSS ingestion is persisted in D1:
 - `source_ingestion_runs` records every scheduled/manual refresh.
 - A 15-minute Worker cron refreshes the BaT public auctions RSS feed.
 - Admins can inspect and refresh the cache through `/api/admin/source-cache/status` and `/api/admin/source-cache/ingest`.
+- The admin console surfaces that same status with freshness, item counts, latest ingestion result, and a manual BaT RSS ingest control.
 
 ## OAuth Follow-Up
 

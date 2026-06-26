@@ -17,7 +17,7 @@ This audit maps the original request to current worktree evidence. It intentiona
 | Codex SDK / browser-heavy runner boundary | `runner/` includes a Container runner with `@openai/codex-sdk`; Worker bridge can now start the Container in deterministic default mode or explicit `BEACHCAR_RUNNER_MODE=codex`. |
 | Per-user mobile support | iOS decodes `/api/me`, gates invite/onboarding/disabled states, caches latest runs per user, uses cached remote images, and shows Agent run status. |
 | Image resizing/cache/preload | Worker serves `thumb`, `deck`, and `full` variants with immutable cache headers; PWA service worker caches image endpoints only in a bounded image cache; PWA and iOS prefetch nearby images. Unit tests now simulate the service worker and prove authenticated JSON is not cached, repeated image requests hit the dedicated image cache, and the cache trims to 180 entries. |
-| Public source cache | Bring a Trailer public RSS candidates are ingested into D1 through `source_items` and `source_ingestion_runs`; cron/admin/MCP paths refresh and search the cache. |
+| Public source cache | Bring a Trailer public RSS candidates are ingested into D1 through `source_items` and `source_ingestion_runs`; cron/admin/MCP paths refresh and search the cache; the admin console shows freshness, item counts, latest ingest status, and manual refresh controls. |
 | Daily automation compatibility | Existing admin import remains, plus user-specific import and runner-task claim/complete/fail APIs. |
 | Repeatable local verification | `bun run preflight` runs typecheck, Vitest, container syntax, runner simulator syntax, service-worker syntax, non-deploying readiness reporting, and client build. `bun run preflight:local` previously passed the full local Worker smoke. |
 | Non-deploying rollout readiness check | `bun run deploy:check` inspects local Cloudflare config, migrations, script wiring, and env hints without network calls or secret output. |
@@ -32,7 +32,8 @@ This audit maps the original request to current worktree evidence. It intentiona
 - `node --check public/sw.js`: passed.
 - `bun run deploy:check`: passed in report mode and identified 5 expected rollout todos: production D1 id, real bootstrap owner email, Clerk secret, Clerk issuer, and AI Gateway remote scoring credentials.
 - Browser verification: Worker static app mounted; Vite settings demo rendered Connect automation with an MCP endpoint and no demo API 404.
-- Curl verification: local source-cache status, manual ingest, and scheduled test endpoint returned successfully.
+- Curl verification: local source-cache status returned 20 BaT RSS items, manual ingest returned a 20-item ingestion, and the scheduled test endpoint returned successfully.
+- Browser verification: Worker admin page rendered the Source cache panel, BaT feed URL, Refresh status and Ingest BaT RSS controls with no horizontal overflow at desktop or 390px mobile widths.
 - `bunx wrangler deploy --dry-run`: built Worker assets and the Bun-based Container image without deploying.
 
 ## Not Proven In This Environment

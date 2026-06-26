@@ -628,7 +628,11 @@ img {
 }
 
 .admin-actions button {
+  display: inline-flex;
   min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   border: 0;
   border-radius: 10px;
   background: #14201c;
@@ -645,6 +649,46 @@ img {
   margin: 0;
   color: #53625c;
   font-size: 0.9rem;
+}
+
+.admin-status.is-error {
+  color: #9b3225;
+}
+
+.source-cache-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.source-cache-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgba(20, 32, 28, 0.1);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: rgba(248, 250, 247, 0.78);
+}
+
+.source-cache-card strong,
+.source-cache-card small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-cache-card small {
+  color: #53625c;
+  font-size: 0.78rem;
+}
+
+.source-cache-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .invite-result {
@@ -710,12 +754,22 @@ img {
   color: #1d6657;
 }
 
+.admin-status-pill.is-ok {
+  background: #dff0e9;
+  color: #1d6657;
+}
+
 .admin-status-pill.is-invited {
   background: #f5e9d8;
   color: #7a4b16;
 }
 
 .admin-status-pill.is-disabled {
+  background: #f0dedb;
+  color: #7a2e24;
+}
+
+.admin-status-pill.is-failed {
   background: #f0dedb;
   color: #7a2e24;
 }
@@ -2047,6 +2101,8 @@ h2 {
   }
 
   .admin-grid,
+  .source-cache-card,
+  .source-cache-metrics,
   .admin-table article {
     grid-template-columns: 1fr;
   }

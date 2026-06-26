@@ -267,6 +267,44 @@ export interface AdminUserSummary extends UserRecord {
   lastSeenAt: string;
 }
 
+export interface SourceIngestionRun {
+  id: string;
+  source: string;
+  sourceUrl: string;
+  status: "ok" | "failed";
+  itemCount: number;
+  newItemCount: number;
+  error?: string | null;
+  startedAt: string;
+  finishedAt: string;
+}
+
+export interface SourceCacheStatus {
+  source: string;
+  itemCount: number;
+  latestIngestion: SourceIngestionRun | null;
+}
+
+export interface SourceCacheAdminStatus {
+  sources: {
+    bringatrailer: SourceCacheStatus;
+  };
+}
+
+export interface SourceCacheUpsertResult {
+  source: string;
+  sourceUrl: string;
+  itemCount: number;
+  newItemCount: number;
+  startedAt: string;
+  finishedAt: string;
+}
+
+export interface SourceCacheIngestResult {
+  source: "bringatrailer";
+  ingestion: SourceCacheUpsertResult;
+}
+
 export interface AccountExport {
   version: 1;
   kind: "beachcar-account-export";

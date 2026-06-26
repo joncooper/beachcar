@@ -560,6 +560,14 @@ Improvement: Added `scripts/verify-cloudflare-deploy.mjs` and `bun run cloudflar
 
 Verification: `node --check scripts/verify-cloudflare-deploy.mjs` passed. Local Worker verification with `bun run cloudflare:verify -- --url http://127.0.0.1:8787` proved the public app, MCP/OAuth surfaces, local test auth, and admin source-cache status; optional signed-in and authenticated MCP-token checks reported warnings when no Clerk or automation token was provided.
 
+### App/architecture pass 49: cloud-agent skill hardening
+
+Review: The Beachcar daily-run skill assumed agents would know how to connect to hosted MCP and how to handle blocked sources or zero-cost cached reads. That was too implicit for a friend handing the skill to a generic cloud agent.
+
+Improvement: Updated `.agents/skills/beachcar-daily-run/SKILL.md`, its OpenAI UI metadata, and the website-generated `automationBundleMarkdown` output. The skill now has explicit hosted MCP setup instructions, OAuth protected-resource discovery guidance, no-local-MCP fallback behavior, BaT cache-first source strategy, source-blocking rules, usage accounting for AI/browser work and cached reads, and a done definition requiring `publish_run`, `verify_latest_run`, usage recording, and visible source caveats.
+
+Verification: `uv run --with PyYAML python /Users/jdc/.codex/skills/.system/skill-creator/scripts/quick_validate.py .agents/skills/beachcar-daily-run` passed. `node --check src/worker/automation-bundle.ts` passed.
+
 ## Screenshots
 
 Invite gate, desktop:

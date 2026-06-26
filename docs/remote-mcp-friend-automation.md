@@ -96,6 +96,16 @@ The canonical repo skill lives at:
 
 The website bundle route emits the same workflow with the current deployment's MCP endpoint inserted. The skill tells a cloud agent to use the hosted MCP tools, gather candidates, publish through `publish_run`, call `record_usage`, and verify with `verify_latest_run`.
 
+The skill now includes explicit setup guidance for hosted MCP clients:
+
+- connect to the hosted `/mcp` endpoint and send the Beachcar automation token as a bearer token,
+- use OAuth protected-resource discovery when the client supports it, while recognizing the preview still uses scoped tokens,
+- stop rather than inventing an API fallback if hosted MCP tools are unavailable,
+- use `search_bat_cache` before direct BaT browsing,
+- record zero-cost cached source reads and paid AI/browser-harness work through `record_usage`,
+- write blocked sources or manual-check caveats into `sourceSummary`,
+- finish only after `publish_run` and `verify_latest_run` agree on the run id and listing count.
+
 ## Image Handling
 
 `publish_run` reuses the existing import path. That path stores listing/image metadata in D1, queues image warmup through `ctx.waitUntil(prewarmImportedImages(...))`, mirrors source images into R2, and serves `thumb`, `deck`, and `full` variants through `/api/images/:imageKey?variant=...`.

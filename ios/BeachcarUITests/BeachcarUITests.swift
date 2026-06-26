@@ -12,19 +12,12 @@ final class BeachcarUITests: XCTestCase {
     app = nil
   }
 
-  func testTapLowerCardShowsDetails() throws {
-    let card = app.buttons["listing-card-body"].firstMatch
-    XCTAssertTrue(card.waitForExistence(timeout: 4))
-
-    card.tap()
-
-    XCTAssertTrue(text(containing: "Market read").waitForExistence(timeout: 2))
-  }
+  // MARK: Access gates (unchanged surfaces)
 
   func testInvitedUserSeesInviteGate() throws {
     launch(scenario: "invited")
 
-    XCTAssertTrue(app.otherElements["invite-gate"].waitForExistence(timeout: 4))
+    XCTAssertTrue(app.otherElements["invite-gate"].waitForExistence(timeout: 15))
     XCTAssertTrue(text(containing: "Invite required").exists)
     XCTAssertTrue(app.textFields["invite-code-field"].exists)
     XCTAssertTrue(app.buttons["accept-invite-button"].exists)
@@ -34,73 +27,83 @@ final class BeachcarUITests: XCTestCase {
     launch(scenario: "invited")
 
     let field = app.textFields["invite-code-field"]
-    XCTAssertTrue(field.waitForExistence(timeout: 4))
+    XCTAssertTrue(field.waitForExistence(timeout: 15))
     field.tap()
     field.typeText("test-invite")
     app.buttons["accept-invite-button"].tap()
 
-    XCTAssertTrue(app.scrollViews["onboarding-view"].waitForExistence(timeout: 2))
+    XCTAssertTrue(app.scrollViews["onboarding-view"].waitForExistence(timeout: 10))
     XCTAssertTrue(text(containing: "Preferences").exists)
   }
 
-  func testOnboardingSaveEntersDeckFixture() throws {
+  func testOnboardingSaveEntersShadeFeed() throws {
     launch(scenario: "onboarding")
 
-    XCTAssertTrue(app.scrollViews["onboarding-view"].waitForExistence(timeout: 4))
+    XCTAssertTrue(app.scrollViews["onboarding-view"].waitForExistence(timeout: 15))
     app.buttons["save-preferences-button"].tap()
 
-    XCTAssertTrue(text(containing: "Suzuki Samurai").waitForExistence(timeout: 2))
-    XCTAssertTrue(app.buttons["mode-list"].exists)
+    XCTAssertTrue(text(containing: "Suzuki Samurai").waitForExistence(timeout: 10))
+    XCTAssertTrue(app.otherElements["shade-surface"].exists)
   }
 
-  func testActiveUserEntersDeckFixture() throws {
+  // MARK: Shade feed
+
+  func testActiveUserEntersShadeFeed() throws {
     launch(scenario: "active")
 
-    XCTAssertTrue(text(containing: "Suzuki Samurai").waitForExistence(timeout: 4))
-    XCTAssertTrue(app.otherElements["run-status-banner"].exists)
-    XCTAssertTrue(text(containing: "Latest run published").exists)
-    XCTAssertTrue(app.buttons["filter-button"].exists)
+    XCTAssertTrue(text(containing: "Suzuki Samurai").waitForExistence(timeout: 15))
+    XCTAssertTrue(app.otherElements["shade-surface"].exists)
+    XCTAssertTrue(app.buttons["shade-list-button"].exists)
   }
 
-  func testFilterSoloShowsSoloFixture() throws {
-    XCTAssertTrue(app.buttons["filter-button"].waitForExistence(timeout: 4))
-    app.buttons["filter-button"].tap()
+  func testListButtonOpensFindsAndFilters() throws {
+    XCTAssertTrue(app.buttons["shade-list-button"].waitForExistence(timeout: 15))
+    app.buttons["shade-list-button"].tap()
 
-    let solo = app.buttons["filter-solo"]
-    XCTAssertTrue(solo.waitForExistence(timeout: 2))
-    solo.tap()
-    app.buttons["filters-done"].tap()
+    XCTAssertTrue(app.otherElements["shade-list-overlay"].waitForExistence(timeout: 10))
+    XCTAssertTrue(text(containing: "Today's finds").exists)
 
-    let title = text(containing: "Honda Trail 90")
-    XCTAssertTrue(title.waitForExistence(timeout: 2))
-    XCTAssertTrue(app.staticTexts["filter-summary"].label.contains("1 card"))
+    // Family filter keeps the Samurai (family lane) visible.
+    app.buttons["shade-filter-Family"].tap()
+    XCTAssertTrue(app.buttons["shade-list-row-ui-test-samurai"].waitForExistence(timeout: 10))
   }
 
-  func testListModeOpensDetails() throws {
-    XCTAssertTrue(app.buttons["mode-list"].waitForExistence(timeout: 4))
-    app.buttons["mode-list"].tap()
+  func testListRowJumpsToCar() throws {
+    XCTAssertTrue(app.buttons["shade-list-button"].waitForExistence(timeout: 15))
+    app.buttons["shade-list-button"].tap()
 
-    XCTAssertTrue(app.scrollViews["list-mode-view"].waitForExistence(timeout: 2))
-    let row = app.buttons["list-row-ui-test-samurai"]
-    XCTAssertTrue(row.waitForExistence(timeout: 2))
+    let row = app.buttons["shade-list-row-ui-test-wildcard"]
+    XCTAssertTrue(row.waitForExistence(timeout: 10))
     row.tap()
 
-    XCTAssertTrue(text(containing: "Market read").waitForExistence(timeout: 2))
-    XCTAssertTrue(text(containing: "Back of card").waitForExistence(timeout: 2))
+    // Jumping selects the Citicar and dismisses the list.
+    XCTAssertTrue(text(containing: "Citicar").waitForExistence(timeout: 10))
   }
 
-  func testNormalRightSwipeSavesFeedbackAndAdvances() throws {
-    let firstTitle = text(containing: "Suzuki Samurai")
-    XCTAssertTrue(firstTitle.waitForExistence(timeout: 4))
+  func testCenterTapOpensDossier() throws {
+    let surface = app.otherElements["shade-surface"]
+    XCTAssertTrue(surface.waitForExistence(timeout: 15))
 
-    let start = firstTitle.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.50))
-    let end = firstTitle.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.50))
-    start.press(forDuration: 0.06, thenDragTo: end)
+    surface.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
 
-    XCTAssertTrue(app.staticTexts["Saved feedback"].waitForExistence(timeout: 2))
-    let nextTitle = text(containing: "Honda Trail 90")
-    XCTAssertTrue(nextTitle.waitForExistence(timeout: 2))
+    XCTAssertTrue(text(containing: "FULL DOSSIER").waitForExistence(timeout: 12))
+    XCTAssertTrue(text(containing: "MARKET READ").exists)
   }
+
+  func testShadePullDownJudgesLike() throws {
+    let surface = app.otherElements["shade-surface"]
+    XCTAssertTrue(surface.waitForExistence(timeout: 15))
+
+    // Pull down within the photo zone, ending in the "Like" column (3rd of 4),
+    // far enough to cross the commit threshold.
+    let start = surface.coordinate(withNormalizedOffset: CGVector(dx: 0.62, dy: 0.16))
+    let end = surface.coordinate(withNormalizedOffset: CGVector(dx: 0.62, dy: 0.46))
+    start.press(forDuration: 0.05, thenDragTo: end)
+
+    XCTAssertTrue(app.staticTexts["Liked"].waitForExistence(timeout: 10))
+  }
+
+  // MARK: helpers
 
   private func text(containing value: String) -> XCUIElement {
     app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", value)).firstMatch

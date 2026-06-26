@@ -1,16 +1,19 @@
 import SwiftUI
 
+// Mapped onto the dark Shade tokens (see ShadeTheme.BC) so the screens outside the
+// Shade redesign — sign-in, invite gate, onboarding — render in the same dark
+// language. Semantic names are preserved so existing call sites keep working.
 enum BeachcarColors {
-  static let shell = Color(red: 0.937, green: 0.953, blue: 0.928)
-  static let ink = Color(red: 0.075, green: 0.105, blue: 0.092)
-  static let secondary = Color(red: 0.29, green: 0.34, blue: 0.32)
-  static let muted = Color(red: 0.48, green: 0.54, blue: 0.50)
-  static let mint = Color(red: 0.53, green: 0.78, blue: 0.70)
-  static let teal = Color(red: 0.09, green: 0.42, blue: 0.35)
-  static let sand = Color(red: 0.92, green: 0.84, blue: 0.68)
-  static let gold = Color(red: 0.66, green: 0.43, blue: 0.08)
-  static let stop = Color(red: 0.64, green: 0.18, blue: 0.15)
-  static let hairline = Color.black.opacity(0.08)
+  static let shell = BC.bg
+  static let ink = BC.ink
+  static let secondary = BC.sub
+  static let muted = BC.muted
+  static let mint = BC.accent
+  static let teal = BC.accent
+  static let sand = BC.star
+  static let gold = BC.star
+  static let stop = BC.danger
+  static let hairline = BC.border
 }
 
 enum ChipStyle {

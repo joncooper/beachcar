@@ -39,6 +39,19 @@
 	<string>Beachcar uses the microphone only when you dictate preference feedback.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Beachcar uses speech recognition to turn your feedback into steering notes for future auction runs.</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Archivo-Regular.ttf</string>
+		<string>Archivo-Medium.ttf</string>
+		<string>Archivo-SemiBold.ttf</string>
+		<string>Archivo-Bold.ttf</string>
+		<string>Archivo-ExtraBold.ttf</string>
+		<string>Archivo-Black.ttf</string>
+		<string>SpaceMono-Regular.ttf</string>
+		<string>SpaceMono-Bold.ttf</string>
+	</array>
+	<key>UIUserInterfaceStyle</key>
+	<string>Dark</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

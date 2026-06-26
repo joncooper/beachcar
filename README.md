@@ -146,6 +146,8 @@ bun run cloudflare:bootstrap -- --write-config --owner-emails "owner@example.com
 Apply migrations and set Worker secrets when you are ready to deploy:
 
 ```bash
+cp .deploy.env.example .deploy.env
+bun run deploy:env:check
 bunx wrangler secret put PUBLISH_TOKEN
 bunx wrangler secret put CLERK_SECRET_KEY
 bunx wrangler secret put CLERK_JWT_ISSUER
@@ -155,6 +157,7 @@ bun run cloudflare:bootstrap -- --yes --migrate --dry-run-deploy --deploy
 ```
 
 `CLERK_JWT_ISSUER` is your Clerk issuer URL, usually like `https://your-instance.clerk.accounts.dev`.
+`bun run deploy:env:check` hides secret values and reports only missing or malformed deployment inputs. Use `-- --strict` to make missing required values fail.
 
 ## Publishing A Daily Run
 

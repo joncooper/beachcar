@@ -24,6 +24,7 @@ This audit maps the original request to current worktree evidence. It intentiona
 | Admin operational visibility | `GET /api/admin/ops-summary` and the admin console summarize user counts, onboarding, runs, Agent run states, runner-task backlog, image original/variant counts and bytes, AI spend/events, and BaT cache status. |
 | Repeatable local verification | `bun run preflight` runs typecheck, Vitest, container syntax, runner simulator syntax, service-worker syntax, non-deploying readiness reporting, and client build. `bun run preflight:local` previously passed the full local Worker smoke. |
 | Non-deploying rollout readiness check | `bun run deploy:check` inspects local Cloudflare config, migrations, script wiring, and env hints without network calls or secret output. |
+| Deploy secret handoff | `.deploy.env.example` plus `bun run deploy:env:check` give a git-ignored place to provide Clerk/PUBLISH_TOKEN/AI Gateway values and validate their shapes without printing secrets. |
 | Guarded Cloudflare rollout bootstrap | `bun run cloudflare:bootstrap` inspects the logged-in Cloudflare account read-only by default, can write discovered D1 ids and owner emails into config, and requires explicit `--yes` plus action flags before resource creation, migrations, or deploy. |
 | Local/remote deployed-surface verifier | `bun run cloudflare:verify` checks a local or deployed Worker URL for app shell delivery, MCP server metadata, OAuth protected-resource metadata, unauthenticated MCP challenge behavior, and remote rejection of local test-auth headers without mutating Cloudflare resources. |
 | PWA screen visual verification | In-app browser audit covered invite, onboarding, admin, preferences, and Run Detail demo routes at desktop and 390px mobile widths with no horizontal overflow; Run Detail screenshots are saved in `docs/screenshots/friends-platform/`. |
@@ -36,6 +37,7 @@ This audit maps the original request to current worktree evidence. It intentiona
 - `bun run preflight:local`: passed with local Wrangler, D1/R2/Workflow smoke, MCP automation calls, and BaT cache search.
 - `node --check public/sw.js`: passed.
 - `bun run deploy:check`: passed in report mode and identified 5 expected rollout todos: production D1 id, real bootstrap owner email, Clerk secret, Clerk issuer, and AI Gateway remote scoring credentials.
+- `bun run deploy:env:check`: added to validate Clerk/PUBLISH_TOKEN/optional AI Gateway deployment values without printing secrets. It currently reports missing Clerk values until `.deploy.env` is filled.
 - Browser verification: Worker static app mounted; Vite settings demo rendered Connect automation with an MCP endpoint and no demo API 404.
 - Curl verification: local source-cache status returned 20 BaT RSS items, manual ingest returned a 20-item ingestion, and the scheduled test endpoint returned successfully.
 - Browser verification: Worker admin page rendered the Source cache panel, BaT feed URL, Refresh status and Ingest BaT RSS controls with no horizontal overflow at desktop or 390px mobile widths.

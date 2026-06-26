@@ -7,7 +7,7 @@ const root = process.cwd();
 const checks = [];
 
 const wrangler = await readJsonc(resolve("wrangler.jsonc"));
-const env = await loadEnvHints([".env.local", ".dev.vars", ".publish.env"]);
+const env = await loadEnvHints([".deploy.env", ".env.local", ".dev.vars", ".publish.env"]);
 const migrationFiles = await safeReaddir(resolve("migrations"));
 const runnerPackage = await readOptionalJson(resolve("runner/package.json"));
 const packageJson = await readOptionalJson(resolve("package.json"));

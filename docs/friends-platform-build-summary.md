@@ -608,6 +608,14 @@ Improvement: Read-only D1 inspection showed `beach-car-watch` is non-empty, acti
 
 Verification: Read-only D1 schema and migration metadata inspection succeeded. `bun run cf:types` generated Wrangler's current binding view to `/tmp` and confirmed `BOOTSTRAP_OWNER_EMAILS` is present.
 
+### App/architecture pass 55: deploy secret handoff
+
+Review: The remaining blockers are not code paths; they are Clerk values, publish-token confirmation, optional AI Gateway credentials, and explicit remote-mutation approval. The repo did not have a single ignored place to put deploy-only values and validate them without leaking secrets.
+
+Improvement: Added `.deploy.env.example`, ignored `.deploy.env`, and `bun run deploy:env:check`. The checker validates presence and basic shape for `PUBLISH_TOKEN`, Clerk publishable/secret keys, Clerk issuer URL, optional `BEACHCAR_DEPLOY_URL`, and optional AI Gateway credentials without printing values. `bun run deploy:check` now also reads `.deploy.env` as a local env hint.
+
+Verification: `node --check scripts/validate-deploy-env.mjs` and `bun run deploy:env:check` passed in report mode.
+
 ## Screenshots
 
 Invite gate, desktop:

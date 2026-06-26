@@ -94,6 +94,15 @@ Worker secrets:
 - `CLERK_SECRET_KEY`
 - `CLERK_JWT_ISSUER`
 
+Local deploy handoff:
+
+```bash
+cp .deploy.env.example .deploy.env
+bun run deploy:env:check
+```
+
+`.deploy.env` is ignored by git. The validator hides values and checks required Clerk/Worker secret shapes plus optional AI Gateway settings.
+
 Worker vars:
 
 - `BOOTSTRAP_OWNER_EMAILS` or legacy `ALLOWED_EMAIL`

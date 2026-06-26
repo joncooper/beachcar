@@ -11,6 +11,14 @@ Required Worker secrets:
 - `CLERK_SECRET_KEY`
 - `CLERK_JWT_ISSUER`
 
+Before deployment, put Clerk values in `.deploy.env` and run:
+
+```bash
+bun run deploy:env:check
+```
+
+The checker validates presence and key shape without printing values.
+
 Required Worker var:
 
 - `BOOTSTRAP_OWNER_EMAILS` or legacy `ALLOWED_EMAIL`

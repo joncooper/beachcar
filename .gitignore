@@ -10,6 +10,7 @@ dist/
 .env.apple.local
 .env.*.local
 .publish.env
+.deploy.env
 coverage/
 build/
 outputs/

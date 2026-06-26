@@ -1459,6 +1459,220 @@ h2 {
   line-height: 1.08;
 }
 
+/* Dossier detail (rich per-car sections) */
+.spec-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 14px;
+  margin-top: 2px;
+}
+
+.spec-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(20, 32, 28, 0.1);
+}
+
+.spec-cell {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.spec-cell span {
+  color: #5f6d67;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.spec-cell strong {
+  overflow-wrap: anywhere;
+  color: #14201c;
+  font-size: 0.9rem;
+  line-height: 1.12;
+}
+
+.listing-prose {
+  display: grid;
+  gap: 11px;
+}
+
+.listing-prose p {
+  margin: 0;
+  color: #26342f;
+  line-height: 1.5;
+}
+
+.value-meter {
+  display: grid;
+  gap: 7px;
+}
+
+.value-scale {
+  display: flex;
+  justify-content: space-between;
+  color: #5f6d67;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.value-bar {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2d7665, #d8a43a 52%, #c95339);
+}
+
+.value-thumb {
+  position: absolute;
+  top: 50%;
+  width: 15px;
+  height: 15px;
+  border: 2px solid #14201c;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 2px 5px rgba(20, 32, 28, 0.3);
+  transform: translate(-50%, -50%);
+}
+
+.fit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.fit-cell {
+  display: grid;
+  gap: 3px;
+  border-radius: 12px;
+  background: rgba(45, 118, 101, 0.08);
+  padding: 10px 12px;
+}
+
+.fit-cell span {
+  color: #5f6d67;
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.fit-cell strong {
+  color: #14201c;
+  font-size: 0.88rem;
+}
+
+.bid-log {
+  display: grid;
+}
+
+.bid-row {
+  display: grid;
+  grid-template-columns: 1fr auto 34px;
+  align-items: center;
+  gap: 11px;
+  border-bottom: 1px solid rgba(20, 32, 28, 0.08);
+  padding: 8px 0;
+}
+
+.bid-row:last-child {
+  border-bottom: 0;
+}
+
+.bid-bidder {
+  overflow: hidden;
+  color: #26342f;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bid-row strong {
+  color: #14201c;
+}
+
+.bid-row.is-top strong {
+  color: #2d7665;
+}
+
+.bid-ago {
+  color: #5f6d67;
+  font-size: 0.72rem;
+  text-align: right;
+}
+
+.comment-thread {
+  display: grid;
+  gap: 14px;
+}
+
+.comment {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 10px;
+}
+
+.comment-avatar {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(20, 32, 28, 0.08);
+  color: #14201c;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.comment-avatar.is-seller {
+  background: #2d7665;
+  color: #fff;
+}
+
+.comment-body {
+  min-width: 0;
+}
+
+.comment-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.comment-head strong {
+  overflow: hidden;
+  color: #14201c;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.comment-head .comment-ago {
+  margin-left: auto;
+  color: #5f6d67;
+  font-size: 0.72rem;
+}
+
+.seller-badge {
+  border-radius: 5px;
+  background: #2d7665;
+  padding: 1px 6px;
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.comment-body p {
+  margin: 3px 0 0;
+  color: #26342f;
+  line-height: 1.42;
+}
+
 .review-rail {
   position: fixed;
   right: max(10px, env(safe-area-inset-right));

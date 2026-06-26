@@ -761,6 +761,38 @@ function demoRunPayload(): RunPayload {
         concerns: "Verify title, rust, underside, driving video, seating/restraint practicality, and final buyer-fee total.",
         currentTake: "source-discovery candidate from public source data",
         images: [],
+        dossier: {
+          summary: "Two-owner Thing wearing a fresh soft top, with recent brakes, tires, and a rebuilt carburetor. Sold on a clean title with service records.",
+          specs: {
+            odometer: "62,400 mi",
+            engine: "1.6L flat-4",
+            transmission: "4-speed manual",
+            drivetrain: "RWD",
+            exterior: "Texas Yellow",
+            interior: "Black vinyl",
+            title: "Clean · SC",
+            seller: "lowcountry_air",
+            lot: "BaT #88,412",
+          },
+          listing: [
+            "This 1974 Volkswagen Thing is finished in Texas Yellow over a black interior and is powered by a 1.6-liter flat-four paired with a four-speed manual transaxle.",
+            "Work under current ownership includes a new soft top, a front-end refresh, fresh brake hydraulics, and a carburetor rebuild. The doors are removable and the windshield folds.",
+            "The car is offered with a clean title, a tool roll, and a binder of receipts. The seller notes minor surface rust on the floor pans and a small tear in the driver's seat.",
+          ],
+          equipment: ["New convertible soft top", "Removable doors, folding windshield", "15\" steel wheels with new tires", "Aftermarket lap belts, all seats"],
+          service: ["2024 — new soft top", "2023 — front-end refresh", "2023 — brake hydraulics renewed", "2022 — carburetor rebuild"],
+          bidLog: [
+            { bidder: "dune_runner", amount: "$8,295", ago: "2h" },
+            { bidder: "aircooled_sc", amount: "$8,000", ago: "6h" },
+            { bidder: "Opening bid", amount: "$5,000", ago: "3d" },
+          ],
+          comments: [
+            { user: "thing_fan", body: "Floors look honest in the extra photos. GLWTA.", ago: "3h" },
+            { user: "lowcountry_air", body: "Top frame is complete and the new canvas fits well.", ago: "2h", seller: true },
+          ],
+          beachUse: { body: "Open 2WD", location: "Charleston, SC", people: "Confirm belts", paperwork: "Clean title" },
+          valueScore: 0.18,
+        },
       },
     ],
     sourceSummary: {
@@ -1456,6 +1488,7 @@ function AuthenticatedApp(props: { clerkPublishableKey: string }) {
                     <Stat icon={<MapPin />} label="Location" value={selectedListing.location || "check listing"} />
                   </div>
                 </section>
+                <DossierDetail dossier={selectedListing.dossier} />
               </section>
             </article>
           </section>
@@ -3356,6 +3389,173 @@ function DiligenceList(props: { title: string; items: string[]; tone?: "good" | 
         ))}
       </ul>
     </section>
+  );
+}
+
+function DossierDetail(props: { dossier?: AuctionListing["dossier"] }) {
+  const d = props.dossier;
+  if (!d) return null;
+
+  const specRows: Array<[string, string]> = [];
+  const metaRows: Array<[string, string]> = [];
+  if (d.specs) {
+    const s = d.specs;
+    const add = (rows: Array<[string, string]>, label: string, value?: string) => {
+      if (value) rows.push([label, value]);
+    };
+    add(specRows, "Odometer", s.odometer);
+    add(specRows, "Engine", s.engine);
+    add(specRows, "Transmission", s.transmission);
+    add(specRows, "Drivetrain", s.drivetrain);
+    add(specRows, "Exterior", s.exterior);
+    add(specRows, "Interior", s.interior);
+    add(metaRows, "Title", s.title);
+    add(metaRows, "Seller", s.seller);
+    add(metaRows, "Listing", s.lot);
+  }
+
+  const fitRows: Array<[string, string]> = [];
+  if (d.beachUse) {
+    const b = d.beachUse;
+    if (b.body) fitRows.push(["Body", b.body]);
+    if (b.location) fitRows.push(["Where", b.location]);
+    if (b.people) fitRows.push(["People", b.people]);
+    if (b.paperwork) fitRows.push(["Paperwork", b.paperwork]);
+  }
+
+  const hasVehicle = Boolean(d.summary) || specRows.length > 0 || metaRows.length > 0;
+  const valuePercent = typeof d.valueScore === "number" ? Math.round(Math.max(0, Math.min(1, d.valueScore)) * 100) : null;
+
+  return (
+    <>
+      {hasVehicle ? (
+        <section className="detail-section">
+          <p>Vehicle</p>
+          {d.summary ? <div>{d.summary}</div> : null}
+          {specRows.length ? (
+            <div className="spec-grid">
+              {specRows.map(([label, value]) => (
+                <div className="spec-cell" key={label}>
+                  <span>{label}</span>
+                  <strong>{value}</strong>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {metaRows.length ? (
+            <div className="spec-meta">
+              {metaRows.map(([label, value]) => (
+                <div className="spec-cell" key={label}>
+                  <span>{label}</span>
+                  <strong>{value}</strong>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {valuePercent !== null ? (
+        <section className="detail-section">
+          <p>Value read</p>
+          <div className="value-meter">
+            <div className="value-scale">
+              <span>Cheap</span>
+              <span>Fair</span>
+              <span>Rich</span>
+            </div>
+            <div className="value-bar">
+              <span className="value-thumb" style={{ left: `${valuePercent}%` }} />
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {d.listing && d.listing.length ? (
+        <section className="detail-section">
+          <p>From the listing</p>
+          <div className="listing-prose">
+            {d.listing.map((para, index) => (
+              <p key={index}>{para}</p>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {d.equipment && d.equipment.length ? (
+        <section className="detail-section is-good">
+          <p>Equipment &amp; highlights</p>
+          <ul>
+            {d.equipment.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {d.service && d.service.length ? (
+        <section className="detail-section is-good">
+          <p>Recent service</p>
+          <ul>
+            {d.service.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {fitRows.length ? (
+        <section className="detail-section">
+          <p>Beach-use fit</p>
+          <div className="fit-grid">
+            {fitRows.map(([label, value]) => (
+              <div className="fit-cell" key={label}>
+                <span>{label}</span>
+                <strong>{value}</strong>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {d.bidLog && d.bidLog.length ? (
+        <section className="detail-section">
+          <p>Bidding</p>
+          <div className="bid-log">
+            {d.bidLog.map((bid, index) => (
+              <div className={index === 0 ? "bid-row is-top" : "bid-row"} key={index}>
+                <span className="bid-bidder">{bid.bidder}</span>
+                <strong>{bid.amount}</strong>
+                <span className="bid-ago">{bid.ago ?? ""}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {d.comments && d.comments.length ? (
+        <section className="detail-section">
+          <p>Comments</p>
+          <div className="comment-thread">
+            {d.comments.map((comment, index) => (
+              <div className="comment" key={index}>
+                <span className={comment.seller ? "comment-avatar is-seller" : "comment-avatar"}>
+                  {comment.user.slice(0, 1).toUpperCase()}
+                </span>
+                <div className="comment-body">
+                  <div className="comment-head">
+                    <strong>{comment.user}</strong>
+                    {comment.seller ? <span className="seller-badge">Seller</span> : null}
+                    <span className="comment-ago">{comment.ago ?? ""}</span>
+                  </div>
+                  <p>{comment.body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+    </>
   );
 }
 

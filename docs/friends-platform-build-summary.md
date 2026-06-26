@@ -544,6 +544,14 @@ Improvement: Added `scripts/check-cloudflare-resources.mjs` and `bun run cloudfl
 
 Verification: `node --check scripts/check-cloudflare-resources.mjs` passed. `bun run cloudflare:check` ran read-only against account `b8873e78bf5e48fcdc91e87f2324cf55` and reported 7 ok checks plus 4 expected todos: no exact D1 named `beachcar-watch`, placeholder D1 id, no deployed Worker named `beachcar-watch`, and remote Worker secrets unavailable until the Worker exists. No Cloudflare resources were created, changed, or deployed.
 
+### App/architecture pass 47: Cloudflare deployment rehearsal plan
+
+Review: The read-only Cloudflare inspector identified what was missing, but the next operator still had to translate that report into a safe ordered rollout. That creates room for applying migrations to the wrong D1 database, setting secrets before a Worker exists, or skipping the post-deploy MCP/auth smoke.
+
+Improvement: Added `scripts/plan-cloudflare-deploy.mjs` and `bun run cloudflare:plan`. The planner runs the read-only inspector, then emits an ordered rehearsal plan with each step labeled `read-only`, `file-edit`, or `mutating`. It recommends creating a fresh `beachcar-watch` D1 unless the legacy `beach-car-watch` database is intentionally inspected/reused, then lists D1 create/id edit, remote migrations, R2 confirmation, owner-email edit, dry-run, first deploy, required secrets, optional AI Gateway secrets, and post-deploy verification. `--json` returns the same plan for automation.
+
+Verification: `node --check scripts/plan-cloudflare-deploy.mjs`, `bun run cloudflare:plan`, and `bun run cloudflare:plan --json` passed. Both planner modes ran only the read-only Cloudflare inspector and printed the expected mutating commands without executing them.
+
 ## Screenshots
 
 Invite gate, desktop:

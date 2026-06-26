@@ -26,6 +26,20 @@ This command uses Wrangler to inspect the logged-in account without creating, ch
 bun scripts/check-cloudflare-resources.mjs --strict
 ```
 
+To turn those findings into an ordered rehearsal plan without executing the mutating steps, run:
+
+```bash
+bun run cloudflare:plan
+```
+
+The plan labels each step as read-only, file-edit, or mutating. It includes the exact Wrangler commands for D1 creation/migration, first deploy, secret entry, AI Gateway follow-up, and post-deploy verification, but it does not execute them.
+
+Machine-readable output is available for automation or review:
+
+```bash
+bun run cloudflare:plan --json
+```
+
 Current read-only account findings from 2026-06-26:
 
 - Logged in account: `b8873e78bf5e48fcdc91e87f2324cf55`.

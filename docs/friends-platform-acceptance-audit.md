@@ -39,6 +39,7 @@ This audit maps the original request to current worktree evidence. It intentiona
 - Local MCP OAuth metadata verification: `bun run preflight:local` proved the well-known route, metadata body, and unauthenticated MCP `WWW-Authenticate` challenge; `bunx wrangler deploy --dry-run` passed after adding `/.well-known/*` to `assets.run_worker_first`.
 - Browser verification: Vite settings demo rendered both `/mcp` and `/.well-known/oauth-protected-resource/mcp` endpoints with no page errors or horizontal overflow at desktop or 390px mobile widths.
 - Cloudflare resource inspection: `bun run cloudflare:check` ran read-only against account `b8873e78bf5e48fcdc91e87f2324cf55`; it found the configured R2 bucket exists, the configured Worker is not deployed yet, and the configured D1 name/id are not ready because only the similar legacy `beach-car-watch` database exists.
+- Cloudflare deployment plan: `bun run cloudflare:plan` and `bun run cloudflare:plan --json` generated an ordered rehearsal plan from the read-only account inspection, separating read-only, file-edit, and mutating steps without executing D1 creation, migrations, secrets, or deploys.
 - `bunx wrangler deploy --dry-run`: built Worker assets and the Bun-based Container image without deploying.
 
 ## Not Proven In This Environment
@@ -55,4 +56,4 @@ This audit maps the original request to current worktree evidence. It intentiona
 
 ## Current Recommendation
 
-The worktree is locally ready for a deliberate deployment rehearsal, but not yet proven for inviting real friends. The next step is to clear the `bun run deploy:check` and `bun run cloudflare:check` todos: choose/create the production D1 binding, deploy the Worker intentionally, set remote Worker secrets, set the real bootstrap owner email, configure Clerk secrets, and configure AI Gateway credentials. The first deploy rehearsal should use managed AI Gateway budgets and deterministic Container mode before enabling credentialed Codex mode.
+The worktree is locally ready for a deliberate deployment rehearsal, but not yet proven for inviting real friends. The next step is to execute the `bun run cloudflare:plan` steps intentionally: choose/create the production D1 binding, apply remote migrations, deploy the Worker, set remote Worker secrets, set the real bootstrap owner email, configure Clerk secrets, and configure AI Gateway credentials. The first deploy rehearsal should use managed AI Gateway budgets and deterministic Container mode before enabling credentialed Codex mode.

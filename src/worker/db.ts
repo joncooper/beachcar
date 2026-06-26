@@ -3,6 +3,7 @@ import { imageKeyFor, inferTags, listingKeyFor, normalizeAction, normalizeListin
 import type {
   AccountDeletionResult,
   AccountExport,
+  AdminOpsSummary,
   AutomationEventRecord,
   AutomationScope,
   AutomationTokenRecord,
@@ -253,6 +254,34 @@ interface UsageSumRow {
   spend: number | null;
 }
 
+interface UsageWindowTotalRow extends UsageSumRow {
+  event_count: number | null;
+}
+
+interface CountByValueRow {
+  value: string;
+  count: number;
+}
+
+interface RunStatsRow {
+  total: number | null;
+  latest_generated_at: string | null;
+}
+
+interface RunnerTaskDatesRow {
+  oldest_queued_at: string | null;
+  latest_finished_at: string | null;
+}
+
+interface ImageCountsRow {
+  total: number | null;
+  pending: number | null;
+  copied?: number | null;
+  created?: number | null;
+  failed: number | null;
+  bytes: number | null;
+}
+
 interface RunListingRow {
   listing_key: string;
   payload_json: string;
@@ -451,6 +480,78 @@ export async function listAdminUsers(db: D1Database): Promise<
       lastSeenAt: row.last_seen_at,
     })),
   );
+}
+
+export async function getAdminOpsSummary(db: D1Database, now = new Date()): Promise<AdminOpsSummary> {
+  const daily = usageWindow(now, "daily");
+  const monthly = usageWindow(now, "monthly");
+  const [userCounts, onboarded, runStats, agentRunCounts, runnerTaskCounts, runnerTaskDates, originalImageCounts, variantImageCounts, dailyAi, monthlyAi, bringATrailerCache] =
+    await Promise.all([
+      countsByValue<UserPayload["status"]>(db, "SELECT status AS value, COUNT(*) AS count FROM users GROUP BY status"),
+      countRows(db, "SELECT COUNT(*) AS count FROM profiles WHERE onboarding_completed_at IS NOT NULL"),
+      getRunStats(db),
+      countsByValue<AgentRunRecord["status"]>(db, "SELECT status AS value, COUNT(*) AS count FROM agent_runs GROUP BY status"),
+      countsByValue<RunnerTaskRecord["status"]>(db, "SELECT status AS value, COUNT(*) AS count FROM runner_tasks GROUP BY status"),
+      getRunnerTaskDates(db),
+      getImageCounts(db, "images"),
+      getImageCounts(db, "image_variants"),
+      getAiUsageWindowTotals(db, daily.startsAt, daily.endsAt),
+      getAiUsageWindowTotals(db, monthly.startsAt, monthly.endsAt),
+      getSourceCacheStatus(db, "bringatrailer"),
+    ]);
+
+  return {
+    generatedAt: now.toISOString(),
+    users: {
+      total: totalCounts(userCounts),
+      active: userCounts.active || 0,
+      invited: userCounts.invited || 0,
+      disabled: userCounts.disabled || 0,
+      onboarded,
+    },
+    runs: runStats,
+    agentRuns: {
+      total: totalCounts(agentRunCounts),
+      queued: agentRunCounts.queued || 0,
+      running: agentRunCounts.running || 0,
+      published: agentRunCounts.published || 0,
+      failed: agentRunCounts.failed || 0,
+      cancelled: agentRunCounts.cancelled || 0,
+    },
+    runnerTasks: {
+      total: totalCounts(runnerTaskCounts),
+      queued: runnerTaskCounts.queued || 0,
+      running: runnerTaskCounts.running || 0,
+      completed: runnerTaskCounts.completed || 0,
+      failed: runnerTaskCounts.failed || 0,
+      cancelled: runnerTaskCounts.cancelled || 0,
+      oldestQueuedAt: runnerTaskDates.oldestQueuedAt,
+      latestFinishedAt: runnerTaskDates.latestFinishedAt,
+    },
+    images: {
+      originals: {
+        total: originalImageCounts.total,
+        pending: originalImageCounts.pending,
+        copied: originalImageCounts.copied,
+        failed: originalImageCounts.failed,
+        bytes: originalImageCounts.bytes,
+      },
+      variants: {
+        total: variantImageCounts.total,
+        pending: variantImageCounts.pending,
+        created: variantImageCounts.created,
+        failed: variantImageCounts.failed,
+        bytes: variantImageCounts.bytes,
+      },
+    },
+    aiUsage: {
+      dailySpendMicros: dailyAi.spendMicros,
+      monthlySpendMicros: monthlyAi.spendMicros,
+      dailyEvents: dailyAi.eventCount,
+      monthlyEvents: monthlyAi.eventCount,
+    },
+    sourceCache: { sources: { bringatrailer: bringATrailerCache } },
+  };
 }
 
 export async function getUserPayload(db: D1Database, userId: string): Promise<UserPayload> {
@@ -1687,6 +1788,93 @@ async function getAgentRuns(db: D1Database, userId: string): Promise<AgentRunRec
 async function countRows(db: D1Database, sql: string, ...values: unknown[]): Promise<number> {
   const row = await db.prepare(sql).bind(...values).first<{ count: number }>();
   return typeof row?.count === "number" ? row.count : 0;
+}
+
+async function countsByValue<T extends string>(db: D1Database, sql: string, ...values: unknown[]): Promise<Partial<Record<T, number>>> {
+  const { results } = await db.prepare(sql).bind(...values).all<CountByValueRow>();
+  const counts: Partial<Record<T, number>> = {};
+  for (const row of results) {
+    counts[row.value as T] = typeof row.count === "number" ? row.count : 0;
+  }
+  return counts;
+}
+
+function totalCounts<T extends string>(counts: Partial<Record<T, number>>): number {
+  let total = 0;
+  for (const key in counts) {
+    total += counts[key] || 0;
+  }
+  return total;
+}
+
+function numberValue(value: number | null | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+async function getRunStats(db: D1Database): Promise<AdminOpsSummary["runs"]> {
+  const row = await db.prepare("SELECT COUNT(*) AS total, MAX(generated_at) AS latest_generated_at FROM runs").first<RunStatsRow>();
+  return { total: row?.total || 0, latestGeneratedAt: row?.latest_generated_at || null };
+}
+
+async function getRunnerTaskDates(db: D1Database): Promise<{ oldestQueuedAt: string | null; latestFinishedAt: string | null }> {
+  const row = await db
+    .prepare(
+      `SELECT
+         MIN(CASE WHEN status = 'queued' THEN created_at END) AS oldest_queued_at,
+         MAX(finished_at) AS latest_finished_at
+       FROM runner_tasks`,
+    )
+    .first<RunnerTaskDatesRow>();
+  return {
+    oldestQueuedAt: row?.oldest_queued_at || null,
+    latestFinishedAt: row?.latest_finished_at || null,
+  };
+}
+
+async function getImageCounts(
+  db: D1Database,
+  table: "images" | "image_variants",
+): Promise<{ total: number; pending: number; copied: number; created: number; failed: number; bytes: number }> {
+  const sql =
+    table === "images"
+      ? `SELECT
+           COUNT(*) AS total,
+           SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+           SUM(CASE WHEN status = 'copied' THEN 1 ELSE 0 END) AS copied,
+           SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
+           COALESCE(SUM(byte_length), 0) AS bytes
+         FROM images`
+      : `SELECT
+           COUNT(*) AS total,
+           SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+           SUM(CASE WHEN status = 'created' THEN 1 ELSE 0 END) AS created,
+           SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
+           COALESCE(SUM(byte_length), 0) AS bytes
+         FROM image_variants`;
+  const row = await db.prepare(sql).first<ImageCountsRow>();
+  return {
+    total: numberValue(row?.total),
+    pending: numberValue(row?.pending),
+    copied: numberValue(row?.copied),
+    created: numberValue(row?.created),
+    failed: numberValue(row?.failed),
+    bytes: numberValue(row?.bytes),
+  };
+}
+
+async function getAiUsageWindowTotals(db: D1Database, startsAt: string, endsAt: string): Promise<{ spendMicros: number; eventCount: number }> {
+  const row = await db
+    .prepare(
+      `SELECT COALESCE(SUM(cost_micros), 0) AS spend, COUNT(*) AS event_count
+       FROM ai_usage_events
+       WHERE occurred_at >= ? AND occurred_at < ?`,
+    )
+    .bind(startsAt, endsAt)
+    .first<UsageWindowTotalRow>();
+  return {
+    spendMicros: row?.spend || 0,
+    eventCount: row?.event_count || 0,
+  };
 }
 
 export async function createAgentRunRequest(

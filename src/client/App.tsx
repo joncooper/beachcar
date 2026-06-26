@@ -36,6 +36,7 @@ import {
   getAutomationBundle,
   getAutomationStatus,
   getAdminSourceCacheStatus,
+  getAdminOpsSummary,
   getLatestAgentRun,
   getLatestRun,
   getMe,
@@ -55,6 +56,7 @@ import type { BrowserClerk } from "./clerk-browser";
 import { looksLikeRawProviderKey } from "../shared/ai-keys";
 import type {
   AdminUserSummary,
+  AdminOpsSummary,
   AiUsageSummary,
   AutomationStatus,
   AutomationTokenCreateResult,
@@ -2749,6 +2751,7 @@ function AdminConsole(props: { demo: boolean }) {
       : null,
   );
   const [sourceCache, setSourceCache] = useState<SourceCacheAdminStatus | null>(props.demo ? demoSourceCacheStatus() : null);
+  const [opsSummary, setOpsSummary] = useState<AdminOpsSummary | null>(props.demo ? demoAdminOpsSummary() : null);
   const [status, setStatus] = useState<string | null>(props.demo ? "Demo data shown. Use /?admin=1 locally for live admin calls." : null);
   const [pending, setPending] = useState(false);
 
@@ -2760,10 +2763,29 @@ function AdminConsole(props: { demo: boolean }) {
     }
     setPending(true);
     try {
-      setUsers(await listAdminUsers(token.trim()));
+      const [nextUsers, nextOps] = await Promise.all([listAdminUsers(token.trim()), getAdminOpsSummary(token.trim())]);
+      setUsers(nextUsers);
+      setOpsSummary(nextOps);
       setStatus("Users refreshed.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not load users");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function refreshOpsSummary(token = publishToken) {
+    if (props.demo) return;
+    if (!token.trim()) {
+      setStatus("Enter the publish token first.");
+      return;
+    }
+    setPending(true);
+    try {
+      setOpsSummary(await getAdminOpsSummary(token.trim()));
+      setStatus("Ops summary refreshed.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not load ops summary");
     } finally {
       setPending(false);
     }
@@ -2870,6 +2892,39 @@ function AdminConsole(props: { demo: boolean }) {
 
       <section className="admin-panel">
         <div className="setup-section-title">
+          <span>Ops summary</span>
+          <small>{opsSummary ? `updated ${shortDateTime(opsSummary.generatedAt)}` : "not loaded"}</small>
+        </div>
+        <div className="admin-ops-grid">
+          <Metric label="Users" value={opsSummary ? `${opsSummary.users.active}/${opsSummary.users.total} active` : "not loaded"} />
+          <Metric label="Onboarded" value={opsSummary ? `${opsSummary.users.onboarded}` : "not loaded"} />
+          <Metric label="Runs" value={opsSummary ? `${opsSummary.runs.total}` : "not loaded"} />
+          <Metric label="Latest run" value={opsSummary?.runs.latestGeneratedAt ? shortDateTime(opsSummary.runs.latestGeneratedAt) : "none"} />
+          <Metric label="Agent runs" value={opsSummary ? `${opsSummary.agentRuns.running} running` : "not loaded"} />
+          <Metric label="Runner backlog" value={opsSummary ? `${opsSummary.runnerTasks.queued} queued` : "not loaded"} />
+          <Metric
+            label="Images"
+            value={opsSummary ? `${opsSummary.images.originals.total} originals / ${opsSummary.images.variants.total} variants` : "not loaded"}
+          />
+          <Metric
+            label="Image bytes"
+            value={opsSummary ? formatBytes(opsSummary.images.originals.bytes + opsSummary.images.variants.bytes) : "not loaded"}
+          />
+          <Metric label="AI today" value={opsSummary ? formatMicrosAsDollars(opsSummary.aiUsage.dailySpendMicros) : "not loaded"} />
+          <Metric label="AI month" value={opsSummary ? formatMicrosAsDollars(opsSummary.aiUsage.monthlySpendMicros) : "not loaded"} />
+          <Metric label="BaT cached" value={opsSummary ? String(opsSummary.sourceCache.sources.bringatrailer.itemCount) : "not loaded"} />
+          <Metric label="BaT status" value={opsSummary?.sourceCache.sources.bringatrailer.latestIngestion?.status || "not loaded"} />
+        </div>
+        <div className="admin-actions">
+          <button disabled={pending || props.demo} type="button" onClick={() => void refreshOpsSummary()}>
+            <RefreshCw size={16} aria-hidden="true" />
+            <span>Refresh ops</span>
+          </button>
+        </div>
+      </section>
+
+      <section className="admin-panel">
+        <div className="setup-section-title">
           <span>Source cache</span>
           <small>{sourceCacheFreshness(sourceCache)}</small>
         </div>
@@ -2950,6 +3005,31 @@ function demoSourceCacheStatus(): SourceCacheAdminStatus {
   };
 }
 
+function demoAdminOpsSummary(): AdminOpsSummary {
+  return {
+    generatedAt: "2026-06-25T13:30:00.000Z",
+    users: { total: 2, active: 1, invited: 1, disabled: 0, onboarded: 1 },
+    runs: { total: 4, latestGeneratedAt: "2026-06-25T13:00:00.000Z" },
+    agentRuns: { total: 5, queued: 0, running: 0, published: 4, failed: 1, cancelled: 0 },
+    runnerTasks: {
+      total: 2,
+      queued: 1,
+      running: 0,
+      completed: 1,
+      failed: 0,
+      cancelled: 0,
+      oldestQueuedAt: "2026-06-25T13:05:00.000Z",
+      latestFinishedAt: "2026-06-25T12:45:00.000Z",
+    },
+    images: {
+      originals: { total: 24, pending: 0, copied: 22, failed: 2, bytes: 8_700_000 },
+      variants: { total: 36, pending: 0, created: 34, failed: 2, bytes: 5_100_000 },
+    },
+    aiUsage: { dailySpendMicros: 184000, monthlySpendMicros: 482000, dailyEvents: 7, monthlyEvents: 19 },
+    sourceCache: demoSourceCacheStatus(),
+  };
+}
+
 function sourceCacheFreshness(status: SourceCacheAdminStatus | null): string {
   const finishedAt = status?.sources.bringatrailer.latestIngestion?.finishedAt;
   if (!finishedAt) return "not loaded";
@@ -2984,6 +3064,19 @@ function dollarsFromCents(value: number | null | undefined, fallback: string): s
 
 function formatMicrosAsDollars(micros: number): string {
   return `$${(Math.max(0, micros) / 1_000_000).toFixed(2)}`;
+}
+
+function formatBytes(bytes: number): string {
+  const safeBytes = Math.max(0, bytes);
+  if (safeBytes < 1024) return `${safeBytes} B`;
+  const units = ["KB", "MB", "GB"];
+  let value = safeBytes / 1024;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
 }
 
 function formatAiBudget(cents: number | null | undefined): string {

@@ -179,6 +179,16 @@ assert(warmedImage.headers.get("x-beachcar-image-variant") === "deck", "Expected
 assert(warmedImage.headers.get("x-beachcar-image-cache") === "hit", "Expected image response to be served from prewarmed variant cache.");
 assert(warmedImage.byteLength > 0, "Expected prewarmed deck image response to include bytes.");
 
+const opsSummary = await requestJson("/api/admin/ops-summary", { admin: true });
+assert(opsSummary.users?.total >= 1 && opsSummary.users.active >= 1, "Expected admin ops summary to include active users.");
+assert(opsSummary.runs?.total >= 1, "Expected admin ops summary to include run counts.");
+assert(opsSummary.agentRuns?.published >= 1, "Expected admin ops summary to include published Agent runs.");
+assert(opsSummary.runnerTasks?.completed >= 1, "Expected admin ops summary to include completed runner tasks.");
+assert(opsSummary.images?.originals?.total >= 1, "Expected admin ops summary to include original image counts.");
+assert(opsSummary.images?.variants?.created >= 1, "Expected admin ops summary to include created image variants.");
+assert(opsSummary.aiUsage?.dailyEvents >= 1, "Expected admin ops summary to include AI usage event counts.");
+assert(opsSummary.sourceCache?.sources?.bringatrailer, "Expected admin ops summary to include source cache status.");
+
 const next = await requestJson("/api/admin/agent-runs/next", { admin: true });
 assert(next.agentRun === null, "Expected no queued fallback agent run after Workflow completion.");
 

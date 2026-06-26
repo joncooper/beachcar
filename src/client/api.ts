@@ -2,6 +2,7 @@ import type {
   AccountDeletionResult,
   AccountExport,
   AdminUserSummary,
+  AdminOpsSummary,
   AiUsageEventRecord,
   AiUsageSummary,
   AutomationBundle,
@@ -200,6 +201,13 @@ export async function createAdminInvite(publishToken: string, email: string): Pr
 
 export async function listAdminUsers(publishToken: string): Promise<AdminUserSummary[]> {
   return requestJson<AdminUserSummary[]>("/api/admin/users", {
+    headers: { "X-Publish-Token": publishToken },
+    skipUserToken: true,
+  });
+}
+
+export async function getAdminOpsSummary(publishToken: string): Promise<AdminOpsSummary> {
+  return requestJson<AdminOpsSummary>("/api/admin/ops-summary", {
     headers: { "X-Publish-Token": publishToken },
     skipUserToken: true,
   });

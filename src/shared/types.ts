@@ -287,6 +287,62 @@ export interface AdminUserSummary extends UserRecord {
   lastSeenAt: string;
 }
 
+export interface AdminOpsSummary {
+  generatedAt: string;
+  users: {
+    total: number;
+    active: number;
+    invited: number;
+    disabled: number;
+    onboarded: number;
+  };
+  runs: {
+    total: number;
+    latestGeneratedAt?: string | null;
+  };
+  agentRuns: {
+    total: number;
+    queued: number;
+    running: number;
+    published: number;
+    failed: number;
+    cancelled: number;
+  };
+  runnerTasks: {
+    total: number;
+    queued: number;
+    running: number;
+    completed: number;
+    failed: number;
+    cancelled: number;
+    oldestQueuedAt?: string | null;
+    latestFinishedAt?: string | null;
+  };
+  images: {
+    originals: {
+      total: number;
+      pending: number;
+      copied: number;
+      failed: number;
+      bytes: number;
+    };
+    variants: {
+      total: number;
+      pending: number;
+      created: number;
+      failed: number;
+      bytes: number;
+    };
+  };
+  aiUsage: {
+    dailySpendMicros: number;
+    monthlySpendMicros: number;
+    dailyEvents: number;
+    monthlyEvents: number;
+  };
+  sourceCache: SourceCacheAdminStatus;
+}
+
 export interface SourceIngestionRun {
   id: string;
   source: string;

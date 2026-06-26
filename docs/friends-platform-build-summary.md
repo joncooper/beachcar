@@ -584,6 +584,14 @@ Improvement: Added redacted OAuth access-token records to `/api/automation/statu
 
 Verification: `bun run typecheck`, `node --check scripts/smoke-local-worker.mjs`, and in-app browser verification passed. The Worker settings demo rendered OAuth connections, the registered client name, fallback tokens, and OAuth PKCE endpoint text with no console errors or horizontal overflow at desktop and 390px mobile widths.
 
+### App/architecture pass 52: admin ops summary
+
+Review: The admin console showed invites, users, AI spend per user, and BaT cache status, but it did not provide a single operational readout for the friend beta: runner backlog, Agent run health, image cache size, source cache freshness, and aggregate model spend were spread across local smoke output or D1 tables.
+
+Improvement: Added `AdminOpsSummary`, `getAdminOpsSummary()`, and `GET /api/admin/ops-summary`. The endpoint is admin-token protected and returns aggregate-only counts for users/onboarding, runs, Agent runs by state, runner tasks by state plus queue timestamps, original and variant image counts/bytes, daily/monthly AI spend and event counts, and BaT cache status. The admin console now renders an Ops summary panel with those metrics and a refresh action.
+
+Verification: `bun run typecheck` passed. A local Worker call to `/api/admin/ops-summary` returned live D1 counts for users, runs, completed runner tasks, image variants, AI events, and source-cache items. The admin demo rendered Ops summary, Runner backlog, Image bytes, AI today, and BaT status with no console errors or horizontal overflow at desktop and 390px mobile widths.
+
 ## Screenshots
 
 Invite gate, desktop:

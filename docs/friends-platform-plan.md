@@ -120,7 +120,7 @@ The remaining gaps before real friend use are deployment and remote-account vali
 
 9. **Admin**
    - Invite users.
-   - See active users, last run status, image/storage usage, model spend.
+   - See active users, last run status, image/storage usage, model spend, runner backlog, and source-cache freshness.
    - Feature flags for experimental sources/agents.
 
 ### iOS Screens/Changes

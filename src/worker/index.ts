@@ -20,6 +20,7 @@ import {
   defaultAutomationScopes,
   getAiUsageEvents,
   getAiUsageSummary,
+  getAdminOpsSummary,
   getAgentRunById,
   getAutomationEvents,
   getFeedback,
@@ -312,6 +313,10 @@ async function handleAdmin(request: Request, env: Env, ctx: ExecutionContext, ur
 
   if (request.method === "GET" && url.pathname === "/api/admin/users") {
     return jsonResponse(await listAdminUsers(env.DB));
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/admin/ops-summary") {
+    return jsonResponse(await getAdminOpsSummary(env.DB));
   }
 
   if (request.method === "GET" && url.pathname === "/api/admin/source-cache/status") {

@@ -764,10 +764,15 @@ img {
   font-size: 0.78rem;
 }
 
+.admin-ops-grid,
 .source-cache-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
+}
+
+.admin-ops-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .invite-result {
@@ -2181,6 +2186,7 @@ h2 {
   }
 
   .admin-grid,
+  .admin-ops-grid,
   .source-cache-card,
   .source-cache-metrics,
   .admin-table article {

@@ -215,7 +215,7 @@ function buildGatewayRequest(model: string, input: CandidateAiScoringInput): Rec
       {
         role: "system",
         content:
-          "You rerank auction candidates for a beach-car watch app. Return compact JSON only. Do not invent facts; use only the provided candidate fields.",
+          "You rerank auction candidates for a beach-car watch app. Return compact JSON only. Do not invent facts; use only the provided candidate fields. Keep summary <= 90 chars; include beachNote only when the candidate fields clearly support it.",
       },
       {
         role: "user",
@@ -229,6 +229,9 @@ function buildGatewayRequest(model: string, input: CandidateAiScoringInput): Rec
                 section: "short optional section label",
                 why: "one sentence fit note",
                 concerns: "one sentence caution",
+                valueScore: "optional number 0..1; 0=very cheap for what it is, 1=priced rich",
+                summary: "optional one-line dossier headline, <= 90 chars",
+                beachNote: "optional one sentence on real beach usability",
               },
             ],
           },
@@ -285,6 +288,9 @@ function normalizeAiScores(parsed: ParsedAiScores | null): AiCandidateScore[] {
         concerns: stringOrUndefined(score.concerns, 260),
         lane: score.lane === "family" || score.lane === "solo" || score.lane === "curiosity" ? score.lane : undefined,
         section: stringOrUndefined(score.section, 48),
+        valueScore: clampUnit(score.valueScore),
+        summary: stringOrUndefined(score.summary, 90),
+        beachNote: stringOrUndefined(score.beachNote, 160),
       };
     })
     .filter((score): score is AiCandidateScore => score !== null);
@@ -346,6 +352,12 @@ function clampInteger(value: unknown, min: number, max: number): number {
   const parsed = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : Number.NaN;
   if (!Number.isFinite(parsed)) return 0;
   return Math.max(min, Math.min(max, Math.round(parsed)));
+}
+
+function clampUnit(value: unknown): number | undefined {
+  const parsed = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : Number.NaN;
+  if (!Number.isFinite(parsed)) return undefined;
+  return Math.max(0, Math.min(1, parsed));
 }
 
 function stringOrUndefined(value: unknown, maxLength: number): string | undefined {

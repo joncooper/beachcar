@@ -312,6 +312,8 @@ async function planDailyResearch(session: McpSession, env: Env, args: Record<str
     publishContract: {
       endpoint: "MCP tool publish_run",
       requiredListingFields: ["site", "title", "url", "lane", "section", "bid", "total", "why", "concerns", "images"],
+      optionalDossierFields: ["dossier.summary", "dossier.specs", "dossier.listing", "dossier.equipment", "dossier.service", "dossier.bidLog", "dossier.comments", "dossier.beachUse", "dossier.valueScore"],
+      dossierGuidance: "Attach an optional `dossier` object (rich detail from the listing page) to power the app's full per-car view; every field is optional, invalid types are dropped, and valueScore is a 0..1 CHEAP..RICH position. See docs/publishing.md.",
       imageGuidance: "Include useful source image URLs; Beachcar will mirror and serve cached thumb/deck/full variants.",
     },
   };

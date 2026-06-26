@@ -16,6 +16,7 @@ For each source:
    - bid count, bidder count if available, comment count
    - 3-5 useful image URLs
    - seller notes, title/VIN/history clues, modifications, known flaws
+   - optional `dossier` detail when the listing page provides it: a one-paragraph summary, a spec grid (odometer, engine, transmission, drivetrain, exterior, interior, title, seller, lot), the full multi-paragraph seller writeup (`listing`), `equipment`/`service` bullets, recent `bidLog` entries (bidder, amount, time-ago), top `comments` (mark the seller's posts with `seller: true`), and a `beachUse` fit note. Only include detail actually on the page — never invent it.
 5. Avoid tiny thumbnails, logos, UI icons, and duplicate resized copies.
 6. If a field is blocked or absent, use `check listing` and keep the candidate if it is otherwise relevant.
 

@@ -1,4 +1,4 @@
-import type { AuctionListing, Lane } from "../../shared/types";
+import type { AuctionListing, Lane, ShadeDossierData } from "../../shared/types";
 
 export const SOURCE_DISCOVERY_PUBLISHER = "cloudflare-workflow-source-discovery";
 
@@ -93,6 +93,12 @@ export interface AiCandidateScore {
   concerns?: string;
   lane?: Lane;
   section?: string;
+  /** 0..1 CHEAP..RICH meter position; folded into dossier.valueScore. */
+  valueScore?: number;
+  /** One-line dossier headline (dossier.summary). */
+  summary?: string;
+  /** Optional one-sentence beach-usability note (dossier.beachUse.body). */
+  beachNote?: string;
 }
 
 export interface CandidateAiScoringInput {
@@ -572,7 +578,49 @@ function listingFromCandidate(scored: ScoredCandidate, context: DiscoveryContext
     concerns: `Verify title, rust, underside, driving video, seating/restraint practicality, and final buyer-fee total.${penaltyText}${aiConcerns} Saved avoid notes: ${context.avoidNotes}`,
     currentTake: "source-discovery candidate from public source data",
     images: candidate.imageUrls,
+    dossier: dossierFromCandidate(scored),
   };
+}
+
+/**
+ * Position of the current bid on the 0..1 CHEAP..RICH meter, mirroring the
+ * `fairBand()` comp window (low = max(1000, bid*0.9), high = bid*1.18). This is
+ * the authoritative server-side value; the iOS client only derives its own when
+ * the run omits one.
+ */
+function deterministicValueScore(bidNum: number | undefined): number | undefined {
+  if (!bidNum || bidNum <= 0) return undefined;
+  const low = Math.max(1000, Math.round(bidNum * 0.9));
+  const high = Math.round(bidNum * 1.18);
+  if (high <= low) return 0.5;
+  return Math.max(0, Math.min(1, (bidNum - low) / (high - low)));
+}
+
+/**
+ * Assembles the optional dossier the built-in workflow can produce from public
+ * source data: a value-meter position (AI override > deterministic), a one-line
+ * summary (AI headline > source excerpt), seller/lot specs, and an optional
+ * AI beach-use note. Richer sections (full writeup, equipment, service, bid log,
+ * comment threads) come from the runner/operator modes. Returns undefined when
+ * nothing beyond the trivial specs is available.
+ */
+function dossierFromCandidate(scored: ScoredCandidate): ShadeDossierData | undefined {
+  const candidate = scored.candidate;
+  const ai = scored.ai;
+
+  const valueScore = typeof ai?.valueScore === "number" ? ai.valueScore : deterministicValueScore(candidate.bidNum);
+  const summary = ai?.summary || (candidate.summary ? candidate.summary.slice(0, 280) : undefined);
+  const beachUse = ai?.beachNote ? { body: ai.beachNote } : undefined;
+
+  const dossier: ShadeDossierData = {
+    specs: { seller: candidate.site, lot: candidate.sourceQuery },
+    ...(summary ? { summary } : {}),
+    ...(valueScore !== undefined ? { valueScore } : {}),
+    ...(beachUse ? { beachUse } : {}),
+  };
+
+  const meaningful = dossier.summary || dossier.valueScore !== undefined || dossier.beachUse;
+  return meaningful ? dossier : undefined;
 }
 
 function validLane(value: string | undefined): Lane | null {

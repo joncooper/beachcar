@@ -1,4 +1,4 @@
-import type { AuctionListing, FeedbackAction, Lane } from "./types";
+import type { AuctionListing, FeedbackAction, Lane, ShadeDossierData } from "./types";
 
 export function normalizeLane(value: unknown): Lane {
   if (value === "solo" || value === "curiosity") return value;
@@ -36,7 +36,109 @@ export function normalizeListing(input: Partial<AuctionListing>): AuctionListing
     concerns: String(input.concerns || ""),
     currentTake: input.currentTake ? String(input.currentTake) : undefined,
     images: normalizeImages(input.images, { site, url }),
+    dossier: normalizeDossier(input.dossier),
   };
+}
+
+const DOSSIER_SPEC_KEYS = [
+  "odometer",
+  "engine",
+  "transmission",
+  "drivetrain",
+  "exterior",
+  "interior",
+  "title",
+  "seller",
+  "lot",
+] as const;
+
+const DOSSIER_BEACH_KEYS = ["body", "location", "people", "paperwork"] as const;
+
+/**
+ * Coerces an untrusted `dossier` payload into the ShadeDossierData shape the
+ * clients decode. Soft + graceful: keeps only the declared keys with valid
+ * types, clamps `valueScore` to 0..1, and returns `undefined` when nothing
+ * usable remains, so partial/garbage input degrades instead of failing import.
+ */
+export function normalizeDossier(input: unknown): ShadeDossierData | undefined {
+  if (!input || typeof input !== "object") return undefined;
+  const raw = input as Record<string, unknown>;
+  const out: ShadeDossierData = {};
+
+  if (typeof raw.summary === "string" && raw.summary.trim()) out.summary = raw.summary.trim();
+
+  if (typeof raw.valueScore === "number" && Number.isFinite(raw.valueScore)) {
+    out.valueScore = Math.max(0, Math.min(1, raw.valueScore));
+  }
+
+  const specs = pickStringFields(raw.specs, DOSSIER_SPEC_KEYS);
+  if (specs) out.specs = specs;
+
+  for (const key of ["listing", "equipment", "service"] as const) {
+    const list = stringArray(raw[key]);
+    if (list) out[key] = list;
+  }
+
+  const bidLog = normalizeBidLog(raw.bidLog);
+  if (bidLog) out.bidLog = bidLog;
+
+  const comments = normalizeDossierComments(raw.comments);
+  if (comments) out.comments = comments;
+
+  const beachUse = pickStringFields(raw.beachUse, DOSSIER_BEACH_KEYS);
+  if (beachUse) out.beachUse = beachUse;
+
+  return Object.keys(out).length ? out : undefined;
+}
+
+function stringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const list = value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+  return list.length ? list : undefined;
+}
+
+function pickStringFields<K extends string>(value: unknown, keys: readonly K[]): Partial<Record<K, string>> | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const source = value as Record<string, unknown>;
+  const out: Partial<Record<K, string>> = {};
+  for (const key of keys) {
+    const field = source[key];
+    if (typeof field === "string" && field.trim()) out[key] = field.trim();
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+function normalizeBidLog(value: unknown): ShadeDossierData["bidLog"] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const entries: NonNullable<ShadeDossierData["bidLog"]> = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    if (typeof row.bidder !== "string" || typeof row.amount !== "string") continue;
+    entries.push({
+      bidder: row.bidder,
+      amount: row.amount,
+      ...(typeof row.ago === "string" ? { ago: row.ago } : {}),
+    });
+  }
+  return entries.length ? entries : undefined;
+}
+
+function normalizeDossierComments(value: unknown): ShadeDossierData["comments"] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const entries: NonNullable<ShadeDossierData["comments"]> = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    if (typeof row.user !== "string" || typeof row.body !== "string") continue;
+    entries.push({
+      user: row.user,
+      body: row.body,
+      ...(typeof row.ago === "string" ? { ago: row.ago } : {}),
+      ...(typeof row.seller === "boolean" ? { seller: row.seller } : {}),
+    });
+  }
+  return entries.length ? entries : undefined;
 }
 
 export function normalizeImages(input: unknown, listing: { site?: string; url?: string } = {}): string[] {

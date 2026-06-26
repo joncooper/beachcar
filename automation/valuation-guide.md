@@ -6,6 +6,7 @@ Every included listing should have:
 - `ceiling`: a practical stop price as hammer and buyer-fee-inclusive total.
 - `conf`: `low`, `medium`, or `high`.
 - `currentTake`: cheap, fair, rich, stretch, bargain watch, or similar.
+- `dossier.valueScore` (optional): a `0..1` position on the CHEAP..RICH meter — `0` = clearly cheap for what it is, `0.5` = mid-band, `1` = priced rich. Derive it from the same comp window you used for `fair`. Omit it if the market is too thin to place.
 
 Use:
 

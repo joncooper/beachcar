@@ -1559,6 +1559,109 @@ export async function importRun(db: D1Database, payload: ImportPayload | Auction
   return { runId, listingCount: rawListings.length, imageCount: importedImages.length, images: importedImages };
 }
 
+export interface MergeListingsResult {
+  runId: string;
+  patched: number;
+  inserted: number;
+  images: ImportResult["images"];
+}
+
+/**
+ * Enriches an already-published run with additional/updated listings — e.g. a
+ * runner task that finishes after the workflow has published. Reuses importRun's
+ * upsert shapes. Listings already in the run (matched by deterministic
+ * listingKey) are patched in place (so dossier fields land on the existing row);
+ * genuinely new listings are appended after the current max sort_order. Returns
+ * the seeded image rows so the caller can prewarm variants.
+ */
+export async function mergeListingsIntoRun(
+  db: D1Database,
+  runId: string,
+  listings: Array<Partial<AuctionListing>>,
+): Promise<MergeListingsResult> {
+  const run = await db.prepare("SELECT id FROM runs WHERE id = ?").bind(runId).first<{ id: string }>();
+  if (!run) throw new Error(`Cannot merge into unknown run ${runId}`);
+
+  const maxRow = await db
+    .prepare("SELECT COALESCE(MAX(sort_order), -1) AS max FROM run_listings WHERE run_id = ?")
+    .bind(runId)
+    .first<{ max: number }>();
+  let nextSort = (maxRow?.max ?? -1) + 1;
+
+  const images: ImportResult["images"] = [];
+  let patched = 0;
+  let inserted = 0;
+
+  for (const raw of listings) {
+    const listing = normalizeListing(raw);
+    const listingKey = await listingKeyFor(listing.site, listing.url, listing.title);
+    const now = new Date().toISOString();
+    const payloadJson = JSON.stringify({ ...listing, listingKey });
+
+    await db
+      .prepare(
+        `INSERT INTO listings (listing_key, site, title, url, lane, first_seen_at, last_seen_at, last_payload_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(listing_key) DO UPDATE SET
+           site = excluded.site,
+           title = excluded.title,
+           url = excluded.url,
+           lane = excluded.lane,
+           last_seen_at = excluded.last_seen_at,
+           last_payload_json = excluded.last_payload_json`,
+      )
+      .bind(listingKey, listing.site, listing.title, listing.url, listing.lane, now, now, payloadJson)
+      .run();
+
+    const existing = await db
+      .prepare("SELECT sort_order FROM run_listings WHERE run_id = ? AND listing_key = ?")
+      .bind(runId, listingKey)
+      .first<{ sort_order: number }>();
+
+    if (existing) {
+      await db
+        .prepare("UPDATE run_listings SET payload_json = ? WHERE run_id = ? AND listing_key = ?")
+        .bind(payloadJson, runId, listingKey)
+        .run();
+      patched += 1;
+    } else {
+      await db
+        .prepare("INSERT INTO run_listings (run_id, listing_key, sort_order, payload_json) VALUES (?, ?, ?, ?)")
+        .bind(runId, listingKey, nextSort, payloadJson)
+        .run();
+      nextSort += 1;
+      inserted += 1;
+    }
+
+    for (const sourceUrl of listing.images.slice(0, 5)) {
+      const imageKey = await imageKeyFor(listingKey, sourceUrl);
+      const r2Key = r2KeyFor(imageKey);
+      await db
+        .prepare(
+          `INSERT INTO images (image_key, listing_key, source_url, r2_key, status)
+           VALUES (?, ?, ?, ?, 'pending')
+           ON CONFLICT(image_key) DO UPDATE SET
+             listing_key = excluded.listing_key,
+             source_url = excluded.source_url,
+             r2_key = excluded.r2_key,
+             updated_at = CURRENT_TIMESTAMP`,
+        )
+        .bind(imageKey, listingKey, sourceUrl, r2Key)
+        .run();
+      images.push({ listingKey, imageKey, sourceUrl, r2Key });
+    }
+  }
+
+  return { runId, patched, inserted, images };
+}
+
+/** Resolves the concrete published run id for an agent run, via progress.publishedRunId. */
+export async function publishedRunIdForAgentRun(db: D1Database, agentRunId: string): Promise<string | null> {
+  const agentRun = await getAgentRunById(db, agentRunId);
+  const published = agentRun?.progress?.publishedRunId;
+  return typeof published === "string" && published ? published : null;
+}
+
 export async function markImageCopied(
   db: D1Database,
   input: { imageKey: string; listingKey: string; sourceUrl: string; r2Key: string; contentType: string | null; byteLength: number | null },

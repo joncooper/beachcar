@@ -133,7 +133,7 @@ Inspect the logged-in Cloudflare account without changing anything:
 bun run cloudflare:bootstrap
 ```
 
-This branch is currently configured to reuse the existing compatible D1 database `beach-car-watch` (`2860a6be-7cf0-4fc0-821f-166e78521154`). It already has migrations `0001`-`0004`; apply the remaining migrations before deploying the friend beta.
+This branch is configured to reuse the existing compatible D1 database `beach-car-watch` (`2860a6be-7cf0-4fc0-821f-166e78521154`). Remote migrations `0001`-`0010` have been applied for the friend beta.
 
 Set the bootstrap owner email list in config:
 

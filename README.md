@@ -157,6 +157,12 @@ After explicit approval, the guarded rollout command runs migrations, deploys, s
 bun run deploy:remote -- --execute --yes
 ```
 
+While `BEACHCAR_RUNNER_MODE=deterministic`, the rollout skips Cloudflare Container image publishing with Wrangler's `--containers-rollout none` option. To intentionally build or update the deployed Container image for Codex-backed runner work, run:
+
+```bash
+bun run deploy:remote -- --execute --yes --deploy-containers
+```
+
 Manual fallback:
 
 ```bash
@@ -206,7 +212,7 @@ The publish script imports the run first, then copies queued listing images to R
 
 Friends do not need to paste raw OpenAI keys for the first beta. Prefer managed Cloudflare AI Gateway budgets. If BYOK is enabled, store the provider key in Cloudflare AI Gateway/Secrets Store and save only the gateway key reference in Beachcar.
 
-The Container runner stays deterministic unless explicitly configured. To test a deployed Codex-backed runner intentionally, set `BEACHCAR_RUNNER_MODE=codex`, optionally set `BEACHCAR_CODEX_MODEL`, and provide the runner credential as a Worker secret such as `OPENAI_API_KEY`. Do not store friend-provided raw keys in D1.
+The Container runner stays deterministic unless explicitly configured. To test a deployed Codex-backed runner intentionally, set `BEACHCAR_RUNNER_MODE=codex`, optionally set `BEACHCAR_CODEX_MODEL`, provide the runner credential as a Worker secret such as `OPENAI_API_KEY`, and deploy with `--deploy-containers`. Do not store friend-provided raw keys in D1.
 
 ## Remote MCP Friend Automation
 

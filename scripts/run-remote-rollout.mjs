@@ -10,6 +10,7 @@ const execute = flags.has("--execute");
 const yes = flags.has("--yes");
 const dryRunOnly = flags.has("--dry-run");
 const skipVerify = flags.has("--skip-verify");
+const deployContainers = flags.has("--deploy-containers");
 
 if (flags.has("--help") || flags.has("-h")) {
   printHelp();
@@ -39,14 +40,17 @@ if (!execute && !dryRunOnly) {
 try {
   await run(["bun", "scripts/validate-deploy-env.mjs", "--strict"], { env, label: "Validate deploy environment" });
   await run(["bun", "scripts/build-client.mjs"], { env, label: "Build production client assets" });
-  await run(["bun", "scripts/bootstrap-cloudflare-rollout.mjs", "--dry-run-deploy"], { env, label: "Validate Cloudflare deploy bundle" });
+  await run(["bun", "scripts/bootstrap-cloudflare-rollout.mjs", "--dry-run-deploy", ...containerDeployArgs()], {
+    env,
+    label: "Validate Cloudflare deploy bundle",
+  });
 
   if (!execute) {
     console.log("\nDry-run completed. No remote migrations, secrets, or deploy were applied.");
     process.exit(0);
   }
 
-  const deployResult = await run(["bun", "scripts/bootstrap-cloudflare-rollout.mjs", "--yes", "--migrate", "--dry-run-deploy", "--deploy"], {
+  const deployResult = await run(["bun", "scripts/bootstrap-cloudflare-rollout.mjs", "--yes", "--migrate", "--dry-run-deploy", "--deploy", ...containerDeployArgs()], {
     env,
     label: "Apply migrations and deploy Worker",
   });
@@ -161,6 +165,10 @@ function deployedUrlFromOutput(output) {
   return match ? match[0] : "";
 }
 
+function containerDeployArgs() {
+  return deployContainers ? ["--deploy-containers"] : [];
+}
+
 function printPlan() {
   console.log(`Beachcar remote rollout orchestrator
 
@@ -172,12 +180,15 @@ Dry-run validation:
 Remote execution after explicit approval and .deploy.env is filled:
   bun run deploy:remote -- --execute --yes
 
+Container image rollout is skipped while BEACHCAR_RUNNER_MODE is deterministic. To intentionally build/update the Cloudflare Container image for Codex mode:
+  bun run deploy:remote -- --execute --yes --deploy-containers
+
 Execution sequence:
   1. Validate .deploy.env without printing secrets.
   2. Build production client assets with VITE_CLERK_PUBLISHABLE_KEY.
   3. Run Wrangler deploy dry-run.
   4. Apply remote D1 migrations.
-  5. Deploy Worker beachcar-watch.
+  5. Deploy Worker beachcar-watch, skipping the Container image rollout unless BEACHCAR_RUNNER_MODE=codex or --deploy-containers is set.
   6. Set Worker secrets via a temporary wrangler secret bulk JSON file.
   7. Verify the deployed Worker and inspect Cloudflare resources.
 

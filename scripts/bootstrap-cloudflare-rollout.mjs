@@ -16,6 +16,8 @@ const migrate = flags.has("--migrate");
 const dryRunDeploy = flags.has("--dry-run-deploy");
 const deploy = flags.has("--deploy");
 const yes = flags.has("--yes");
+const deployContainers = flags.has("--deploy-containers");
+const runnerMode = normalizeRunnerMode(process.env.BEACHCAR_RUNNER_MODE);
 const ownerEmails = normalizeEmailList(valueArg("--owner-emails") || process.env.BEACHCAR_BOOTSTRAP_OWNER_EMAILS || process.env.BOOTSTRAP_OWNER_EMAILS || "");
 const remoteMutationRequested = applyResources || migrate || deploy;
 
@@ -46,6 +48,13 @@ const r2Exists = check.resources.r2Buckets.includes(r2Name);
 console.log("Beachcar Cloudflare rollout bootstrap");
 console.log(`Worker: ${workerName}`);
 if (check.accountId) console.log(`Account: ${check.accountId}`);
+if (dryRunDeploy || deploy) {
+  console.log(
+    shouldSkipContainerRollout()
+      ? `Container image rollout: skipped (BEACHCAR_RUNNER_MODE=${runnerMode}; pass --deploy-containers to update it).`
+      : "Container image rollout: enabled.",
+  );
+}
 console.log("");
 
 if (!exactD1) {
@@ -100,11 +109,13 @@ if (migrate) {
 }
 
 if (dryRunDeploy) {
-  await runWrangler(["deploy", "--dry-run"], { label: "Dry-run Worker deploy" });
+  const args = deployCommandArgs(["--dry-run"]);
+  await runWrangler(args, { label: "Dry-run Worker deploy" });
 }
 
 if (deploy) {
-  await runWrangler(["deploy"], { label: "Deploy Worker" });
+  const args = deployCommandArgs();
+  await runWrangler(args, { label: "Deploy Worker" });
 }
 
 await printNextSteps({ exactD1, r2Exists: check.resources.r2Buckets.includes(r2Name) });
@@ -137,6 +148,18 @@ async function printNextSteps(state) {
 
 async function runWrangler(commandArgs, options = {}) {
   return run(["bunx", "wrangler", ...commandArgs], options);
+}
+
+function deployCommandArgs(extraArgs = []) {
+  const args = ["deploy", ...extraArgs];
+  if (shouldSkipContainerRollout()) {
+    args.push("--containers-rollout", "none");
+  }
+  return args;
+}
+
+function shouldSkipContainerRollout() {
+  return !deployContainers && runnerMode !== "codex";
 }
 
 async function run(command, options = {}) {
@@ -228,6 +251,11 @@ function stringValue(value) {
   return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 
+function normalizeRunnerMode(value) {
+  const mode = stringValue(value).toLowerCase();
+  return mode === "codex" ? "codex" : "deterministic";
+}
+
 function fail(message) {
   console.error(message);
   process.exit(1);
@@ -245,6 +273,7 @@ Options:
   --migrate                  Apply D1 migrations remotely.
   --dry-run-deploy           Run wrangler deploy --dry-run.
   --deploy                   Deploy the Worker. Requires --dry-run-deploy in the same run.
+  --deploy-containers        Also build/update the Cloudflare Container image. By default this is skipped unless BEACHCAR_RUNNER_MODE=codex.
   --yes                      Required for --apply-resources, --migrate, or --deploy.
 
 Examples:

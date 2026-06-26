@@ -63,6 +63,12 @@ bun run deploy:remote -- --execute --yes
 
 The orchestrator validates `.deploy.env`, builds the production client, dry-runs the Worker bundle, applies remote D1 migrations, deploys the Worker, sets Worker secrets through a temporary `wrangler secret bulk` JSON file, and runs remote verification.
 
+While `BEACHCAR_RUNNER_MODE=deterministic`, the orchestrator skips Cloudflare Container image publishing with `--containers-rollout none`. To intentionally build or update the Container image for Codex-backed runner work, run:
+
+```bash
+bun run deploy:remote -- --execute --yes --deploy-containers
+```
+
 The underlying manual commands are:
 
 ```bash

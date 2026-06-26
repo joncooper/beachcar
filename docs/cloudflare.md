@@ -80,13 +80,14 @@ The verifier does not create, migrate, or deploy anything. It checks the app she
 
 Use `--json` for machine-readable output and `--strict` to make missing optional tokens fail the command.
 
-Current read-only account findings from 2026-06-26:
+Current deployed account findings from 2026-06-26:
 
 - Logged in account: `b8873e78bf5e48fcdc91e87f2324cf55`.
-- Configured Worker `beachcar-watch` is not deployed yet, so remote Worker secrets cannot be inspected.
+- Configured Worker `beachcar-watch` is deployed at `https://beachcar-watch.jon-cooper.workers.dev`.
 - Configured R2 bucket `beachcar-watch-images` exists.
 - Configured D1 database `beach-car-watch` exists with id `2860a6be-7cf0-4fc0-821f-166e78521154`.
-- `beach-car-watch` has migrations `0001`-`0004` applied; remote migrations `0005`-`0010` are still pending.
+- `beach-car-watch` has migrations `0001`-`0010` applied.
+- Required Worker secrets are set. Remote verification passed for the app shell, MCP/OAuth metadata, unauthenticated MCP challenge, production auth-bypass rejection, and admin source-cache status. Signed-in Clerk and scoped MCP-token checks still need a real session/token.
 
 Worker secrets:
 
@@ -103,7 +104,7 @@ bun run deploy:remote -- --dry-run
 ```
 
 `.deploy.env` is ignored by git. The validator hides values and checks required Clerk/Worker secret shapes plus optional AI Gateway settings.
-After explicit approval, `bun run deploy:remote -- --execute --yes` applies migrations, deploys, sets Worker secrets from a temporary file, and verifies the deployed Worker.
+After explicit approval, `bun run deploy:remote -- --execute --yes` applies migrations, deploys, sets Worker secrets from a temporary file, and verifies the deployed Worker. While `BEACHCAR_RUNNER_MODE=deterministic`, it deploys with `--containers-rollout none` so Cloudflare Container image publishing is not required. Add `--deploy-containers` only when intentionally updating the Container image for `BEACHCAR_RUNNER_MODE=codex`.
 
 Worker vars:
 

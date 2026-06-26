@@ -400,6 +400,77 @@ img {
   order: 2;
 }
 
+.taste-calibration {
+  display: grid;
+  gap: 12px;
+}
+
+.calibration-group {
+  display: grid;
+  gap: 8px;
+}
+
+.calibration-group > strong {
+  color: #35443f;
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.calibration-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.calibration-option {
+  min-height: 76px;
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px !important;
+  border: 1px solid rgba(20, 32, 28, 0.12);
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px 12px;
+  color: #14201c !important;
+  text-transform: none;
+}
+
+.calibration-option.is-selected {
+  border-color: rgba(45, 118, 101, 0.5);
+  background: #eef7f2;
+}
+
+.calibration-option input {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  margin-top: 2px;
+  padding: 0;
+  accent-color: #2d7665;
+}
+
+.calibration-option span,
+.calibration-option b,
+.calibration-option small {
+  display: block;
+  min-width: 0;
+}
+
+.calibration-option b {
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.calibration-option small {
+  margin-top: 3px;
+  color: #58665f;
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.32;
+}
+
 .source-config-list {
   display: grid;
   gap: 10px;
@@ -2085,6 +2156,7 @@ h2 {
   .ai-budget-grid,
   .ai-usage-strip,
   .automation-actions,
+  .calibration-grid,
   .run-status-strip,
   .run-detail-hero,
   .run-ai-row,

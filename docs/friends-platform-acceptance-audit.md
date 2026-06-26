@@ -9,7 +9,7 @@ This audit maps the original request to current worktree evidence. It intentiona
 | Requirement | Evidence |
 | --- | --- |
 | Website lets friends use the app | Invite gate, onboarding, preferences, admin invite console, run controls, run-detail sheet, and account export/delete are implemented in `src/client/App.tsx`; local smoke previously exercised invite acceptance, onboarding, run creation, export, and delete. |
-| Friends configure initial preferences | `PUT /api/profile`, `PUT /api/source-settings`, and `PUT /api/ai-settings` are implemented; PWA and iOS onboarding save profile/source/AI settings. |
+| Friends configure initial preferences | `PUT /api/profile`, `PUT /api/source-settings`, and `PUT /api/ai-settings` are implemented; PWA and iOS onboarding save profile/source/AI settings; PWA onboarding and Preferences now include structured taste-calibration archetypes plus freeform notes. |
 | Invite-only multi-user access | `users`, `invites`, user-scoped `runs`, `feedback`, `preference_events`, `source_settings`, and `user_ai_settings` were added; `/api/me` derives identity server-side. |
 | Production auth does not fall back to test headers | `tests/auth.test.ts` now covers that `X-Beachcar-Test-Email` works only for localhost fallback and is rejected on remote hostnames even when `ENVIRONMENT` is missing or set to `development`. |
 | No raw OpenAI key is stored in D1 | AI settings save only a `gatewayKeyRef`; onboarding/preferences now block raw-looking provider keys before the API call, and the Worker rejects the same shapes before D1 writes. Fast tests cover `sk-`, `sk_`, `sk-proj-`, and session-token shapes. |
@@ -34,6 +34,7 @@ This audit maps the original request to current worktree evidence. It intentiona
 - Browser verification: Worker static app mounted; Vite settings demo rendered Connect automation with an MCP endpoint and no demo API 404.
 - Curl verification: local source-cache status returned 20 BaT RSS items, manual ingest returned a 20-item ingestion, and the scheduled test endpoint returned successfully.
 - Browser verification: Worker admin page rendered the Source cache panel, BaT feed URL, Refresh status and Ingest BaT RSS controls with no horizontal overflow at desktop or 390px mobile widths.
+- Browser verification: Vite onboarding/settings demos rendered Taste calibration controls, six default selections, and a state-changing checkbox interaction with no page errors or horizontal overflow at desktop or 390px mobile widths. The in-app browser bridge timed out before reaching Vite, so this check used the local `agent-browser` helper.
 - `bunx wrangler deploy --dry-run`: built Worker assets and the Bun-based Container image without deploying.
 
 ## Not Proven In This Environment

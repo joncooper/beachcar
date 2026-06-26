@@ -520,6 +520,14 @@ Improvement: Added a Source cache panel to the admin console with BaT RSS freshn
 
 Verification: `bun run preflight` passed. `bun run preflight:local` passed with local Wrangler, D1/R2/Workflow/MCP smoke coverage. `bunx wrangler deploy --dry-run` built Worker assets and the Bun-based Container image without deploying. Local curl verified `GET /api/admin/source-cache/status` returned 20 BaT RSS items and `POST /api/admin/source-cache/ingest` returned a 20-item ingestion. Browser verification against `http://127.0.0.1:8787/?admin=1` showed the Source cache panel, BaT feed URL, Refresh status and Ingest BaT RSS controls with no horizontal overflow at desktop or 390px mobile widths.
 
+### App/architecture pass 44: Taste calibration setup
+
+Review: The platform plan called for taste calibration, but onboarding still relied on two freeform text boxes. That made first setup heavier for friends and gave the automation less structured signal.
+
+Improvement: Added reusable taste-calibration controls to onboarding and Preferences. Friends can select "show more" archetypes and "avoid" deal-breakers, while still adding freeform notes. The selected ids are stored in profile JSON and composed back into `tasteNotes`/`avoidNotes`, so the existing Workflow, source discovery, and remote MCP context immediately receive the richer preference signal without a migration.
+
+Verification: `bun run typecheck`, `bun run test`, and `bun run preflight` passed. Local browser verification against the Vite onboarding and settings demo routes showed the calibration controls, six default selections, state-changing checkbox interaction, no browser page errors, and no horizontal overflow at desktop or 390px mobile widths. The in-app browser bridge timed out before reaching the Vite server, so the rendered UI verification used the local `agent-browser` helper instead.
+
 ## Screenshots
 
 Invite gate, desktop:

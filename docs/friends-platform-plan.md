@@ -52,6 +52,7 @@ The repo now has the first local friend-beta slice implemented:
 - Cloudflare Container runner scaffold and runner-task queue for Codex SDK/browser-heavy follow-up work.
 - Hosted remote MCP preview at `/mcp`, with revocable scoped automation tokens, user-visible automation events, and a downloadable friend skill for cloud agents.
 - Daily AI/publisher compatibility flow that imports normalized JSON and mirrors listing images.
+- PWA onboarding and Preferences include structured taste calibration plus freeform notes, with selected archetypes composed into the existing automation preference context.
 
 The remaining gaps before real friend use are deployment and remote-account validation: deployed D1 migrations, deployed Container runner, real AI Gateway budget/BYOK policy, remote image transform behavior, and live screenshots/UI tests in an environment where browser and CoreSimulator automation are available.
 
@@ -331,6 +332,7 @@ Client behavior:
 ### Phase 2: Web Onboarding
 
 - Done locally: build invite acceptance and onboarding screens.
+- Done locally: add structured taste calibration with editable "show more" archetypes, "avoid" deal-breakers, and freeform notes.
 - Done locally: add profile editor and source settings.
 - Done locally: add AI mode selection, managed/BYOK references, and daily/monthly caps.
 - Done locally: add admin invite dashboard.

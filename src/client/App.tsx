@@ -97,6 +97,11 @@ type SourcePreferenceState = {
   browserRunner: boolean;
   searchNotes: string;
 };
+type CalibrationOption = {
+  id: string;
+  label: string;
+  note: string;
+};
 type SourceCheckView = {
   source: string;
   site: string;
@@ -197,6 +202,27 @@ const sourceOptions = [
     searchPlaceholder: "Local scooters, runabouts, golf carts, projects to avoid...",
   },
 ];
+
+const tasteCalibrationOptions: CalibrationOption[] = [
+  { id: "open-air", label: "Open-air", note: "convertibles, door-off 4x4s, targas, and sunroof cars" },
+  { id: "simple", label: "Simple", note: "mechanically simple cars with easy parts and light electronics" },
+  { id: "kid-plausible", label: "Kid-plausible", note: "usable rear seats, seat belts, and relaxed family errand potential" },
+  { id: "small-4x4", label: "Small 4x4", note: "Samurai, Tracker, Sidekick, Thing, and similar compact runabouts" },
+  { id: "no-reserve", label: "No reserve", note: "no-reserve or low-drama auctions worth watching early" },
+  { id: "quirky-clean", label: "Quirky clean", note: "unusual but tidy cars with charm over perfection" },
+];
+
+const avoidCalibrationOptions: CalibrationOption[] = [
+  { id: "rust", label: "Rust", note: "structural rust, coastal corrosion, and vague underside photos" },
+  { id: "salvage", label: "Salvage", note: "salvage, rebuilt, bonded, or title-story cars" },
+  { id: "heavy-project", label: "Heavy project", note: "non-running projects, unknown mechanicals, or missing major parts" },
+  { id: "overbuilt", label: "Overbuilt", note: "huge lifts, extreme off-road builds, and hard-to-reverse modifications" },
+  { id: "fragile", label: "Fragile", note: "fussy imports, scarce parts, and cars that need specialist ownership" },
+  { id: "price-chasing", label: "Price chase", note: "cars already bid past the friend budget or likely to run away" },
+];
+
+const defaultTasteCalibration = ["open-air", "simple", "kid-plausible"];
+const defaultAvoidCalibration = ["rust", "salvage", "heavy-project"];
 
 const appName = import.meta.env.VITE_APP_NAME || "Beach Car Watch";
 
@@ -538,8 +564,14 @@ function demoSettingsUser(): UserPayload {
       timezone: "America/New_York",
       scheduleCron: "0 8 * * *",
       profile: {
-        tasteNotes: "Open-air, charming, beach-town practical, kid-plausible when possible.",
-        avoidNotes: "Major rust, salvage titles, huge lifts, fragile projects, or over-budget icons.",
+        tasteNotes:
+          "Casual beach-town use, charm over perfection, and low-drama ownership. Selected tastes: convertibles, door-off 4x4s, targas, and sunroof cars; mechanically simple cars with easy parts and light electronics; usable rear seats, seat belts, and relaxed family errand potential.",
+        avoidNotes:
+          "Anything that needs a major rescue before it can be enjoyed. Selected avoids: structural rust, coastal corrosion, and vague underside photos; salvage, rebuilt, bonded, or title-story cars; non-running projects, unknown mechanicals, or missing major parts.",
+        tasteNotesFreeform: "Casual beach-town use, charm over perfection, and low-drama ownership.",
+        avoidNotesFreeform: "Anything that needs a major rescue before it can be enjoyed.",
+        tasteCalibration: defaultTasteCalibration,
+        avoidCalibration: defaultAvoidCalibration,
         notifications: {
           channel: "email",
           runDigest: true,
@@ -1691,8 +1723,18 @@ function SettingsSheet(props: {
   const [budgetMax, setBudgetMax] = useState(profile?.budgetMax?.toString() || "30000");
   const [stretchBudget, setStretchBudget] = useState(profile?.stretchBudget?.toString() || "2000");
   const [homeRegion, setHomeRegion] = useState(profile?.homeRegion || "Northeast");
-  const [tasteNotes, setTasteNotes] = useState(stringProfileValue(profileData, "tasteNotes", "Open-air, charming, beach-town practical."));
-  const [avoidNotes, setAvoidNotes] = useState(stringProfileValue(profileData, "avoidNotes", "Major rust, salvage titles, huge lifts, fragile projects."));
+  const [tasteNotes, setTasteNotes] = useState(
+    stringProfileValue(profileData, "tasteNotesFreeform", stringProfileValue(profileData, "tasteNotes", "Open-air, charming, beach-town practical.")),
+  );
+  const [avoidNotes, setAvoidNotes] = useState(
+    stringProfileValue(profileData, "avoidNotesFreeform", stringProfileValue(profileData, "avoidNotes", "Major rust, salvage titles, huge lifts, fragile projects.")),
+  );
+  const [tasteCalibration, setTasteCalibration] = useState(() =>
+    initialCalibrationSelection(profileData, "tasteCalibration", [], tasteCalibrationOptions),
+  );
+  const [avoidCalibration, setAvoidCalibration] = useState(() =>
+    initialCalibrationSelection(profileData, "avoidCalibration", [], avoidCalibrationOptions),
+  );
   const [aiMode, setAiMode] = useState<UserAiSettings["mode"]>(aiSettings?.mode || "managed");
   const [dailyAiBudget, setDailyAiBudget] = useState(dollarsFromCents(aiSettings?.dailyBudgetCents, "2.50"));
   const [monthlyAiBudget, setMonthlyAiBudget] = useState(dollarsFromCents(aiSettings?.monthlyBudgetCents, "25"));
@@ -1733,8 +1775,12 @@ function SettingsSheet(props: {
               timezone: profile?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York",
               profile: {
                 ...profileData,
-                tasteNotes,
-                avoidNotes,
+                tasteNotes: calibrationNotes(tasteNotes, tasteCalibration, tasteCalibrationOptions, "Selected tastes"),
+                avoidNotes: calibrationNotes(avoidNotes, avoidCalibration, avoidCalibrationOptions, "Selected avoids"),
+                tasteNotesFreeform: tasteNotes.trim(),
+                avoidNotesFreeform: avoidNotes.trim(),
+                tasteCalibration: [...tasteCalibration],
+                avoidCalibration: [...avoidCalibration],
                 lanes: Array.isArray(profileData.lanes) ? profileData.lanes : ["family", "solo", "curiosity"],
                 sources: profileSourceList(sourcePreferences),
                 sourcePreferences: sourceSettingsInput(sourcePreferences),
@@ -1766,12 +1812,18 @@ function SettingsSheet(props: {
             <span>Stretch room</span>
             <input inputMode="numeric" value={stretchBudget} onChange={(event) => setStretchBudget(event.target.value)} />
           </label>
+          <TasteCalibrationFields
+            selectedAvoid={avoidCalibration}
+            selectedTaste={tasteCalibration}
+            setSelectedAvoid={setAvoidCalibration}
+            setSelectedTaste={setTasteCalibration}
+          />
           <label className="setup-span">
-            <span>Prioritize</span>
+            <span>Extra priorities</span>
             <textarea value={tasteNotes} onChange={(event) => setTasteNotes(event.target.value)} />
           </label>
           <label className="setup-span">
-            <span>Avoid</span>
+            <span>Extra avoids</span>
             <textarea value={avoidNotes} onChange={(event) => setAvoidNotes(event.target.value)} />
           </label>
           <AiSettingsFields
@@ -2184,8 +2236,10 @@ function OnboardingGate(props: {
   const [budgetMax, setBudgetMax] = useState("30000");
   const [stretchBudget, setStretchBudget] = useState("2000");
   const [homeRegion, setHomeRegion] = useState("Northeast");
-  const [tasteNotes, setTasteNotes] = useState("Open-air, charming, beach-town practical, kid-plausible when possible.");
-  const [avoidNotes, setAvoidNotes] = useState("Major rust, salvage titles, huge lifts, fragile projects, or over-budget icons.");
+  const [tasteNotes, setTasteNotes] = useState("Casual beach-town use, charm over perfection, and low-drama ownership.");
+  const [avoidNotes, setAvoidNotes] = useState("Anything that needs a major rescue before it can be enjoyed.");
+  const [tasteCalibration, setTasteCalibration] = useState(() => [...defaultTasteCalibration]);
+  const [avoidCalibration, setAvoidCalibration] = useState(() => [...defaultAvoidCalibration]);
   const [aiMode, setAiMode] = useState<UserAiSettings["mode"]>("managed");
   const [dailyAiBudget, setDailyAiBudget] = useState("2.50");
   const [monthlyAiBudget, setMonthlyAiBudget] = useState("25");
@@ -2218,8 +2272,12 @@ function OnboardingGate(props: {
               homeRegion,
               timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York",
               profile: {
-                tasteNotes,
-                avoidNotes,
+                tasteNotes: calibrationNotes(tasteNotes, tasteCalibration, tasteCalibrationOptions, "Selected tastes"),
+                avoidNotes: calibrationNotes(avoidNotes, avoidCalibration, avoidCalibrationOptions, "Selected avoids"),
+                tasteNotesFreeform: tasteNotes.trim(),
+                avoidNotesFreeform: avoidNotes.trim(),
+                tasteCalibration: [...tasteCalibration],
+                avoidCalibration: [...avoidCalibration],
                 lanes: ["family", "solo", "curiosity"],
                 sources: profileSourceList(sourcePreferences),
                 sourcePreferences: sourceSettingsInput(sourcePreferences),
@@ -2251,12 +2309,18 @@ function OnboardingGate(props: {
             <span>Stretch room</span>
             <input inputMode="numeric" value={stretchBudget} onChange={(event) => setStretchBudget(event.target.value)} />
           </label>
+          <TasteCalibrationFields
+            selectedAvoid={avoidCalibration}
+            selectedTaste={tasteCalibration}
+            setSelectedAvoid={setAvoidCalibration}
+            setSelectedTaste={setTasteCalibration}
+          />
           <label className="setup-span">
-            <span>Prioritize</span>
+            <span>Extra priorities</span>
             <textarea value={tasteNotes} onChange={(event) => setTasteNotes(event.target.value)} />
           </label>
           <label className="setup-span">
-            <span>Avoid</span>
+            <span>Extra avoids</span>
             <textarea value={avoidNotes} onChange={(event) => setAvoidNotes(event.target.value)} />
           </label>
           <AiSettingsFields
@@ -2284,6 +2348,64 @@ function OnboardingGate(props: {
         </form>
       </section>
     </main>
+  );
+}
+
+function TasteCalibrationFields(props: {
+  selectedTaste: string[];
+  selectedAvoid: string[];
+  setSelectedTaste: (selected: string[]) => void;
+  setSelectedAvoid: (selected: string[]) => void;
+}) {
+  const selectedCount = props.selectedTaste.length + props.selectedAvoid.length;
+  return (
+    <section className="taste-calibration setup-span" aria-label="Taste calibration">
+      <div className="setup-section-title">
+        <span>Taste calibration</span>
+        <small>{selectedCount ? `${selectedCount} selected` : "custom only"}</small>
+      </div>
+      <CalibrationOptionGrid
+        title="Show more"
+        options={tasteCalibrationOptions}
+        selected={props.selectedTaste}
+        onChange={props.setSelectedTaste}
+      />
+      <CalibrationOptionGrid
+        title="Avoid"
+        options={avoidCalibrationOptions}
+        selected={props.selectedAvoid}
+        onChange={props.setSelectedAvoid}
+      />
+    </section>
+  );
+}
+
+function CalibrationOptionGrid(props: {
+  title: string;
+  options: CalibrationOption[];
+  selected: string[];
+  onChange: (selected: string[]) => void;
+}) {
+  const selected = new Set(props.selected);
+  return (
+    <div className="calibration-group">
+      <strong>{props.title}</strong>
+      <div className="calibration-grid">
+        {props.options.map((option) => (
+          <label className={selected.has(option.id) ? "calibration-option is-selected" : "calibration-option"} key={option.id}>
+            <input
+              checked={selected.has(option.id)}
+              onChange={() => props.onChange(toggleCalibrationOption(props.selected, option.id))}
+              type="checkbox"
+            />
+            <span>
+              <b>{option.label}</b>
+              <small>{option.note}</small>
+            </span>
+          </label>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -2800,6 +2922,30 @@ function demoAiUsage(dailySpendMicros: number, monthlySpendMicros: number): AiUs
 function stringProfileValue(profile: Record<string, unknown>, key: string, fallback: string): string {
   const value = profile[key];
   return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function initialCalibrationSelection(
+  profile: Record<string, unknown>,
+  key: string,
+  fallback: string[],
+  options: CalibrationOption[],
+): string[] {
+  const allowed = new Set(options.map((option) => option.id));
+  const value = profile[key];
+  if (!Array.isArray(value)) return [...fallback];
+  return value.filter((item): item is string => typeof item === "string" && allowed.has(item));
+}
+
+function toggleCalibrationOption(selected: string[], id: string): string[] {
+  return selected.includes(id) ? selected.filter((item) => item !== id) : [...selected, id];
+}
+
+function calibrationNotes(baseNotes: string, selected: string[], options: CalibrationOption[], label: string): string {
+  const byId = new Map(options.map((option) => [option.id, option.note]));
+  const selectedNotes = selected.map((id) => byId.get(id)).filter((note): note is string => Boolean(note));
+  const parts = [baseNotes.trim()];
+  if (selectedNotes.length) parts.push(`${label}: ${selectedNotes.join("; ")}.`);
+  return parts.filter(Boolean).join(" ");
 }
 
 function initialNotificationSettings(profile: Record<string, unknown>): NotificationSettingsState {

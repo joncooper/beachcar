@@ -84,6 +84,16 @@ export interface SourceCandidate {
   noReserve?: boolean;
   sourceUrl: string;
   publishedAt?: string;
+  dossier?: ShadeDossierData;
+}
+
+interface CandidateDetailEnrichment {
+  location?: string;
+  bids?: string | number;
+  bidders?: string | number;
+  comments?: string | number;
+  imageUrls?: string[];
+  dossier?: ShadeDossierData;
 }
 
 export interface AiCandidateScore {
@@ -234,6 +244,12 @@ export async function discoverAndScoreCandidates(
     }
   }
 
+  if (scored.length) {
+    const enriched = await enrichBringATrailerFinalists(scored, fetchImpl, generatedAt);
+    scored = enriched.candidates;
+    if (enriched.check) checkedSources.push(enriched.check);
+  }
+
   const fallbackUsed = scored.length === 0;
   const listings = fallbackUsed
     ? buildFallbackListings(context, params, generatedAt, sources)
@@ -304,6 +320,60 @@ export function parseBringATrailerRssFeed(xml: string): SourceCandidate[] {
       } satisfies SourceCandidate;
     })
     .filter((candidate): candidate is SourceCandidate => candidate !== null);
+}
+
+export function parseBringATrailerDetailPage(html: string): CandidateDetailEnrichment {
+  const listingBlock = firstHtmlBlock(
+    html,
+    [
+      "post-content",
+      "entry-content",
+      "listing-content",
+      "auction-description",
+      "item-description",
+      "description",
+    ],
+    80_000,
+  );
+  const listing = paragraphsFromHtml(listingBlock || html).slice(0, 8);
+  const summary = firstNonEmpty(
+    metaContent(html, "og:description"),
+    metaContent(html, "description"),
+    listing[0],
+  );
+  const imageUrls = detailImageUrls(html).slice(0, 6);
+  const specs = detailSpecs(html);
+  const equipment = listItemsAfterHeading(html, /equipment|highlights|features/i).slice(0, 12);
+  const service = listItemsAfterHeading(html, /service|maintenance|recent work|work performed/i).slice(0, 12);
+  const bidLog = detailBidLog(html).slice(0, 8);
+  const commentRows = detailComments(html).slice(0, 8);
+  const location = firstNonEmpty(
+    specs.location,
+    labeledValue(html, /location/i),
+    textFromClass(html, /listing-location|item-location|location/i),
+  );
+  const bids = countLabel(html, /bids?/i);
+  const comments = countLabel(html, /comments?/i);
+  const bidders = countLabel(html, /bidders?/i);
+
+  const dossier: ShadeDossierData = {
+    ...(summary ? { summary: summary.slice(0, 520) } : {}),
+    ...(specs.dossierSpecs ? { specs: specs.dossierSpecs } : {}),
+    ...(listing.length ? { listing } : {}),
+    ...(equipment.length ? { equipment } : {}),
+    ...(service.length ? { service } : {}),
+    ...(bidLog.length ? { bidLog } : {}),
+    ...(commentRows.length ? { comments: commentRows } : {}),
+  };
+
+  return {
+    ...(location ? { location } : {}),
+    ...(bids ? { bids } : {}),
+    ...(bidders ? { bidders } : {}),
+    ...(comments ? { comments } : {}),
+    ...(imageUrls.length ? { imageUrls } : {}),
+    ...(Object.keys(dossier).length ? { dossier } : {}),
+  };
 }
 
 function normalizeSources(sources: string[]): string[] {
@@ -406,6 +476,147 @@ async function checkCarsAndBids(fetchImpl: FetchLike, checkedAt: string): Promis
   }
 }
 
+async function enrichBringATrailerFinalists(
+  candidates: ScoredCandidate[],
+  fetchImpl: FetchLike,
+  checkedAt: string,
+): Promise<{ candidates: ScoredCandidate[]; check?: SourceDiscoveryCheck }> {
+  const maxDetailPages = 6;
+  let attempted = 0;
+  let enriched = 0;
+  let blocked = 0;
+  let failed = 0;
+  let empty = 0;
+
+  const next: ScoredCandidate[] = [];
+  for (const scored of candidates) {
+    const candidate = scored.candidate;
+    if (candidate.source !== "bringatrailer" || attempted >= maxDetailPages) {
+      next.push(scored);
+      continue;
+    }
+    attempted += 1;
+
+    try {
+      const response = await fetchImpl(candidate.url, requestInit("text/html"));
+      const text = await response.text();
+      if (!response.ok) {
+        failed += 1;
+        next.push(scored);
+        continue;
+      }
+      if (looksLikeBotChallenge(text)) {
+        blocked += 1;
+        next.push(scored);
+        continue;
+      }
+
+      const detail = parseBringATrailerDetailPage(text);
+      if (hasDetailEnrichment(detail)) {
+        enriched += 1;
+        next.push(mergeDetail(scored, detail));
+      } else {
+        empty += 1;
+        next.push(scored);
+      }
+    } catch {
+      failed += 1;
+      next.push(scored);
+    }
+  }
+
+  if (!attempted) return { candidates: next };
+
+  const status: SourceDiscoveryStatus = enriched > 0 ? "ok" : blocked > 0 ? "blocked" : failed > 0 ? "failed" : "skipped";
+  const suffix = [
+    blocked ? `${blocked} blocked` : "",
+    failed ? `${failed} failed` : "",
+    empty ? `${empty} empty` : "",
+  ].filter(Boolean);
+
+  return {
+    candidates: next,
+    check: {
+      source: "bringatrailer-detail",
+      site: "Bring a Trailer",
+      status,
+      label: "Finalist detail pages",
+      url: "https://bringatrailer.com/",
+      candidateCount: enriched,
+      checkedAt,
+      message: `Enriched ${enriched}/${attempted} shortlisted BaT finalist detail page(s).${suffix.length ? ` ${suffix.join(", ")}.` : ""}`,
+    },
+  };
+}
+
+function mergeDetail(scored: ScoredCandidate, detail: CandidateDetailEnrichment): ScoredCandidate {
+  const candidate = scored.candidate;
+  return {
+    ...scored,
+    candidate: {
+      ...candidate,
+      ...(preferDetail(detail.location, candidate.location) ? { location: detail.location } : {}),
+      ...(preferDetail(detail.bids, candidate.bids) ? { bids: detail.bids } : {}),
+      ...(preferDetail(detail.bidders, candidate.bidders) ? { bidders: detail.bidders } : {}),
+      ...(preferDetail(detail.comments, candidate.comments) ? { comments: detail.comments } : {}),
+      imageUrls: mergeImageUrls(candidate.imageUrls, detail.imageUrls || []),
+      dossier: mergeDossier(candidate.dossier, detail.dossier),
+    },
+  };
+}
+
+function hasDetailEnrichment(detail: CandidateDetailEnrichment): boolean {
+  return Boolean(
+    detail.location ||
+      detail.bids ||
+      detail.bidders ||
+      detail.comments ||
+      detail.imageUrls?.length ||
+      (detail.dossier && Object.keys(detail.dossier).length),
+  );
+}
+
+function preferDetail(detail: unknown, current: unknown): boolean {
+  if (detail === undefined || detail === null || detail === "") return false;
+  if (current === undefined || current === null || current === "") return true;
+  return typeof current === "string" && /^check listing$/i.test(current);
+}
+
+function mergeImageUrls(primary: string[], extra: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of [...primary, ...extra]) {
+    if (!raw) continue;
+    const canonical = raw.replace(/\?.*$/, "");
+    if (seen.has(canonical)) continue;
+    seen.add(canonical);
+    out.push(raw);
+  }
+  return out.slice(0, 8);
+}
+
+function mergeDossier(base: ShadeDossierData | undefined, detail: ShadeDossierData | undefined): ShadeDossierData | undefined {
+  if (!base) return detail;
+  if (!detail) return base;
+  return {
+    ...base,
+    ...detail,
+    specs: mergeRecords(base.specs, detail.specs),
+    listing: detail.listing?.length ? detail.listing : base.listing,
+    equipment: detail.equipment?.length ? detail.equipment : base.equipment,
+    service: detail.service?.length ? detail.service : base.service,
+    bidLog: detail.bidLog?.length ? detail.bidLog : base.bidLog,
+    comments: detail.comments?.length ? detail.comments : base.comments,
+    beachUse: mergeRecords(base.beachUse, detail.beachUse),
+  };
+}
+
+function mergeRecords<T extends Record<string, string> | undefined>(base: T, detail: T): T {
+  if (!base) return detail;
+  if (!detail) return base;
+  return { ...base, ...detail } as T;
+}
+
 function liveListingsSection(html: string): string | null {
   const start = html.indexOf("listings-live");
   if (start < 0) return null;
@@ -446,6 +657,195 @@ function candidateFromBatCard(card: string, page: { label: string; url: string }
     noReserve: /item-tag-noreserve/i.test(card),
     sourceUrl: page.url,
   };
+}
+
+function firstHtmlBlock(html: string, classHints: string[], maxLength: number): string | null {
+  for (const hint of classHints) {
+    const escaped = escapeRegExp(hint);
+    const match = html.match(new RegExp(`<([a-z0-9]+)[^>]+class=["'][^"']*${escaped}[^"']*["'][^>]*>([\\s\\S]*?)<\\/\\1>`, "i"));
+    if (match?.[2]) return match[2].slice(0, maxLength);
+  }
+  return null;
+}
+
+function paragraphsFromHtml(html: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const match of html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)) {
+    const text = normalizeText(match[1] || "");
+    if (text.length < 35) continue;
+    if (/^(submit|view listing|share this|see all|click here)/i.test(text)) continue;
+    if (seen.has(text)) continue;
+    seen.add(text);
+    out.push(text);
+  }
+  return out;
+}
+
+function metaContent(html: string, name: string): string | undefined {
+  const escaped = escapeRegExp(name);
+  const propertyMatch = html.match(new RegExp(`<meta[^>]+property=["']${escaped}["'][^>]+content=["']([^"']+)["'][^>]*>`, "i"));
+  const nameMatch = html.match(new RegExp(`<meta[^>]+name=["']${escaped}["'][^>]+content=["']([^"']+)["'][^>]*>`, "i"));
+  return cleanText(propertyMatch?.[1] || nameMatch?.[1] || "");
+}
+
+function detailImageUrls(html: string): string[] {
+  const urls = [
+    metaContent(html, "og:image") || "",
+    ...imageUrlsFromText(html),
+  ];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const url of urls) {
+    if (!url || !/^https?:\/\//i.test(url)) continue;
+    if (/avatar|icon|logo|sprite|emoji|blank|placeholder/i.test(url)) continue;
+    const canonical = url.replace(/\?.*$/, "");
+    if (seen.has(canonical)) continue;
+    seen.add(canonical);
+    out.push(url);
+  }
+  return out;
+}
+
+function detailSpecs(html: string): { location?: string; dossierSpecs?: ShadeDossierData["specs"] } {
+  const location = labeledValue(html, /location/i);
+  const specs: NonNullable<ShadeDossierData["specs"]> = {};
+  const fields: Array<[keyof NonNullable<ShadeDossierData["specs"]>, RegExp]> = [
+    ["odometer", /odometer|mileage|miles/i],
+    ["engine", /engine/i],
+    ["transmission", /transmission/i],
+    ["drivetrain", /drivetrain|drive type|drive/i],
+    ["exterior", /exterior|paint|color/i],
+    ["interior", /interior/i],
+    ["title", /title|registration/i],
+    ["seller", /seller|seller name/i],
+    ["lot", /lot/i],
+  ];
+  for (const [key, label] of fields) {
+    const value = labeledValue(html, label);
+    if (value) specs[key] = value;
+  }
+  return {
+    ...(location ? { location } : {}),
+    ...(Object.keys(specs).length ? { dossierSpecs: specs } : {}),
+  };
+}
+
+function listItemsAfterHeading(html: string, label: RegExp): string[] {
+  for (const match of html.matchAll(/<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/gi)) {
+    const heading = normalizeText(match[1] || "");
+    if (!label.test(heading)) continue;
+    const start = (match.index || 0) + match[0].length;
+    const rest = html.slice(start);
+    const nextHeading = rest.search(/<h[1-6]\b/i);
+    const section = rest.slice(0, nextHeading >= 0 ? nextHeading : 20_000);
+    const firstList = section.match(/<ul\b[^>]*>([\s\S]*?)<\/ul>/i);
+    return firstList ? listItems(firstList[1] || "") : [];
+  }
+  return [];
+}
+
+function listItems(html: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const match of html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/gi)) {
+    const text = normalizeText(match[1] || "");
+    if (text.length < 3 || seen.has(text)) continue;
+    seen.add(text);
+    out.push(text);
+  }
+  return out;
+}
+
+function detailBidLog(html: string): NonNullable<ShadeDossierData["bidLog"]> {
+  const rows: NonNullable<ShadeDossierData["bidLog"]> = [];
+  for (const block of classBlocks(html, /bid-history|bid-row|bid-log|bidder-row/).slice(0, 20)) {
+    const amount = cleanText(firstMatch(normalizeText(block), /(\$[\d,]+(?:\.\d{2})?)/));
+    const bidder = textFromClassBlock(block, /bidder|username|user|member/) || cleanText(firstMatch(normalizeText(block), /(?:by|from)\s+([A-Za-z0-9_.-]{2,})/i));
+    const ago = textFromClassBlock(block, /ago|time|date/) || timeText(block);
+    if (!amount || !bidder) continue;
+    rows.push({ bidder, amount, ...(ago ? { ago } : {}) });
+  }
+  return rows;
+}
+
+function detailComments(html: string): NonNullable<ShadeDossierData["comments"]> {
+  const rows: NonNullable<ShadeDossierData["comments"]> = [];
+  for (const block of classBlocks(html, /comment\b|comment-item|comment-row/).slice(0, 30)) {
+    const user = textFromClassBlock(block, /comment-author|author|username|user/) || cleanText(firstMatch(block, /data-author=["']([^"']+)["']/i));
+    const body = textFromClassBlock(block, /comment-content|comment-body|body|content/) || paragraphText(block);
+    const ago = textFromClassBlock(block, /ago|date|time/) || timeText(block);
+    if (!user || !body || body.length < 5) continue;
+    rows.push({
+      user,
+      body,
+      ...(ago ? { ago } : {}),
+      ...(isSellerComment(block) ? { seller: true } : {}),
+    });
+  }
+  return rows;
+}
+
+function classBlocks(html: string, classPattern: RegExp): string[] {
+  const blocks: string[] = [];
+  const pattern = /<(article|li|tr|div|span|p|time)\b[^>]*class=["']([^"']+)["'][^>]*>([\s\S]*?)<\/\1>/gi;
+  for (const match of html.matchAll(pattern)) {
+    if (classPattern.test(match[2] || "")) blocks.push(match[0] || "");
+  }
+  return blocks;
+}
+
+function labeledValue(html: string, label: RegExp): string | undefined {
+  for (const match of html.matchAll(/<dt\b[^>]*>([\s\S]*?)<\/dt>\s*<dd\b[^>]*>([\s\S]*?)<\/dd>/gi)) {
+    if (label.test(normalizeText(match[1] || ""))) return cleanText(normalizeText(match[2] || ""));
+  }
+  for (const match of html.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>\s*<td\b[^>]*>([\s\S]*?)<\/td>/gi)) {
+    if (label.test(normalizeText(match[1] || ""))) return cleanText(normalizeText(match[2] || ""));
+  }
+  for (const match of html.matchAll(/<(?:li|p|div)\b[^>]*>([\s\S]*?)<\/(?:li|p|div)>/gi)) {
+    const text = normalizeText(match[1] || "");
+    const parts = text.match(/^([^:]{2,45}):\s*(.{1,140})$/);
+    if (parts && label.test(parts[1] || "")) return cleanText(parts[2] || "");
+  }
+  return undefined;
+}
+
+function countLabel(html: string, label: RegExp): number | undefined {
+  const text = normalizeText(html);
+  for (const match of text.matchAll(/(\d{1,4})\s+([A-Za-z ]{2,20})/g)) {
+    if (label.test(match[2] || "")) return Number(match[1]);
+  }
+  for (const match of text.matchAll(/([A-Za-z ]{2,20}):\s*(\d{1,4})/g)) {
+    if (label.test(match[1] || "")) return Number(match[2]);
+  }
+  return undefined;
+}
+
+function textFromClass(html: string, classPattern: RegExp): string | undefined {
+  const block = classBlocks(html, classPattern)[0];
+  return block ? normalizeText(block) : undefined;
+}
+
+function textFromClassBlock(html: string, classPattern: RegExp): string | undefined {
+  const leafPattern = /<(span|p|time|a|strong|em)\b[^>]*class=["']([^"']+)["'][^>]*>([\s\S]*?)<\/\1>/gi;
+  for (const match of html.matchAll(leafPattern)) {
+    if (classPattern.test(match[2] || "")) return normalizeText(match[3] || "");
+  }
+  return textFromClass(html, classPattern);
+}
+
+function paragraphText(html: string): string | undefined {
+  const match = html.match(/<p\b[^>]*>([\s\S]*?)<\/p>/i);
+  return match ? normalizeText(match[1] || "") : undefined;
+}
+
+function timeText(html: string): string | undefined {
+  const match = html.match(/<time\b[^>]*>([\s\S]*?)<\/time>/i);
+  return match ? normalizeText(match[1] || "") : undefined;
+}
+
+function isSellerComment(html: string): boolean {
+  return /seller|listing-author|author-badge|badge-seller/i.test(html);
 }
 
 function scoreCandidate(candidate: SourceCandidate, context: DiscoveryContext): ScoredCandidate {
@@ -607,16 +1007,22 @@ function deterministicValueScore(bidNum: number | undefined): number | undefined
 function dossierFromCandidate(scored: ScoredCandidate): ShadeDossierData | undefined {
   const candidate = scored.candidate;
   const ai = scored.ai;
+  const detail = candidate.dossier;
 
   const valueScore = typeof ai?.valueScore === "number" ? ai.valueScore : deterministicValueScore(candidate.bidNum);
-  const summary = ai?.summary || (candidate.summary ? candidate.summary.slice(0, 280) : undefined);
+  const summary = ai?.summary || detail?.summary || (candidate.summary ? candidate.summary.slice(0, 280) : undefined);
   const beachUse = ai?.beachNote ? { body: ai.beachNote } : undefined;
 
   const dossier: ShadeDossierData = {
-    specs: { seller: candidate.site, lot: candidate.sourceQuery },
+    ...detail,
+    specs: {
+      seller: candidate.site,
+      lot: candidate.sourceQuery,
+      ...(detail?.specs || {}),
+    },
     ...(summary ? { summary } : {}),
     ...(valueScore !== undefined ? { valueScore } : {}),
-    ...(beachUse ? { beachUse } : {}),
+    ...(beachUse ? { beachUse: mergeRecords(detail?.beachUse, beachUse) } : {}),
   };
 
   const meaningful = dossier.summary || dossier.valueScore !== undefined || dossier.beachUse;
@@ -864,8 +1270,28 @@ function firstMatch(value: string, pattern: RegExp): string {
   return match ? match[1] || "" : "";
 }
 
+function firstNonEmpty(...values: Array<string | undefined | null>): string | undefined {
+  for (const value of values) {
+    const cleaned = cleanText(value || "");
+    if (cleaned) return cleaned;
+  }
+  return undefined;
+}
+
+function normalizeText(value: string): string {
+  return cleanText(stripHtml(value));
+}
+
+function cleanText(value: string): string {
+  return decodeHtml(value).replace(/\s+/g, " ").trim();
+}
+
 function stripHtml(value: string): string {
   return value.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function decodeHtml(value: string): string {

@@ -57,6 +57,7 @@ final class ShadeController: ObservableObject {
   private var dossierTapWork: DispatchWorkItem?
   private var lastTap: Date = .distantPast
   private var lastDossierTap: Date = .distantPast
+  private var dossierBodyThrowing = false
 
   let trayActions: [FeedbackAction] = [.hide, .avoid, .like, .star]
 
@@ -245,6 +246,7 @@ final class ShadeController: ObservableObject {
     dFlyRotation = 0
     dThrow = .zero
     dDragging = false
+    dossierBodyThrowing = false
     showHint = false
     withAnimation(.spring(duration: 0.3)) { dossierOpen = true }
   }
@@ -264,6 +266,31 @@ final class ShadeController: ObservableObject {
     } else {
       withAnimation(.spring(duration: 0.3)) { dThrow = .zero }
     }
+  }
+
+  func dossierBodyDragChanged(_ value: DragGesture.Value) {
+    let dx = value.translation.width
+    let dy = value.translation.height
+    let dist = hypot(dx, dy)
+    let speed = hypot(value.velocity.width, value.velocity.height)
+    if !dossierBodyThrowing {
+      let horizontal = abs(dx) > 30 && abs(dx) > abs(dy) * 0.72
+      let diagonal = dist > 76 && abs(dx) > 24 && abs(dy) > 24
+      let fastFlick = speed > 1150 && dist > 52
+      guard horizontal || diagonal || fastFlick else { return }
+      dossierBodyThrowing = true
+    }
+    dossierDragChanged(value)
+  }
+
+  func dossierBodyDragEnded(_ value: DragGesture.Value) {
+    guard dossierBodyThrowing else {
+      dDragging = false
+      withAnimation(.spring(duration: 0.24)) { dThrow = .zero }
+      return
+    }
+    dossierBodyThrowing = false
+    dossierDragEnded(value)
   }
 
   func dossierBodyTap() {
@@ -295,6 +322,7 @@ final class ShadeController: ObservableObject {
       self?.dossierOpen = false
       self?.dFly = nil
       self?.dFlyRotation = 0
+      self?.dossierBodyThrowing = false
     }
     flyWork = fw
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: fw)
@@ -324,7 +352,7 @@ struct FeedGeometry {
   var height: CGFloat { size.height }
 
   let chromeHeight: CGFloat = 50
-  let photoHeight: CGFloat = 238
+  var photoHeight: CGFloat { clamp(size.height * 0.31, 238, 310) }
 
   var photoTop: CGFloat { safeTop + chromeHeight }
   var photoBottom: CGFloat { photoTop + photoHeight }

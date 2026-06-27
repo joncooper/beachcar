@@ -34,6 +34,12 @@ struct ShadeDossierOverlay: View {
       .onEnded { controller.dossierDragEnded($0) }
   }
 
+  private var bodyThrowGesture: some Gesture {
+    DragGesture(minimumDistance: 16)
+      .onChanged { controller.dossierBodyDragChanged($0) }
+      .onEnded { controller.dossierBodyDragEnded($0) }
+  }
+
   var body: some View {
     if controller.dossierOpen || controller.dFly != nil {
       VStack(spacing: 0) {
@@ -49,6 +55,7 @@ struct ShadeDossierOverlay: View {
         }
         .scrollIndicators(.hidden)
         .simultaneousGesture(TapGesture(count: 2).onEnded { controller.throwClose(ux: 0, uy: -1, dx: 0) })
+        .simultaneousGesture(bodyThrowGesture)
       }
       .frame(width: geo.width, height: geo.height)
       .background(Color(hex: 0x0c0d10))
@@ -352,6 +359,19 @@ struct ShadeDossierOverlay: View {
           }
           .padding(.top, 15)
           .overlay(alignment: .top) { Rectangle().fill(BC.border).frame(height: 1) }
+        } else if let url = URL(string: car.url) {
+          Link(destination: url) {
+            HStack(spacing: 9) {
+              Image(systemName: "chart.line.uptrend.xyaxis").font(.system(size: 13, weight: .bold)).foregroundStyle(BC.accent)
+              Text("Detailed bid history was not published in this run. Open the live listing.")
+                .font(.archivo(12.5, .semibold))
+                .foregroundStyle(BC.white.opacity(0.74))
+              Spacer(minLength: 8)
+              Image(systemName: "arrow.up.right").font(.system(size: 11, weight: .bold)).foregroundStyle(BC.accent)
+            }
+            .padding(.top, 15)
+            .overlay(alignment: .top) { Rectangle().fill(BC.border).frame(height: 1) }
+          }
         }
       }
     }
@@ -382,7 +402,7 @@ struct ShadeDossierOverlay: View {
         } else if let url = URL(string: car.url) {
           Link(destination: url) {
             HStack {
-              Text("Read \(count) comments on \(car.site)").font(.archivo(13, .semibold)).foregroundStyle(BC.white.opacity(0.8))
+              Text("Comment excerpts were not published in this run. Read \(count) comments on \(car.site).").font(.archivo(13, .semibold)).foregroundStyle(BC.white.opacity(0.8))
               Spacer()
               Image(systemName: "arrow.up.right").font(.system(size: 12, weight: .bold)).foregroundStyle(BC.accent)
             }

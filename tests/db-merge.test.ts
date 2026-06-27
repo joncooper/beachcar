@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { listingKeyFor, normalizeListing } from "../src/shared/normalize";
 import type { AuctionListing } from "../src/shared/types";
-import { mergeListingsIntoRun } from "../src/worker/db";
+import { mergeListingsIntoRun, withImageOverlay } from "../src/worker/db";
 
 describe("run listing merge", () => {
   it("patches existing listings without replacing the stored payload with defaults", async () => {
@@ -69,7 +69,44 @@ describe("run listing merge", () => {
       },
     });
   });
+
+  it("expands copied image rows beyond the stored payload gallery", () => {
+    const listing = normalizeListing({
+      site: "Cars & Bids",
+      title: "1973 Chevrolet K5 Blazer 4x4",
+      url: "https://carsandbids.com/auctions/example/1973-chevrolet-k5-blazer-4x4",
+      images: [
+        "https://media.carsandbids.com/cdn-cgi/image/width=768,quality=70/abc/photos/k5/main.jpg?t=1",
+      ],
+    });
+    const overlaid = withImageOverlay(listing, [
+      imageRow("first", "https://media.carsandbids.com/abc/photos/k5/main.jpg?t=1"),
+      imageRow("first-dupe", "https://media.carsandbids.com/cdn-cgi/image/width=768,quality=70/abc/photos/k5/main.jpg?t=1"),
+      imageRow("second", "https://media.carsandbids.com/abc/photos/k5/interior.jpg?t=2"),
+      imageRow("pending", "https://media.carsandbids.com/abc/photos/k5/engine.jpg?t=3", "pending"),
+    ] as never);
+
+    expect(overlaid.images).toEqual([
+      "/api/images/first?variant=deck",
+      "/api/images/second?variant=deck",
+    ]);
+    expect(overlaid.imageStatus?.map((image) => image.imageKey)).toEqual(["first", "second"]);
+    expect(overlaid.originalImages).toEqual(listing.images);
+  });
 });
+
+function imageRow(imageKey: string, sourceUrl: string, status: "pending" | "copied" | "failed" = "copied") {
+  return {
+    image_key: imageKey,
+    listing_key: "cars-and-bids-k5",
+    source_url: sourceUrl,
+    r2_key: `listing-images/${imageKey}.jpg`,
+    content_type: "image/jpeg",
+    byte_length: 1000,
+    status,
+    error: null,
+  };
+}
 
 interface FakeRunListingRow {
   run_id: string;

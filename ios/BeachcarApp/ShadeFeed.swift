@@ -199,11 +199,15 @@ private struct InfoSheet: View {
       Text("“\(car.why)”")
         .font(.archivo(14.5, .medium))
         .foregroundStyle(BC.white.opacity(0.86))
-        .lineSpacing(3)
+        .lineSpacing(2)
+        .lineLimit(3)
         .fixedSize(horizontal: false, vertical: true)
         .padding(.top, 11)
 
-      Spacer(minLength: 12)
+      AgentReadPanel(car: car)
+        .padding(.top, 12)
+
+      Spacer(minLength: 8)
 
       // Bid row
       HStack(alignment: .bottom) {
@@ -243,6 +247,72 @@ private struct InfoSheet: View {
     .padding(EdgeInsets(top: 15, leading: 20, bottom: 18, trailing: 20))
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     .background(BC.bg)
+  }
+}
+
+private struct AgentReadPanel: View {
+  let car: AuctionListing
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 9) {
+      HStack(spacing: 8) {
+        Image(systemName: "doc.text.magnifyingglass")
+          .font(.system(size: 12, weight: .black))
+          .foregroundStyle(BC.accent)
+        Text("AGENT READ")
+          .font(.mono(9.5, bold: true))
+          .tracking(0.7)
+          .foregroundStyle(BC.muted)
+        Spacer()
+        if let take = car.currentTake?.trimmedForDisplay, !take.isEmpty {
+          Text(take.uppercased())
+            .font(.mono(8.5, bold: true))
+            .tracking(0.5)
+            .foregroundStyle(BC.accent)
+            .lineLimit(1)
+        }
+      }
+
+      Text(car.frontSummary)
+        .font(.archivo(13.5, .medium))
+        .foregroundStyle(BC.white.opacity(0.78))
+        .lineSpacing(2)
+        .lineLimit(4)
+        .fixedSize(horizontal: false, vertical: true)
+
+      HStack(spacing: 7) {
+        engagementPill(icon: Icon.bidding, value: car.bids, label: "bids")
+        engagementPill(icon: "person.3.fill", value: car.bidders, label: "bidders")
+        engagementPill(icon: Icon.comments, value: car.comments, label: "comments")
+      }
+    }
+    .padding(.horizontal, 13)
+    .padding(.vertical, 12)
+    .background(BC.panel.opacity(0.78), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: 15, style: .continuous)
+        .stroke(BC.border.opacity(0.9), lineWidth: 1)
+    }
+  }
+
+  private func engagementPill(icon: String, value: String?, label: String) -> some View {
+    HStack(spacing: 5) {
+      Image(systemName: icon)
+        .font(.system(size: 9.5, weight: .bold))
+      Text("\(normalized(value)) \(label)")
+        .font(.mono(9.5, bold: true))
+        .lineLimit(1)
+        .minimumScaleFactor(0.72)
+    }
+    .foregroundStyle(BC.white.opacity(0.66))
+    .frame(maxWidth: .infinity)
+    .padding(.vertical, 6)
+    .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+  }
+
+  private func normalized(_ value: String?) -> String {
+    let trimmed = value?.trimmedForDisplay ?? ""
+    return trimmed.isEmpty ? "check" : trimmed
   }
 }
 

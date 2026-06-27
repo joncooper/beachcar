@@ -90,6 +90,28 @@ extension AuctionListing {
       .filter { !$0.isEmpty }
   }
 
+  /// One compact read for the front feed, using the AI dossier summary when
+  /// available and falling back to the existing agent pick + watch-out fields.
+  var frontSummary: String {
+    if let summary = dossier?.summary?.trimmedForDisplay, !summary.isEmpty {
+      return summary.clippedSentence(maxCharacters: 210)
+    }
+
+    var parts: [String] = []
+    let whyText = why.trimmedForDisplay
+    if !whyText.isEmpty {
+      parts.append(whyText)
+    }
+    let checks = concernList.prefix(3).joined(separator: ", ")
+    if !checks.isEmpty {
+      parts.append("Check \(checks.lowercased()) before chasing it.")
+    }
+    if let ceiling = ceiling?.trimmedForDisplay, !ceiling.isEmpty {
+      parts.append(compactMarketCopy(ceiling))
+    }
+    return parts.joined(separator: " ").clippedSentence(maxCharacters: 230)
+  }
+
   /// Short title for list rows ("1988 Suzuki Samurai Convertible" → "Suzuki Samurai").
   var shortTitle: String {
     var words = title.split(separator: " ").map(String.init)
@@ -136,5 +158,23 @@ extension String {
   var capitalizedFirst: String {
     guard let first else { return self }
     return first.uppercased() + dropFirst()
+  }
+
+  var trimmedForDisplay: String {
+    trimmingCharacters(in: .whitespacesAndNewlines)
+      .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+  }
+
+  func clippedSentence(maxCharacters: Int) -> String {
+    let text = trimmedForDisplay
+    guard text.count > maxCharacters else { return text }
+    let end = text.index(text.startIndex, offsetBy: maxCharacters)
+    let prefix = String(text[..<end])
+    if let sentenceEnd = prefix.lastIndex(where: { ".!?".contains($0) }),
+       prefix.distance(from: sentenceEnd, to: prefix.endIndex) < 64 {
+      return String(prefix[...sentenceEnd])
+    }
+    let wordBoundary = prefix.lastIndex(of: " ") ?? prefix.index(before: prefix.endIndex)
+    return String(prefix[..<wordBoundary]).trimmingCharacters(in: .whitespacesAndNewlines) + "..."
   }
 }

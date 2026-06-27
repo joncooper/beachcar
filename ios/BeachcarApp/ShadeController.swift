@@ -258,11 +258,9 @@ final class ShadeController: ObservableObject {
 
   func dossierDragEnded(_ value: DragGesture.Value) {
     dDragging = false
-    let dist = hypot(value.translation.width, value.translation.height)
-    let speed = hypot(value.velocity.width, value.velocity.height)
-    if dist > 110 || speed > 700 {
-      let angle = atan2(value.translation.height, value.translation.width)
-      throwClose(ux: cos(angle), uy: sin(angle), dx: value.translation.width)
+    let intent = dossierThrowIntent(value)
+    if intent.shouldClose {
+      throwClose(ux: intent.ux, uy: intent.uy, dx: intent.dx)
     } else {
       withAnimation(.spring(duration: 0.3)) { dThrow = .zero }
     }
@@ -272,12 +270,14 @@ final class ShadeController: ObservableObject {
     let dx = value.translation.width
     let dy = value.translation.height
     let dist = hypot(dx, dy)
-    let speed = hypot(value.velocity.width, value.velocity.height)
     if !dossierBodyThrowing {
       let horizontal = abs(dx) > 30 && abs(dx) > abs(dy) * 0.72
       let diagonal = dist > 76 && abs(dx) > 24 && abs(dy) > 24
-      let fastFlick = speed > 1150 && dist > 52
-      guard horizontal || diagonal || fastFlick else { return }
+      let predicted = value.predictedEndTranslation
+      let predictedDist = hypot(predicted.width, predicted.height)
+      let predictedDiagonal = predictedDist > 190 && abs(predicted.width) > 34 && abs(predicted.height) > 34
+      let fastFlick = dossierThrowIntent(value).shouldClose && abs(value.velocity.width) > abs(value.velocity.height) * 0.42
+      guard horizontal || diagonal || predictedDiagonal || fastFlick else { return }
       dossierBodyThrowing = true
     }
     dossierDragChanged(value)
@@ -326,6 +326,33 @@ final class ShadeController: ObservableObject {
     }
     flyWork = fw
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: fw)
+  }
+
+  private func dossierThrowIntent(_ value: DragGesture.Value) -> (shouldClose: Bool, ux: CGFloat, uy: CGFloat, dx: CGFloat) {
+    let translation = value.translation
+    let predicted = value.predictedEndTranslation
+    let velocity = value.velocity
+    let dist = hypot(translation.width, translation.height)
+    let predictedDist = hypot(predicted.width, predicted.height)
+    let speed = hypot(velocity.width, velocity.height)
+    let shouldClose = dist > 110 || predictedDist > 185 || speed > 720
+
+    let direction: CGSize
+    if predictedDist > max(dist + 28, 48) {
+      direction = predicted
+    } else if dist > 10 {
+      direction = translation
+    } else {
+      direction = velocity
+    }
+
+    let directionDist = max(hypot(direction.width, direction.height), 1)
+    return (
+      shouldClose: shouldClose,
+      ux: direction.width / directionDist,
+      uy: direction.height / directionDist,
+      dx: direction.width
+    )
   }
 
   // MARK: list

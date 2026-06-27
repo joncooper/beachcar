@@ -88,6 +88,24 @@ final class BeachcarUITests: XCTestCase {
     XCTAssertTrue(text(containing: "MARKET READ").exists)
   }
 
+  func testDossierThrowClosesToFeed() throws {
+    launch(scenario: "active")
+    let surface = shadeSurface()
+
+    surface.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+
+    let title = text(containing: "FULL DOSSIER")
+    XCTAssertTrue(title.waitForExistence(timeout: 12))
+
+    let window = app.windows.firstMatch
+    let start = window.coordinate(withNormalizedOffset: CGVector(dx: 0.52, dy: 0.16))
+    let end = window.coordinate(withNormalizedOffset: CGVector(dx: 0.13, dy: 0.04))
+    start.press(forDuration: 0.05, thenDragTo: end)
+
+    XCTAssertTrue(title.waitForNonExistence(timeout: 5))
+    XCTAssertTrue(text(containing: "Suzuki Samurai").waitForExistence(timeout: 5))
+  }
+
   func testShadePullDownJudgesLike() throws {
     launch(scenario: "active")
     let surface = shadeSurface()

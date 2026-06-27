@@ -11,7 +11,10 @@ struct ShadeDossierOverlay: View {
   let geo: FeedGeometry
   let onNote: (String) -> Void
 
-  private var dist: CGFloat { hypot(controller.dThrow.width, controller.dThrow.height) }
+  private var dist: CGFloat {
+    if let fly = controller.dFly { return hypot(fly.width, fly.height) }
+    return hypot(controller.dThrow.width, controller.dThrow.height)
+  }
   private var lifted: Bool { controller.dDragging || controller.dFly != nil }
 
   private var offset: CGSize {
@@ -25,7 +28,7 @@ struct ShadeDossierOverlay: View {
     return 0
   }
   private var rootOpacity: Double {
-    controller.dFly != nil ? 0 : Double(clamp(1 - dist / 950, 0.5, 1))
+    Double(clamp(1 - dist / 1_250, controller.dFly == nil ? 0.5 : 0.14, 1))
   }
 
   private var throwGesture: some Gesture {

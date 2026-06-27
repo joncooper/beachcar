@@ -1500,19 +1500,25 @@ export async function importRun(db: D1Database, payload: ImportPayload | Auction
   const reportMarkdown = Array.isArray(payload) ? null : payload.reportMarkdown ?? null;
   const importedImages: ImportResult["images"] = [];
 
-  const existingRun = await db.prepare("SELECT id FROM runs WHERE id = ?").bind(runId).first<{ id: string }>();
-  if (existingRun) {
-    return { runId, listingCount: rawListings.length, imageCount: 0, images: [] };
-  }
-
   await db
-    .prepare("INSERT INTO runs (id, user_id, generated_at, report_markdown, source_summary_json, status, completed_at) VALUES (?, ?, ?, ?, ?, 'published', ?)")
+    .prepare(
+      `INSERT INTO runs (id, user_id, generated_at, report_markdown, source_summary_json, status, completed_at)
+       VALUES (?, ?, ?, ?, ?, 'published', ?)
+       ON CONFLICT(id) DO UPDATE SET
+         user_id = COALESCE(excluded.user_id, runs.user_id),
+         generated_at = excluded.generated_at,
+         report_markdown = excluded.report_markdown,
+         source_summary_json = excluded.source_summary_json,
+         status = 'published',
+         completed_at = excluded.completed_at`,
+    )
     .bind(runId, runUserId || null, generatedAt, reportMarkdown, sourceSummary === null ? null : JSON.stringify(sourceSummary), new Date().toISOString())
     .run();
 
   for (let index = 0; index < rawListings.length; index += 1) {
     const listing = normalizeListing(rawListings[index]);
-    const listingKey = await listingKeyFor(listing.site, listing.url, listing.title);
+    const proposedListingKey = await listingKeyFor(listing.site, listing.url, listing.title);
+    const listingKey = await resolveListingKey(db, proposedListingKey, listing.url);
     const now = new Date().toISOString();
     const payloadWithKey: AuctionListing = { ...listing, listingKey };
     const payloadJson = JSON.stringify(payloadWithKey);
@@ -1533,7 +1539,13 @@ export async function importRun(db: D1Database, payload: ImportPayload | Auction
       .run();
 
     await db
-      .prepare("INSERT INTO run_listings (run_id, listing_key, sort_order, payload_json) VALUES (?, ?, ?, ?)")
+      .prepare(
+        `INSERT INTO run_listings (run_id, listing_key, sort_order, payload_json)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(run_id, listing_key) DO UPDATE SET
+           sort_order = excluded.sort_order,
+           payload_json = excluded.payload_json`,
+      )
       .bind(runId, listingKey, index, payloadJson)
       .run();
 
@@ -1595,7 +1607,8 @@ export async function mergeListingsIntoRun(
   for (const raw of listings) {
     const candidate = normalizeListing(raw);
     const explicitKey = typeof raw.listingKey === "string" && raw.listingKey.trim() ? raw.listingKey.trim() : null;
-    const listingKey = explicitKey || (await listingKeyFor(candidate.site, candidate.url, candidate.title));
+    const proposedListingKey = explicitKey || (await listingKeyFor(candidate.site, candidate.url, candidate.title));
+    const listingKey = await resolveListingKey(db, proposedListingKey, candidate.url);
     const existing = await db
       .prepare("SELECT sort_order, payload_json FROM run_listings WHERE run_id = ? AND listing_key = ?")
       .bind(runId, listingKey)
@@ -1627,7 +1640,13 @@ export async function mergeListingsIntoRun(
       patched += 1;
     } else {
       await db
-        .prepare("INSERT INTO run_listings (run_id, listing_key, sort_order, payload_json) VALUES (?, ?, ?, ?)")
+        .prepare(
+          `INSERT INTO run_listings (run_id, listing_key, sort_order, payload_json)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(run_id, listing_key) DO UPDATE SET
+             sort_order = excluded.sort_order,
+             payload_json = excluded.payload_json`,
+        )
         .bind(runId, listingKey, nextSort, payloadJson)
         .run();
       nextSort += 1;
@@ -1654,6 +1673,19 @@ export async function mergeListingsIntoRun(
   }
 
   return { runId, patched, inserted, images };
+}
+
+async function resolveListingKey(db: D1Database, proposedListingKey: string, url: string): Promise<string> {
+  const existing = await db
+    .prepare(
+      `SELECT listing_key FROM listings
+       WHERE listing_key = ? OR url = ?
+       ORDER BY CASE WHEN url = ? THEN 0 ELSE 1 END
+       LIMIT 1`,
+    )
+    .bind(proposedListingKey, url, url)
+    .first<{ listing_key: string }>();
+  return existing?.listing_key || proposedListingKey;
 }
 
 function mergeListingPayload(existingPayloadJson: string, patch: Partial<AuctionListing>): Partial<AuctionListing> {

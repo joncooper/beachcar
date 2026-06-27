@@ -1,9 +1,69 @@
 import { describe, expect, it } from "vitest";
 import { listingKeyFor, normalizeListing } from "../src/shared/normalize";
 import type { AuctionListing } from "../src/shared/types";
-import { mergeListingsIntoRun, withImageOverlay } from "../src/worker/db";
+import { importRun, mergeListingsIntoRun, withImageOverlay } from "../src/worker/db";
 
 describe("run listing merge", () => {
+  it("reuses existing listing rows by URL when importing a repeated auction", async () => {
+    const db = new FakeD1Database();
+    const url = "https://bringatrailer.com/listing/1974-volkswagen-thing-230/";
+
+    await importRun(db as unknown as D1Database, {
+      runId: "run-first",
+      generatedAt: "2026-06-27T08:00:00.000Z",
+      listings: [
+        {
+          section: "Strong fits",
+          lane: "family",
+          site: "Bring a Trailer",
+          title: "1974 Volkswagen Thing",
+          url,
+          bid: "$3,800",
+          total: "$3,990 incl. buyer fee estimate",
+          why: "Early value watch.",
+          concerns: "Verify underside.",
+          images: ["https://example.com/thing-1.jpg"],
+        },
+      ],
+    });
+
+    await importRun(db as unknown as D1Database, {
+      runId: "run-second",
+      generatedAt: "2026-06-27T15:31:00.000Z",
+      listings: [
+        {
+          section: "Strong fits",
+          lane: "family",
+          site: "Bring a Trailer",
+          title: "1,835cc-Powered 1974 Volkswagen Thing",
+          url,
+          bid: "$4,000",
+          total: "$4,200 incl. buyer fee estimate",
+          why: "Same auction after title enrichment.",
+          concerns: "Verify underside and seller notes.",
+          images: ["https://example.com/thing-2.jpg"],
+        },
+      ],
+    });
+
+    const firstKey = await listingKeyFor("Bring a Trailer", url, "1974 Volkswagen Thing");
+    const secondProposedKey = await listingKeyFor("Bring a Trailer", url, "1,835cc-Powered 1974 Volkswagen Thing");
+
+    expect(firstKey).not.toBe(secondProposedKey);
+    expect(db.listings.size).toBe(1);
+    expect(db.listings.has(firstKey)).toBe(true);
+    expect(db.runListings.has(`run-first:${firstKey}`)).toBe(true);
+    expect(db.runListings.has(`run-second:${firstKey}`)).toBe(true);
+    expect(db.runListings.has(`run-second:${secondProposedKey}`)).toBe(false);
+
+    const secondPayload = JSON.parse(db.runListings.get(`run-second:${firstKey}`)?.payload_json || "{}") as AuctionListing;
+    expect(secondPayload).toMatchObject({
+      listingKey: firstKey,
+      title: "1,835cc-Powered 1974 Volkswagen Thing",
+      bid: "$4,000",
+    });
+  });
+
   it("patches existing listings without replacing the stored payload with defaults", async () => {
     const db = new FakeD1Database();
     const runId = "run-test";
@@ -144,6 +204,13 @@ class FakeD1Statement {
       const runId = String(this.values[0] || "");
       return this.db.runs.has(runId) ? ({ id: runId } as T) : null;
     }
+    if (this.sql.includes("SELECT listing_key FROM listings")) {
+      const [listingKey, url] = this.values.map((value) => String(value || ""));
+      const byUrl = Array.from(this.db.listings.values()).find((row) => row.url === url);
+      if (byUrl) return { listing_key: byUrl.listingKey } as T;
+      const byKey = this.db.listings.get(listingKey);
+      return byKey ? ({ listing_key: byKey.listingKey } as T) : null;
+    }
     if (this.sql === "SELECT COALESCE(MAX(sort_order), -1) AS max FROM run_listings WHERE run_id = ?") {
       const runId = String(this.values[0] || "");
       const rows = Array.from(this.db.runListings.values()).filter((row) => row.run_id === runId);
@@ -158,6 +225,11 @@ class FakeD1Statement {
   }
 
   async run(): Promise<Record<string, unknown>> {
+    if (this.sql.includes("INSERT INTO runs")) {
+      const [runId] = this.values;
+      this.db.runs.add(String(runId));
+      return { success: true };
+    }
     if (this.sql.includes("INSERT INTO listings")) {
       const [listingKey, site, title, url, lane, firstSeenAt, lastSeenAt, payloadJson] = this.values;
       this.db.listings.set(String(listingKey), { listingKey, site, title, url, lane, firstSeenAt, lastSeenAt, payloadJson });
@@ -170,7 +242,7 @@ class FakeD1Statement {
       if (existing) existing.payload_json = String(payloadJson);
       return { success: true };
     }
-    if (this.sql === "INSERT INTO run_listings (run_id, listing_key, sort_order, payload_json) VALUES (?, ?, ?, ?)") {
+    if (this.sql.includes("INSERT INTO run_listings")) {
       const [runId, listingKey, sortOrder, payloadJson] = this.values;
       this.db.runListings.set(`${runId}:${listingKey}`, {
         run_id: String(runId),

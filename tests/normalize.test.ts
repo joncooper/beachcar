@@ -69,3 +69,50 @@ describe("listing normalization", () => {
     expect(normalizeAction("pass")).toBeNull();
   });
 });
+
+describe("dossier normalization", () => {
+  it("preserves a valid dossier, clamps valueScore, and drops invalid sub-fields", () => {
+    const listing = normalizeListing({
+      title: "1974 VW Thing",
+      comments: 21,
+      dossier: {
+        summary: "Open-air Thing.",
+        specs: { engine: "1.6L flat-4", seller: "lowcountry_air", junk: 5 },
+        listing: ["Para 1.", "Para 2.", 99],
+        equipment: ["New top"],
+        service: ["2024 — new top"],
+        bidLog: [
+          { bidder: "a", amount: "$8,500", ago: "2h" },
+          { bidder: "b" },
+        ],
+        comments: [
+          { user: "x", body: "hi", seller: true },
+          { body: "no user" },
+        ],
+        beachUse: { body: "Open 2WD", location: "Charleston, SC" },
+        valueScore: 1.8,
+      },
+    } as never);
+
+    expect(listing.dossier).toEqual({
+      summary: "Open-air Thing.",
+      specs: { engine: "1.6L flat-4", seller: "lowcountry_air" },
+      listing: ["Para 1.", "Para 2."],
+      equipment: ["New top"],
+      service: ["2024 — new top"],
+      bidLog: [{ bidder: "a", amount: "$8,500", ago: "2h" }],
+      comments: [{ user: "x", body: "hi", seller: true }],
+      beachUse: { body: "Open 2WD", location: "Charleston, SC" },
+      valueScore: 1,
+    });
+    // The top-level comments count is independent of dossier.comments[].
+    expect(listing.comments).toBe(21);
+  });
+
+  it("drops an empty, non-object, or all-invalid dossier to undefined", () => {
+    expect(normalizeListing({ title: "x" }).dossier).toBeUndefined();
+    expect(normalizeListing({ title: "x", dossier: {} } as never).dossier).toBeUndefined();
+    expect(normalizeListing({ title: "x", dossier: "nope" } as never).dossier).toBeUndefined();
+    expect(normalizeListing({ title: "x", dossier: { specs: { junk: 1 }, bidLog: [{}] } } as never).dossier).toBeUndefined();
+  });
+});

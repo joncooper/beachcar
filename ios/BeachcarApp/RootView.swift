@@ -53,21 +53,22 @@ struct RootView: View {
           .tracking(1.6)
           .foregroundStyle(BeachcarColors.muted)
         Text(AppConfig.appName)
-          .font(.system(size: 48, weight: .black, design: .rounded))
-          .foregroundStyle(BeachcarColors.ink)
+          .font(.archivo(48, .black))
+          .foregroundStyle(BC.white)
         Text("Review today's beach-car shortlist, save taste signals, and send steering notes back into the next daily run.")
-          .font(.body)
+          .font(.archivo(15))
           .foregroundStyle(BeachcarColors.secondary)
+          .lineSpacing(3)
           .fixedSize(horizontal: false, vertical: true)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
       .padding(24)
-      .background(.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+      .background(BC.card, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
       .overlay {
         RoundedRectangle(cornerRadius: 28, style: .continuous)
-          .stroke(.white.opacity(0.65), lineWidth: 1)
+          .stroke(BC.border, lineWidth: 1)
       }
-      .shadow(color: .black.opacity(0.08), radius: 24, y: 16)
+      .shadow(color: .black.opacity(0.5), radius: 24, y: 16)
 
       UserButton(signedOutContent: {
         Button {
@@ -77,11 +78,11 @@ struct RootView: View {
             Image(systemName: "person.crop.circle.badge.checkmark")
             Text("Sign in")
           }
-          .font(.headline)
+          .font(.archivo(16, .bold))
           .frame(maxWidth: .infinity)
           .padding(.vertical, 16)
-          .background(BeachcarColors.ink, in: Capsule())
-          .foregroundStyle(.white)
+          .background(BC.accent, in: Capsule())
+          .foregroundStyle(BC.accentInk)
         }
       })
       Spacer()
@@ -147,7 +148,7 @@ struct RootView: View {
   }
 
   private var deckView: some View {
-    BeachcarDeckView(store: store, tokenProvider: token, cacheScope: user?.id)
+    ShadeSurface(store: store, tokenProvider: token, cacheScope: user?.id)
       .accessibilityIdentifier("deck-view")
       .task {
         if !isUITesting {
@@ -293,8 +294,8 @@ private struct AccountRetryView: View {
           .font(.title)
           .foregroundStyle(BeachcarColors.stop)
         Text("Could not check access")
-          .font(.largeTitle.weight(.black))
-          .foregroundStyle(BeachcarColors.ink)
+          .font(.archivo(32, .black))
+          .foregroundStyle(BC.ink)
         Text(error)
           .font(.footnote.weight(.semibold))
           .foregroundStyle(BeachcarColors.secondary)
@@ -319,8 +320,8 @@ private struct DisabledAccountView: View {
           .font(.title)
           .foregroundStyle(BeachcarColors.stop)
         Text("Access disabled")
-          .font(.largeTitle.weight(.black))
-          .foregroundStyle(BeachcarColors.ink)
+          .font(.archivo(32, .black))
+          .foregroundStyle(BC.ink)
         Text(email)
           .font(.subheadline.weight(.semibold))
           .foregroundStyle(BeachcarColors.secondary)
@@ -348,8 +349,8 @@ private struct InviteGateView: View {
           .font(.title)
           .foregroundStyle(BeachcarColors.teal)
         Text("Invite required")
-          .font(.largeTitle.weight(.black))
-          .foregroundStyle(BeachcarColors.ink)
+          .font(.archivo(32, .black))
+          .foregroundStyle(BC.ink)
         Text(email)
           .font(.subheadline.weight(.semibold))
           .foregroundStyle(BeachcarColors.secondary)
@@ -359,7 +360,7 @@ private struct InviteGateView: View {
           .autocorrectionDisabled()
           .font(.headline)
           .padding(14)
-          .background(.white.opacity(0.82), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+          .background(BC.faint, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
           .overlay {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
               .stroke(BeachcarColors.hairline, lineWidth: 1)
@@ -378,7 +379,6 @@ private struct InviteGateView: View {
         .disabled(isSaving)
       }
     }
-    .accessibilityIdentifier("invite-gate")
   }
 }
 
@@ -561,12 +561,12 @@ private struct AccountCard<Content: View>: View {
     content
       .frame(maxWidth: .infinity, alignment: .leading)
       .padding(22)
-      .background(.white.opacity(0.76), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+      .background(BC.card, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
       .overlay {
         RoundedRectangle(cornerRadius: 26, style: .continuous)
-          .stroke(.white.opacity(0.7), lineWidth: 1)
+          .stroke(BC.border, lineWidth: 1)
       }
-      .shadow(color: .black.opacity(0.08), radius: 22, y: 14)
+      .shadow(color: .black.opacity(0.5), radius: 22, y: 14)
       .padding(20)
       .frame(maxWidth: 560, maxHeight: .infinity)
   }
@@ -588,7 +588,7 @@ private struct AccountField: View {
         .autocorrectionDisabled()
         .font(.headline)
         .padding(13)
-        .background(.white.opacity(0.82), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .background(BC.faint, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
         .overlay {
           RoundedRectangle(cornerRadius: 15, style: .continuous)
             .stroke(BeachcarColors.hairline, lineWidth: 1)
@@ -611,7 +611,7 @@ private struct AccountTextArea: View {
         .frame(minHeight: 92)
         .scrollContentBackground(.hidden)
         .padding(9)
-        .background(.white.opacity(0.82), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .background(BC.faint, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
         .overlay {
           RoundedRectangle(cornerRadius: 15, style: .continuous)
             .stroke(BeachcarColors.hairline, lineWidth: 1)
@@ -639,23 +639,23 @@ private struct AccountPreferenceSection<Content: View>: View {
       }
       .font(.headline)
       .padding(14)
-      .background(.white.opacity(0.82), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+      .background(BC.faint, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
       .overlay {
         RoundedRectangle(cornerRadius: 15, style: .continuous)
           .stroke(BeachcarColors.hairline, lineWidth: 1)
       }
     }
-    .tint(BeachcarColors.ink)
+    .tint(BC.accent)
   }
 }
 
 private struct AccountPrimaryButtonStyle: ButtonStyle {
   func makeBody(configuration: Configuration) -> some View {
     configuration.label
-      .font(.headline.weight(.black))
+      .font(.archivo(16, .bold))
       .padding(.vertical, 15)
-      .background(BeachcarColors.ink.opacity(configuration.isPressed ? 0.82 : 1), in: Capsule())
-      .foregroundStyle(.white)
+      .background(BC.accent.opacity(configuration.isPressed ? 0.82 : 1), in: Capsule())
+      .foregroundStyle(BC.accentInk)
   }
 }
 

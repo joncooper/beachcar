@@ -39,6 +39,28 @@ Recommended:
 - `fair`, `ceiling`, `conf`
 - `currentTake`
 
+### `dossier` (optional rich detail)
+
+An optional nested object that powers the app's full per-car detail view. Every field is optional and forward-compatible — runs that omit it (or omit sub-fields) degrade gracefully in the clients. Only include detail actually present on the listing page; never invent it.
+
+```json
+"dossier": {
+  "summary": "One-paragraph vehicle summary.",
+  "specs": { "odometer": "", "engine": "", "transmission": "", "drivetrain": "", "exterior": "", "interior": "", "title": "", "seller": "", "lot": "" },
+  "listing": ["Full seller writeup, paragraph by paragraph."],
+  "equipment": ["Highlight bullets"],
+  "service": ["Recent service bullets"],
+  "bidLog": [{ "bidder": "username", "amount": "$8,500", "ago": "2h" }],
+  "comments": [{ "user": "username", "body": "Comment text", "ago": "3h", "seller": false }],
+  "beachUse": { "body": "", "location": "", "people": "", "paperwork": "" },
+  "valueScore": 0.18
+}
+```
+
+- `valueScore` is a `0..1` position on the CHEAP..RICH value meter; it is clamped on import. The built-in agent derives one from bid-vs-fair when not supplied.
+- All sub-fields are optional; invalid types are dropped during normalization rather than rejected.
+- See `examples/daily-run.sample.json` for a full worked example.
+
 The server assigns stable listing and image keys, stores the run in D1, and queues image records for R2 copying.
 
 ## Admin Endpoints

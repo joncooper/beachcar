@@ -637,7 +637,7 @@ private struct ListingListRow: View {
 
   @ViewBuilder
   private var thumbnail: some View {
-    if let firstImage = listing.images.first {
+    if let firstImage = listing.displayImages.first {
       CachedRemoteImage(url: api.resolvedImageURL(firstImage, variant: .thumb)) { image in
         image.resizable().scaledToFill()
       } placeholder: {

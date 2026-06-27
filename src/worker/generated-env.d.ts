@@ -5,6 +5,7 @@ interface __BaseEnv_Env {
 	BEACHCAR_RUNNER_CONTAINER: DurableObjectNamespace<import("./containers/beachcar-runner-container").BeachcarRunnerContainer>;
 	BEACHCAR_RUN_WORKFLOW: Workflow<import("./workflows/beachcar-run-workflow").BeachcarRunWorkflowParams>;
 	IMAGES: R2Bucket;
+	IMAGE_TRANSFORMER: ImagesBinding;
 	DB: D1Database;
 	ASSETS: Fetcher;
 	BOOTSTRAP_OWNER_EMAILS: string;

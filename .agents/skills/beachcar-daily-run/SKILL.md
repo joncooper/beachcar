@@ -58,6 +58,26 @@ Each published listing should include:
 
 Valid lanes are `family`, `solo`, and `curiosity`.
 
+### Optional `dossier` (rich detail)
+
+When you read the listing's detail page, attach an optional `dossier` object to power the app's full detail view. Every field is optional — include what you can verify, omit the rest. The shape:
+
+```json
+"dossier": {
+  "summary": "One-paragraph vehicle summary.",
+  "specs": { "odometer": "62,400 mi", "engine": "1.6L flat-4", "transmission": "4-speed manual", "drivetrain": "RWD", "exterior": "Texas Yellow", "interior": "Black vinyl", "title": "Clean · SC", "seller": "username", "lot": "Example #88,412" },
+  "listing": ["Paragraph 1 of the seller writeup.", "Paragraph 2."],
+  "equipment": ["New soft top", "Removable doors"],
+  "service": ["2024 — new soft top", "2023 — brakes renewed"],
+  "bidLog": [{ "bidder": "username", "amount": "$8,500", "ago": "2h" }],
+  "comments": [{ "user": "username", "body": "Floors look honest.", "ago": "3h", "seller": false }],
+  "beachUse": { "body": "Open 2WD", "location": "Charleston, SC", "people": "Confirm belts", "paperwork": "Clean title" },
+  "valueScore": 0.18
+}
+```
+
+`valueScore` is a 0..1 position on the CHEAP..RICH meter (0 = cheap for what it is, 1 = priced rich). Do not invent dossier facts — only include detail actually present on the listing page. See a full worked example in `examples/daily-run.sample.json`.
+
 ## Guardrails
 
 - Do not ask the friend for raw OpenAI keys inside the agent conversation. Beachcar tracks AI mode and budget separately.

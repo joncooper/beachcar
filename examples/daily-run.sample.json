@@ -31,7 +31,54 @@
         "https://placehold.co/1200x900/f7d24a/102018.png?text=Sample+Thing",
         "https://placehold.co/1200x900/2f7d67/ffffff.png?text=Interior",
         "https://placehold.co/1200x900/eae4d4/102018.png?text=Underside"
-      ]
+      ],
+      "dossier": {
+        "summary": "Two-owner Thing in Texas Yellow over black, with a recent top, fresh brakes, and a clean South Carolina title.",
+        "specs": {
+          "odometer": "62,400 mi",
+          "engine": "1.6L flat-4",
+          "transmission": "4-speed manual",
+          "drivetrain": "RWD",
+          "exterior": "Texas Yellow",
+          "interior": "Black vinyl",
+          "title": "Clean · SC",
+          "seller": "lowcountry_air",
+          "lot": "Example #88,412"
+        },
+        "listing": [
+          "This 1974 Volkswagen Thing is finished in Texas Yellow over a black interior and is powered by a 1.6-liter flat-four paired with a four-speed manual transaxle.",
+          "Work under current ownership includes a new soft top, a front-end refresh, fresh brake hydraulics, and a carburetor rebuild. The doors are removable and the windshield folds.",
+          "The car is offered with a clean South Carolina title, a tool roll, and a binder of receipts. The seller notes minor surface rust on the floor pans and a small tear in the driver's seat."
+        ],
+        "equipment": [
+          "New convertible soft top",
+          "Removable doors, folding windshield",
+          "15\" steel wheels with new tires",
+          "Aftermarket lap belts, all seats"
+        ],
+        "service": [
+          "2024 — new soft top",
+          "2023 — front-end refresh",
+          "2023 — brake hydraulics renewed",
+          "2022 — carburetor rebuild"
+        ],
+        "bidLog": [
+          { "bidder": "dune_runner", "amount": "$8,500", "ago": "2h" },
+          { "bidder": "aircooled_sc", "amount": "$8,100", "ago": "6h" },
+          { "bidder": "Opening bid", "amount": "$5,000", "ago": "3d" }
+        ],
+        "comments": [
+          { "user": "thing_fan", "body": "Floors look honest in the extra photos. GLWTA.", "ago": "3h" },
+          { "user": "lowcountry_air", "body": "Top frame is complete and the new canvas fits well.", "ago": "2h", "seller": true }
+        ],
+        "beachUse": {
+          "body": "Open 2WD",
+          "location": "Charleston, SC",
+          "people": "Confirm belts",
+          "paperwork": "Clean title"
+        },
+        "valueScore": 0.18
+      }
     },
     {
       "section": "Solo runabouts",

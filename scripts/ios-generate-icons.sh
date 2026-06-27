@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-source_icon="${IOS_ICON_SOURCE:-public/icon.svg}"
+source_icon="${IOS_ICON_SOURCE:-assets/brand/beachcar-icon.png}"
 asset_root="ios/BeachcarApp/Resources/Assets.xcassets"
 appicon_dir="$asset_root/AppIcon.appiconset"
 accent_dir="$asset_root/AccentColor.colorset"

@@ -1,16 +1,19 @@
 import SwiftUI
 
+// Mapped onto the dark Shade tokens (see ShadeTheme.BC) so the screens outside the
+// Shade redesign — sign-in, invite gate, onboarding — render in the same dark
+// language. Semantic names are preserved so existing call sites keep working.
 enum BeachcarColors {
-  static let shell = Color(red: 0.937, green: 0.953, blue: 0.928)
-  static let ink = Color(red: 0.075, green: 0.105, blue: 0.092)
-  static let secondary = Color(red: 0.29, green: 0.34, blue: 0.32)
-  static let muted = Color(red: 0.48, green: 0.54, blue: 0.50)
-  static let mint = Color(red: 0.53, green: 0.78, blue: 0.70)
-  static let teal = Color(red: 0.09, green: 0.42, blue: 0.35)
-  static let sand = Color(red: 0.92, green: 0.84, blue: 0.68)
-  static let gold = Color(red: 0.66, green: 0.43, blue: 0.08)
-  static let stop = Color(red: 0.64, green: 0.18, blue: 0.15)
-  static let hairline = Color.black.opacity(0.08)
+  static let shell = BC.bg
+  static let ink = BC.ink
+  static let secondary = BC.sub
+  static let muted = BC.muted
+  static let mint = BC.accent
+  static let teal = BC.accent
+  static let sand = BC.star
+  static let gold = BC.star
+  static let stop = BC.danger
+  static let hairline = BC.border
 }
 
 enum ChipStyle {
@@ -38,13 +41,17 @@ struct PhotoCarousel: View {
   var showsThumbnails = true
   var emptyStyle: PhotoEmptyStyle = .standard
 
+  private var imageURLs: [String] {
+    listing.displayImages
+  }
+
   var body: some View {
     ZStack(alignment: .topTrailing) {
-      if listing.images.isEmpty {
+      if imageURLs.isEmpty {
         PhotoPlaceholder(style: emptyStyle)
       } else {
         TabView(selection: $selectedImage) {
-          ForEach(Array(listing.images.enumerated()), id: \.offset) { index, image in
+          ForEach(Array(imageURLs.enumerated()), id: \.offset) { index, image in
             CachedRemoteImage(url: api.resolvedImageURL(image, variant: .deck)) { image in
               image
                 .resizable()
@@ -70,12 +77,12 @@ struct PhotoCarousel: View {
         .tabViewStyle(.page(indexDisplayMode: .never))
       }
 
-      if showsPhotoBadge && !listing.images.isEmpty {
+      if showsPhotoBadge && !imageURLs.isEmpty {
         HStack(spacing: 8) {
-          Text("Photo \(selectedImage + 1)/\(listing.images.count)")
+          Text("Photo \(selectedImage + 1)/\(imageURLs.count)")
             .font(.caption.weight(.black))
           HStack(spacing: 4) {
-            ForEach(0..<min(listing.images.count, 5), id: \.self) { index in
+            ForEach(0..<min(imageURLs.count, 5), id: \.self) { index in
               Circle()
                 .fill(index == selectedImage ? .white : .white.opacity(0.35))
                 .frame(width: 5, height: 5)
@@ -91,9 +98,9 @@ struct PhotoCarousel: View {
     }
     .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
     .overlay(alignment: .bottomLeading) {
-      if showsThumbnails && listing.images.count > 1 {
+      if showsThumbnails && imageURLs.count > 1 {
         HStack(spacing: 7) {
-          ForEach(Array(listing.images.prefix(5).enumerated()), id: \.element) { index, image in
+          ForEach(Array(imageURLs.prefix(5).enumerated()), id: \.offset) { index, image in
             CachedRemoteImage(url: api.resolvedImageURL(image, variant: .thumb)) { image in
               image.resizable().scaledToFill()
             } placeholder: {
@@ -119,7 +126,7 @@ struct PhotoCarousel: View {
     .onChange(of: listing.key) { _, _ in
       selectedImage = 0
     }
-    .onChange(of: listing.images.count) { _, count in
+    .onChange(of: imageURLs.count) { _, count in
       if count == 0 {
         selectedImage = 0
       } else if selectedImage >= count {

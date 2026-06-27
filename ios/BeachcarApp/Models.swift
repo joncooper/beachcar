@@ -335,7 +335,14 @@ struct AuctionListing: Codable, Identifiable, Hashable {
   let concerns: String
   let currentTake: String?
   let images: [String]
+  let originalImages: [String]
+  let imageStatus: [ListingImageStatus]
   let feedback: FeedbackRecord?
+  /// Rich detail for the dossier. Optional and forward-compatible: today's runs
+  /// don't include it, so dossier sections backed by it hide gracefully. When the
+  /// agent/import contract starts emitting a `dossier` object per listing, these
+  /// sections light up with no further client changes.
+  let dossier: ShadeDossierData?
 
   var id: String { listingKey ?? url }
   var key: String { listingKey ?? url }
@@ -367,7 +374,10 @@ struct AuctionListing: Codable, Identifiable, Hashable {
     case concerns
     case currentTake
     case images
+    case originalImages
+    case imageStatus
     case feedback
+    case dossier
   }
 
   init(from decoder: Decoder) throws {
@@ -398,12 +408,82 @@ struct AuctionListing: Codable, Identifiable, Hashable {
     concerns = try container.decodeIfPresent(String.self, forKey: .concerns) ?? ""
     currentTake = try container.decodeLossyStringIfPresent(forKey: .currentTake)
     images = try container.decodeIfPresent([String].self, forKey: .images) ?? []
+    originalImages = try container.decodeIfPresent([String].self, forKey: .originalImages) ?? []
+    imageStatus = try container.decodeIfPresent([ListingImageStatus].self, forKey: .imageStatus) ?? []
     feedback = try container.decodeIfPresent(FeedbackRecord.self, forKey: .feedback)
+    dossier = try container.decodeIfPresent(ShadeDossierData.self, forKey: .dossier)
+  }
+
+  var displayImages: [String] {
+    let cached = imageStatus
+      .filter { $0.copied || $0.status == "copied" }
+      .map(\.url)
+      .filter { !$0.isEmpty }
+    return cached.isEmpty ? images : cached
   }
 
   var isWildcard: Bool {
     discoveryKind?.lowercased() == "wildcard"
   }
+}
+
+struct ListingImageStatus: Codable, Hashable {
+  let imageKey: String
+  let sourceUrl: String
+  let url: String
+  let copied: Bool
+  let status: String
+  let error: String?
+}
+
+// MARK: - Rich dossier payload (forward-compatible)
+//
+// Shape the agent/import contract can grow into. Every field is optional so the
+// dossier degrades gracefully when a run omits it. See ShadeDossierView for how
+// each maps to a section.
+
+struct ShadeDossierData: Codable, Hashable {
+  let summary: String?          // one-paragraph VEHICLE summary
+  let specs: VehicleSpecs?
+  let listing: [String]?        // FROM THE LISTING — full multi-paragraph writeup
+  let equipment: [String]?      // EQUIPMENT & HIGHLIGHTS
+  let service: [String]?        // RECENT SERVICE
+  let bidLog: [BidEntry]?       // BIDDING history
+  let comments: [CommentEntry]? // COMMENTS thread
+  let beachUse: BeachUse?       // BEACH-USE FIT
+  let valueScore: Double?       // 0…1 position on the value meter
+}
+
+struct VehicleSpecs: Codable, Hashable {
+  let odometer: String?
+  let engine: String?
+  let transmission: String?
+  let drivetrain: String?
+  let exterior: String?
+  let interior: String?
+  let title: String?
+  let seller: String?
+  let lot: String?
+}
+
+struct BidEntry: Codable, Hashable {
+  let bidder: String
+  let amount: String
+  let ago: String?
+}
+
+struct CommentEntry: Codable, Hashable {
+  let user: String
+  let body: String
+  let ago: String?
+  let seller: Bool?
+}
+
+struct BeachUse: Codable, Hashable {
+  let body: String?
+  let location: String?
+  let people: String?
+  let paperwork: String?
 }
 
 struct FeedbackRecord: Codable, Hashable {
@@ -532,7 +612,54 @@ extension RunPayload {
           "why": "Open-air, light, local-beach friendly, and usable for short school runs with diligence on belts.",
           "concerns": "Rust, title status, rear belts, highway manners",
           "currentTake": "bargain watch",
-          "images": []
+          "images": [],
+          "dossier": {
+            "summary": "Two-owner Samurai wearing a fresh soft top, with recent brakes, tires, and a rebuilt carburetor. Sold on a clean Connecticut title with service records.",
+            "specs": {
+              "odometer": "74,210 mi",
+              "engine": "1.3L inline-4",
+              "transmission": "5-speed manual",
+              "drivetrain": "4WD, low range",
+              "exterior": "Forest Green",
+              "interior": "Black vinyl",
+              "title": "Clean · CT",
+              "seller": "sand_dollar_42",
+              "lot": "BaT #142,883"
+            },
+            "listing": [
+              "This 1988 Suzuki Samurai convertible is finished in Forest Green over a black vinyl interior. Power comes from a 1.3-liter inline-four paired with a five-speed manual and a dual-range transfer case.",
+              "The removable soft top was re-skinned with new canvas in 2023, and a set of 15-inch alloys is mounted with recent all-terrain tires. Work under current ownership includes a carburetor rebuild, a new fuel pump, fresh brake hydraulics, and an oil service.",
+              "The truck is offered on a clean Connecticut title with a partial service history, a tool roll, and the owner's manual. Noted flaws are limited to minor surface rust on the rear bumper and a small tear in the driver's seat bolster."
+            ],
+            "equipment": [
+              "Removable soft top + bikini top",
+              "15\\" alloy wheels, A/T tires",
+              "Dual-range 4WD transfer case",
+              "Aftermarket lap belts, all seats"
+            ],
+            "service": [
+              "2023 — new soft-top canvas",
+              "2022 — carburetor rebuild, fuel pump",
+              "2022 — brake hydraulics refreshed",
+              "2021 — clutch replaced"
+            ],
+            "bidLog": [
+              { "bidder": "mudterrain_mike", "amount": "$3,000", "ago": "2h" },
+              { "bidder": "k_wagen", "amount": "$2,800", "ago": "5h" },
+              { "bidder": "Opening bid", "amount": "$2,000", "ago": "1d" }
+            ],
+            "comments": [
+              { "user": "carl_b", "body": "Underbody looks honest in the extra photos. GLWTA.", "ago": "3h" },
+              { "user": "sand_dollar_42", "body": "Frame is all there, new canvas last summer.", "ago": "2h", "seller": true }
+            ],
+            "beachUse": {
+              "body": "Open 4x4",
+              "location": "New Canaan, CT",
+              "people": "Confirm belts",
+              "paperwork": "Title / history"
+            },
+            "valueScore": 0.12
+          }
         },
         {
           "listingKey": "ui-test-trail",

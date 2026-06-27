@@ -1,6 +1,44 @@
 export type Lane = "family" | "solo" | "curiosity";
 export type FeedbackAction = "like" | "star" | "hide" | "avoid";
 
+/**
+ * Rich per-car detail for the native dossier view. Every field is optional and
+ * forward-compatible: runs that omit it (or omit sub-fields) degrade gracefully
+ * in the clients. The shape mirrors the iOS `ShadeDossierData` decoder exactly —
+ * keep them in sync. Any AI-vending mode (admin import, remote MCP, the per-user
+ * workflow, AI Gateway, the container runner) may populate this.
+ */
+export interface ShadeDossierData {
+  /** One-paragraph vehicle summary (VEHICLE section). */
+  summary?: string;
+  /** Two-column spec grid; all sub-fields optional. */
+  specs?: {
+    odometer?: string;
+    engine?: string;
+    transmission?: string;
+    drivetrain?: string;
+    exterior?: string;
+    interior?: string;
+    title?: string;
+    seller?: string;
+    lot?: string;
+  };
+  /** FROM THE LISTING — the full multi-paragraph writeup. */
+  listing?: string[];
+  /** EQUIPMENT & HIGHLIGHTS bullets. */
+  equipment?: string[];
+  /** RECENT SERVICE bullets. */
+  service?: string[];
+  /** BIDDING history, most-recent first. */
+  bidLog?: Array<{ bidder: string; amount: string; ago?: string }>;
+  /** COMMENTS thread; `seller` highlights the seller's posts. */
+  comments?: Array<{ user: string; body: string; ago?: string; seller?: boolean }>;
+  /** BEACH-USE FIT 2x2 grid. */
+  beachUse?: { body?: string; location?: string; people?: string; paperwork?: string };
+  /** 0..1 position on the CHEAP..RICH value meter. */
+  valueScore?: number;
+}
+
 export interface AuctionListing {
   listingKey?: string;
   section: string;
@@ -28,6 +66,8 @@ export interface AuctionListing {
   originalImages?: string[];
   feedback?: FeedbackRecord | null;
   imageStatus?: ImageStatus[];
+  /** Optional rich detail for the dossier view (see ShadeDossierData). */
+  dossier?: ShadeDossierData | null;
 }
 
 export interface ImageStatus {

@@ -73,6 +73,8 @@ MCP tools:
 - `verify_latest_run`
 - `list_automation_events`
 
+`submit_candidates` and `publish_run` accept the full listing shape from `docs/publishing.md`, including the optional nested `dossier` object (rich per-car detail: specs, full writeup, equipment, service, bid log, comments, beach-use fit, and a 0..1 `valueScore`). All dossier fields are optional and are coerced/validated on import.
+
 ## Token Model
 
 Manual automation tokens are user-owned and revocable:

@@ -1,7 +1,7 @@
 import { getAgentByName } from "agents";
 import { getContainer } from "@cloudflare/containers";
 import type { UserProfile } from "../shared/types";
-import type { ImportPayload } from "../shared/types";
+import type { AuctionListing, ImportPayload } from "../shared/types";
 import { AuthError, isBootstrapOwnerId, primaryBootstrapOwnerId, requirePublisher, requireUser } from "./auth";
 import {
   acceptInvite,
@@ -37,6 +37,8 @@ import {
   listOAuthAccessTokens,
   markAgentRunFailed,
   markAgentRunPublished,
+  mergeListingsIntoRun,
+  publishedRunIdForAgentRun,
   listAutomationTokens,
   recordAiUsageEvent,
   recordAutomationEvent,
@@ -371,6 +373,8 @@ async function handleAdmin(request: Request, env: Env, ctx: ExecutionContext, ur
       };
     }>(request);
     const task = await completeRunnerTask(env.DB, decodeURIComponent(runnerTaskCompleteMatch[1]), body);
+    const mergedImages = await mergeRunnerResultIntoRun(env, task, normalizeRecord(body.result));
+    if (mergedImages.length) ctx.waitUntil(prewarmImportedImages(env, mergedImages));
     if (body.aiUsage) {
       await recordAiUsageEvent(env.DB, {
         ...body.aiUsage,
@@ -547,6 +551,36 @@ function automationEndpoints(request: Request): { mcpEndpoint: string; bundleEnd
   };
 }
 
+/**
+ * Merges a completed runner task's listings into the user's already-published
+ * run so iOS/PWA pick up the runner's dossier/detail. Inert today — the
+ * deterministic scaffold returns no candidates. Returns image rows to prewarm.
+ */
+async function mergeRunnerResultIntoRun(
+  env: Env,
+  task: { agentRunId?: string | null },
+  result: Record<string, unknown>,
+): Promise<Array<{ listingKey: string; imageKey: string; sourceUrl: string; r2Key: string }>> {
+  const candidates = Array.isArray(result.normalizedCandidates) ? result.normalizedCandidates : [];
+  if (!candidates.length || !task.agentRunId) return [];
+  const runId = await publishedRunIdForAgentRun(env.DB, task.agentRunId);
+  // Workflow may not have published yet; future work: reconcile on publish.
+  if (!runId) return [];
+  const listings = candidates.filter(isRecord).map(runnerCandidateToListing);
+  if (!listings.length) return [];
+  const merged = await mergeListingsIntoRun(env.DB, runId, listings);
+  return merged.images;
+}
+
+// TODO(runner): the deterministic scaffold emits no candidates. When
+// BEACHCAR_RUNNER_MODE=codex produces real output, map its candidate shape to a
+// Partial<AuctionListing> here (reusing the dossier assembly from
+// listingFromCandidate). Candidates are expected to be listing-shaped, so
+// normalizeListing() inside mergeListingsIntoRun coerces them safely today.
+function runnerCandidateToListing(candidate: Record<string, unknown>): Partial<AuctionListing> {
+  return candidate as Partial<AuctionListing>;
+}
+
 async function runRunnerTaskInContainer(env: Env, taskId: string): Promise<unknown> {
   const runnerId = "cloudflare-container";
   const task = await claimRunnerTask(env.DB, { taskId, runnerId });
@@ -585,6 +619,8 @@ async function runRunnerTaskInContainer(env: Env, taskId: string): Promise<unkno
 
   const result = normalizeRecord(runnerResponse.result || runnerResponse);
   const completed = await completeRunnerTask(env.DB, task.id, { runnerId, result });
+  const mergedImages = await mergeRunnerResultIntoRun(env, completed, result);
+  if (mergedImages.length) await prewarmImportedImages(env, mergedImages);
   if (isRecord(runnerResponse.aiUsage)) {
     await recordAiUsageEvent(env.DB, {
       ...runnerResponse.aiUsage,

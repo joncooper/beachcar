@@ -1,7 +1,7 @@
-const SHELL_CACHE = "beachcar-watch-shell-v2";
+const SHELL_CACHE = "beachcar-watch-shell-v3";
 const IMAGE_CACHE = "beachcar-watch-images-v1";
 const MAX_IMAGE_CACHE_ENTRIES = 180;
-const SHELL_ASSETS = ["/", "/manifest.webmanifest", "/icon.svg"];
+const SHELL_ASSETS = ["/", "/manifest.webmanifest", "/icon-192.png", "/apple-touch-icon.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.addAll(SHELL_ASSETS)));

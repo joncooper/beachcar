@@ -70,6 +70,12 @@ describe("source discovery", () => {
       ]),
     );
     expect(result.reportMarkdown).toContain("Live source candidates were parsed");
+
+    // Built-in path assembles a dossier with a deterministic 0..1 valueScore + specs.
+    const thing = result.listings.find((listing) => listing.title === "1974 Volkswagen Thing");
+    expect(thing?.dossier?.valueScore).toBeGreaterThanOrEqual(0);
+    expect(thing?.dossier?.valueScore).toBeLessThanOrEqual(1);
+    expect(thing?.dossier?.specs).toMatchObject({ seller: "Bring a Trailer", lot: "Volkswagen Thing" });
   });
 
   it("adds RSS sweep candidates even when keyword pages have live matches", async () => {
@@ -161,6 +167,8 @@ describe("source discovery", () => {
                   section: "AI strong fits",
                   why: "Cleaner family beach runabout.",
                   concerns: "Confirm rust and soft-top condition.",
+                  valueScore: 0.42,
+                  summary: "Tidy family-friendly open 4x4 at a fair number.",
                 },
                 {
                   url: thing?.candidate.url || "",
@@ -195,6 +203,9 @@ describe("source discovery", () => {
     });
     expect(result.listings[0]?.why).toContain("AI fit note: Cleaner family beach runabout.");
     expect(result.listings[0]?.concerns).toContain("AI caution: Confirm rust and soft-top condition.");
+    // AI valueScore/summary override the deterministic dossier values.
+    expect(result.listings[0]?.dossier?.valueScore).toBeCloseTo(0.42);
+    expect(result.listings[0]?.dossier?.summary).toBe("Tidy family-friendly open 4x4 at a fair number.");
   });
 
   it("parses Bring a Trailer RSS items as a broad fallback", () => {

@@ -95,7 +95,10 @@ final class BeachcarStore: ObservableObject {
 
   private func apply(payload: RunPayload) {
     run = payload
-    var overlay = Dictionary(uniqueKeysWithValues: payload.feedback.map { ($0.listingKey, $0) })
+    var overlay: [String: FeedbackRecord] = [:]
+    for feedback in payload.feedback {
+      overlay[feedback.listingKey] = feedback
+    }
     for listing in payload.listings {
       if let feedback = listing.feedback {
         overlay[listing.key] = feedback

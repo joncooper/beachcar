@@ -96,12 +96,7 @@ struct RootView: View {
 
   @ViewBuilder
   private var signedInView: some View {
-    if accountIsLoading && user == nil {
-      AccountLoadingView()
-        .task {
-          await loadAccountIfNeeded()
-        }
-    } else if let user {
+    if let user {
       switch user.status {
       case .disabled:
         DisabledAccountView(email: user.email, error: accountError)
@@ -170,6 +165,10 @@ struct RootView: View {
       user = try await store.api.me(authToken: token)
       accountError = nil
     } catch {
+      guard !Self.isCancellation(error) else {
+        accountError = nil
+        return
+      }
       accountError = error.localizedDescription
     }
   }
@@ -194,6 +193,7 @@ struct RootView: View {
       inviteCode = ""
       accountError = nil
     } catch {
+      guard !Self.isCancellation(error) else { return }
       accountError = error.localizedDescription
     }
   }
@@ -212,6 +212,7 @@ struct RootView: View {
       user = try await store.api.putSourceSettings(input: input.sourceSettings, authToken: token)
       accountError = nil
     } catch {
+      guard !Self.isCancellation(error) else { return }
       accountError = error.localizedDescription
     }
   }
@@ -247,6 +248,14 @@ struct RootView: View {
     return value.isEmpty ? nil : value
   }
   #endif
+
+  private static func isCancellation(_ error: Error) -> Bool {
+    if error is CancellationError {
+      return true
+    }
+    let nsError = error as NSError
+    return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
+  }
 }
 
 private extension RootView {

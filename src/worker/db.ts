@@ -2248,7 +2248,23 @@ export async function getFeedback(db: D1Database, scope: UserScope): Promise<Fee
     .prepare(`SELECT * FROM feedback WHERE ${feedbackWhere} ORDER BY updated_at DESC`)
     .bind(scope.userId)
     .all<FeedbackRow>();
-  return results.map(feedbackFromRow);
+  const byListingKey = new Map<string, FeedbackRow>();
+  for (const row of results) {
+    const existing = byListingKey.get(row.listing_key);
+    if (!existing || feedbackRowWins(row, existing, scope.userId)) {
+      byListingKey.set(row.listing_key, row);
+    }
+  }
+  return [...byListingKey.values()].map(feedbackFromRow);
+}
+
+function feedbackRowWins(candidate: FeedbackRow, existing: FeedbackRow, userId: string): boolean {
+  const candidateIsUserScoped = candidate.user_id === userId;
+  const existingIsUserScoped = existing.user_id === userId;
+  if (candidateIsUserScoped !== existingIsUserScoped) {
+    return candidateIsUserScoped;
+  }
+  return Date.parse(candidate.updated_at) > Date.parse(existing.updated_at);
 }
 
 export async function upsertFeedback(

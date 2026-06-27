@@ -104,6 +104,7 @@ struct AuctionAPI {
   ) async throws -> T {
     var request = URLRequest(url: URL(string: path, relativeTo: baseURL)!.absoluteURL)
     request.httpMethod = method
+    request.cachePolicy = .reloadIgnoringLocalCacheData
     request.setValue("application/json", forHTTPHeaderField: "Accept")
 
     if let token = authToken {

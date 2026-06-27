@@ -15,7 +15,7 @@ final class BeachcarStore: ObservableObject {
   private let offlineMode: Bool
   private var prefetchTask: Task<Void, Never>?
   private static let pendingPreferenceNotesKey = "beachcar.pendingPreferenceNotes.v1"
-  private static let latestRunCachePrefix = "beachcar.latestRun.v2"
+  private static let latestRunCachePrefix = "beachcar.latestRun.v3"
 
   init(
     api: AuctionAPI = AuctionAPI(baseURL: AppConfig.auctionBaseURL),

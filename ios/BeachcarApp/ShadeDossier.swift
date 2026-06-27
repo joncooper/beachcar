@@ -11,7 +11,10 @@ struct ShadeDossierOverlay: View {
   let geo: FeedGeometry
   let onNote: (String) -> Void
 
-  private var dist: CGFloat { hypot(controller.dThrow.width, controller.dThrow.height) }
+  private var dist: CGFloat {
+    if let fly = controller.dFly { return hypot(fly.width, fly.height) }
+    return hypot(controller.dThrow.width, controller.dThrow.height)
+  }
   private var lifted: Bool { controller.dDragging || controller.dFly != nil }
 
   private var offset: CGSize {
@@ -25,13 +28,19 @@ struct ShadeDossierOverlay: View {
     return 0
   }
   private var rootOpacity: Double {
-    controller.dFly != nil ? 0 : Double(clamp(1 - dist / 950, 0.5, 1))
+    Double(clamp(1 - dist / 1_250, controller.dFly == nil ? 0.5 : 0.14, 1))
   }
 
   private var throwGesture: some Gesture {
     DragGesture(minimumDistance: 6)
       .onChanged { controller.dossierDragChanged($0) }
       .onEnded { controller.dossierDragEnded($0) }
+  }
+
+  private var bodyThrowGesture: some Gesture {
+    DragGesture(minimumDistance: 16)
+      .onChanged { controller.dossierBodyDragChanged($0) }
+      .onEnded { controller.dossierBodyDragEnded($0) }
   }
 
   var body: some View {
@@ -49,6 +58,7 @@ struct ShadeDossierOverlay: View {
         }
         .scrollIndicators(.hidden)
         .simultaneousGesture(TapGesture(count: 2).onEnded { controller.throwClose(ux: 0, uy: -1, dx: 0) })
+        .simultaneousGesture(bodyThrowGesture)
       }
       .frame(width: geo.width, height: geo.height)
       .background(Color(hex: 0x0c0d10))
@@ -352,6 +362,19 @@ struct ShadeDossierOverlay: View {
           }
           .padding(.top, 15)
           .overlay(alignment: .top) { Rectangle().fill(BC.border).frame(height: 1) }
+        } else if let url = URL(string: car.url) {
+          Link(destination: url) {
+            HStack(spacing: 9) {
+              Image(systemName: "chart.line.uptrend.xyaxis").font(.system(size: 13, weight: .bold)).foregroundStyle(BC.accent)
+              Text("Detailed bid history was not published in this run. Open the live listing.")
+                .font(.archivo(12.5, .semibold))
+                .foregroundStyle(BC.white.opacity(0.74))
+              Spacer(minLength: 8)
+              Image(systemName: "arrow.up.right").font(.system(size: 11, weight: .bold)).foregroundStyle(BC.accent)
+            }
+            .padding(.top, 15)
+            .overlay(alignment: .top) { Rectangle().fill(BC.border).frame(height: 1) }
+          }
         }
       }
     }
@@ -382,7 +405,7 @@ struct ShadeDossierOverlay: View {
         } else if let url = URL(string: car.url) {
           Link(destination: url) {
             HStack {
-              Text("Read \(count) comments on \(car.site)").font(.archivo(13, .semibold)).foregroundStyle(BC.white.opacity(0.8))
+              Text("Comment excerpts were not published in this run. Read \(count) comments on \(car.site).").font(.archivo(13, .semibold)).foregroundStyle(BC.white.opacity(0.8))
               Spacer()
               Image(systemName: "arrow.up.right").font(.system(size: 12, weight: .bold)).foregroundStyle(BC.accent)
             }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   discoverAndScoreCandidates,
+  parseBringATrailerDetailPage,
   parseBringATrailerLiveListings,
   parseBringATrailerRssFeed,
   type DiscoveryContext,
@@ -41,6 +42,40 @@ describe("source discovery", () => {
     expect(listings[0]?.imageUrls[0]).toContain("?w=470&h=318&crop=1");
   });
 
+  it("parses Bring a Trailer detail pages into a rich dossier", () => {
+    const detail = parseBringATrailerDetailPage(batDetailHtml());
+
+    expect(detail).toMatchObject({
+      location: "Charleston, South Carolina",
+      bids: 38,
+      bidders: 12,
+      comments: 36,
+      imageUrls: expect.arrayContaining([
+        "https://bringatrailer.com/wp-content/uploads/2026/06/thing-hero.jpg?w=1200",
+        "https://bringatrailer.com/wp-content/uploads/2026/06/thing-undercarriage.jpg?w=900",
+      ]),
+      dossier: {
+        summary: "Removable-roof family 4x4 with honest paint and recent soft-top work.",
+        specs: {
+          odometer: "62,400 miles",
+          engine: "350ci V8",
+          transmission: "3-speed automatic",
+          title: "Clean South Carolina title",
+          seller: "lowcountry_blazer",
+          lot: "BaT Auction 123456",
+        },
+        listing: [
+          "This K5 Blazer is finished in dark green over tan vinyl and is powered by a 350ci V8 paired with a three-speed automatic transmission.",
+          "Equipment includes a removable hardtop, front bucket seats, rear bench, air conditioning, and 15-inch Rally wheels.",
+        ],
+        equipment: ["Removable hardtop", "Front bucket seats and rear bench", "15-inch Rally wheels"],
+        service: ["2025 - soft top seals replaced", "2024 - brake service and oil change"],
+        bidLog: [{ bidder: "beach4x4", amount: "$8,500", ago: "2h" }],
+        comments: [{ user: "lowcountry_blazer", body: "The floors are original and photos of the underside were added today.", ago: "1h", seller: true }],
+      },
+    });
+  });
+
   it("discovers, scores, and reports blocked sources", async () => {
     const fetchImpl = async (input: string): Promise<Response> => {
       if (input.includes("/volkswagen/thing/")) return new Response(batLiveHtml("1974 Volkswagen Thing", "USD $8,295"));
@@ -76,6 +111,47 @@ describe("source discovery", () => {
     expect(thing?.dossier?.valueScore).toBeGreaterThanOrEqual(0);
     expect(thing?.dossier?.valueScore).toBeLessThanOrEqual(1);
     expect(thing?.dossier?.specs).toMatchObject({ seller: "Bring a Trailer", lot: "Volkswagen Thing" });
+  });
+
+  it("enriches shortlisted BaT candidates with detail-page dossier data", async () => {
+    const fetchImpl = async (input: string): Promise<Response> => {
+      if (input.includes("/listing/1974-volkswagen-thing/")) return new Response(batDetailHtml());
+      if (input.includes("/volkswagen/thing/")) return new Response(batLiveHtml("1974 Volkswagen Thing", "USD $8,295"));
+      if (input.includes("carsandbids.com")) return new Response("<title>Just a moment...</title>");
+      return new Response(`<div class="listings-live"></div><div class="auctions-completed"></div>`);
+    };
+
+    const result = await discoverAndScoreCandidates(
+      context,
+      { runId: "agent-run-detail-test", source: "manual", reason: "test" },
+      { fetchImpl, now: new Date("2026-06-25T12:00:00Z") },
+    );
+
+    const thing = result.listings.find((listing) => listing.title === "1974 Volkswagen Thing");
+    expect(thing).toMatchObject({
+      location: "Charleston, South Carolina",
+      bids: 38,
+      bidders: 12,
+      comments: 36,
+    });
+    expect(thing?.images).toEqual(
+      expect.arrayContaining([
+        "https://bringatrailer.com/wp-content/uploads/2026/06/1974_thing.jpg?w=470&h=318&crop=1",
+        "https://bringatrailer.com/wp-content/uploads/2026/06/thing-hero.jpg?w=1200",
+      ]),
+    );
+    expect(thing?.dossier?.listing).toHaveLength(2);
+    expect(thing?.dossier?.bidLog?.[0]).toMatchObject({ bidder: "beach4x4", amount: "$8,500" });
+    expect(thing?.dossier?.comments?.[0]).toMatchObject({ user: "lowcountry_blazer", seller: true });
+    expect(result.checkedSources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "bringatrailer-detail",
+          status: "ok",
+          candidateCount: 1,
+        }),
+      ]),
+    );
   });
 
   it("adds RSS sweep candidates even when keyword pages have live matches", async () => {
@@ -254,5 +330,66 @@ function batLiveHtml(title: string, bid: string): string {
       </div>
     </div>
     <div class="auctions-completed page-section"></div>
+  `;
+}
+
+function batDetailHtml(): string {
+  return `
+    <html>
+      <head>
+        <meta property="og:description" content="Removable-roof family 4x4 with honest paint and recent soft-top work." />
+        <meta property="og:image" content="https://bringatrailer.com/wp-content/uploads/2026/06/thing-hero.jpg?w=1200" />
+      </head>
+      <body>
+        <section class="listing-essentials">
+          <dl>
+            <dt>Location</dt><dd>Charleston, South Carolina</dd>
+            <dt>Odometer</dt><dd>62,400 miles</dd>
+            <dt>Engine</dt><dd>350ci V8</dd>
+            <dt>Transmission</dt><dd>3-speed automatic</dd>
+            <dt>Title</dt><dd>Clean South Carolina title</dd>
+            <dt>Seller</dt><dd>lowcountry_blazer</dd>
+            <dt>Lot</dt><dd>BaT Auction 123456</dd>
+          </dl>
+          <p class="stats">38 bids 12 bidders 36 comments</p>
+        </section>
+
+        <div class="post-content">
+          <p>This K5 Blazer is finished in dark green over tan vinyl and is powered by a 350ci V8 paired with a three-speed automatic transmission.</p>
+          <p>Equipment includes a removable hardtop, front bucket seats, rear bench, air conditioning, and 15-inch Rally wheels.</p>
+        </div>
+
+        <h2>Equipment</h2>
+        <ul>
+          <li>Removable hardtop</li>
+          <li>Front bucket seats and rear bench</li>
+          <li>15-inch Rally wheels</li>
+        </ul>
+
+        <h2>Recent Service</h2>
+        <ul>
+          <li>2025 - soft top seals replaced</li>
+          <li>2024 - brake service and oil change</li>
+        </ul>
+
+        <ul class="bid-history">
+          <li class="bid-history-item">
+            <span class="bidder">beach4x4</span>
+            <span class="amount">$8,500</span>
+            <time class="ago">2h</time>
+          </li>
+        </ul>
+
+        <section class="comments">
+          <article class="comment-item seller">
+            <span class="comment-author">lowcountry_blazer</span>
+            <time class="ago">1h</time>
+            <p class="comment-content">The floors are original and photos of the underside were added today.</p>
+          </article>
+        </section>
+
+        <img src="https://bringatrailer.com/wp-content/uploads/2026/06/thing-undercarriage.jpg?w=900" />
+      </body>
+    </html>
   `;
 }

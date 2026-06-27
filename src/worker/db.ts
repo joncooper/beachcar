@@ -2795,24 +2795,70 @@ function randomBase64Url(byteLength: number): string {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
-function withImageOverlay(listing: AuctionListing, imageRows: ImageRow[]): AuctionListing {
+export function withImageOverlay(listing: AuctionListing, imageRows: ImageRow[]): AuctionListing {
   const rowsBySource = new Map(imageRows.map((row) => [row.source_url, row]));
+  const rowsByCanonical = new Map<string, ImageRow>();
+  for (const row of imageRows) {
+    const canonical = canonicalImageSourceUrl(row.source_url);
+    const existing = rowsByCanonical.get(canonical);
+    if (!existing || (existing.status !== "copied" && row.status === "copied")) {
+      rowsByCanonical.set(canonical, row);
+    }
+  }
   const imageStatus: ImageStatus[] = [];
-  const images = listing.images.map((sourceUrl) => {
-    const row = rowsBySource.get(sourceUrl);
-    if (!row) return sourceUrl;
+  const seenSources = new Set<string>();
+  const seenImageKeys = new Set<string>();
+
+  const addRow = (row: ImageRow): string | null => {
+    const canonical = canonicalImageSourceUrl(row.source_url);
+    if (seenSources.has(canonical) || seenImageKeys.has(row.image_key)) return null;
+    seenSources.add(canonical);
+    seenImageKeys.add(row.image_key);
     const localUrl = `/api/images/${encodeURIComponent(row.image_key)}?variant=deck`;
     imageStatus.push({
       imageKey: row.image_key,
-      sourceUrl,
+      sourceUrl: row.source_url,
       url: localUrl,
       copied: row.status === "copied",
       status: row.status,
       error: row.error,
     });
     return localUrl;
+  };
+
+  const images = listing.images.flatMap((sourceUrl) => {
+    const canonical = canonicalImageSourceUrl(sourceUrl);
+    const row = rowsByCanonical.get(canonical) || rowsBySource.get(sourceUrl);
+    if (!row) {
+      seenSources.add(canonical);
+      return [sourceUrl];
+    }
+    const localUrl = addRow(row);
+    return localUrl ? [localUrl] : [];
   });
+
+  for (const row of imageRows) {
+    if (row.status !== "copied") continue;
+    const localUrl = addRow(row);
+    if (localUrl) images.push(localUrl);
+  }
+
   return { ...listing, originalImages: listing.images, images, imageStatus };
+}
+
+function canonicalImageSourceUrl(sourceUrl: string): string {
+  try {
+    const url = new URL(sourceUrl);
+    if (url.hostname === "media.carsandbids.com" && url.pathname.startsWith("/cdn-cgi/image/")) {
+      const parts = url.pathname.split("/");
+      if (parts.length > 4) {
+        url.pathname = `/${parts.slice(4).join("/")}`;
+      }
+    }
+    return url.toString();
+  } catch {
+    return sourceUrl;
+  }
 }
 
 function feedbackFromRow(row: FeedbackRow): FeedbackRecord {

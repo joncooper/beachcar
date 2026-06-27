@@ -57,6 +57,7 @@ final class ShadeController: ObservableObject {
   private var dossierTapWork: DispatchWorkItem?
   private var lastTap: Date = .distantPast
   private var lastDossierTap: Date = .distantPast
+  private var dossierBodyThrowing = false
 
   let trayActions: [FeedbackAction] = [.hide, .avoid, .like, .star]
 
@@ -245,6 +246,7 @@ final class ShadeController: ObservableObject {
     dFlyRotation = 0
     dThrow = .zero
     dDragging = false
+    dossierBodyThrowing = false
     showHint = false
     withAnimation(.spring(duration: 0.3)) { dossierOpen = true }
   }
@@ -256,14 +258,39 @@ final class ShadeController: ObservableObject {
 
   func dossierDragEnded(_ value: DragGesture.Value) {
     dDragging = false
-    let dist = hypot(value.translation.width, value.translation.height)
-    let speed = hypot(value.velocity.width, value.velocity.height)
-    if dist > 110 || speed > 700 {
-      let angle = atan2(value.translation.height, value.translation.width)
-      throwClose(ux: cos(angle), uy: sin(angle), dx: value.translation.width)
+    let intent = dossierThrowIntent(value)
+    if intent.shouldClose {
+      throwClose(ux: intent.ux, uy: intent.uy, dx: intent.dx)
     } else {
       withAnimation(.spring(duration: 0.3)) { dThrow = .zero }
     }
+  }
+
+  func dossierBodyDragChanged(_ value: DragGesture.Value) {
+    let dx = value.translation.width
+    let dy = value.translation.height
+    let dist = hypot(dx, dy)
+    if !dossierBodyThrowing {
+      let horizontal = abs(dx) > 30 && abs(dx) > abs(dy) * 0.72
+      let diagonal = dist > 76 && abs(dx) > 24 && abs(dy) > 24
+      let predicted = value.predictedEndTranslation
+      let predictedDist = hypot(predicted.width, predicted.height)
+      let predictedDiagonal = predictedDist > 190 && abs(predicted.width) > 34 && abs(predicted.height) > 34
+      let fastFlick = dossierThrowIntent(value).shouldClose && abs(value.velocity.width) > abs(value.velocity.height) * 0.42
+      guard horizontal || diagonal || predictedDiagonal || fastFlick else { return }
+      dossierBodyThrowing = true
+    }
+    dossierDragChanged(value)
+  }
+
+  func dossierBodyDragEnded(_ value: DragGesture.Value) {
+    guard dossierBodyThrowing else {
+      dDragging = false
+      withAnimation(.spring(duration: 0.24)) { dThrow = .zero }
+      return
+    }
+    dossierBodyThrowing = false
+    dossierDragEnded(value)
   }
 
   func dossierBodyTap() {
@@ -295,9 +322,37 @@ final class ShadeController: ObservableObject {
       self?.dossierOpen = false
       self?.dFly = nil
       self?.dFlyRotation = 0
+      self?.dossierBodyThrowing = false
     }
     flyWork = fw
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: fw)
+  }
+
+  private func dossierThrowIntent(_ value: DragGesture.Value) -> (shouldClose: Bool, ux: CGFloat, uy: CGFloat, dx: CGFloat) {
+    let translation = value.translation
+    let predicted = value.predictedEndTranslation
+    let velocity = value.velocity
+    let dist = hypot(translation.width, translation.height)
+    let predictedDist = hypot(predicted.width, predicted.height)
+    let speed = hypot(velocity.width, velocity.height)
+    let shouldClose = dist > 110 || predictedDist > 185 || speed > 720
+
+    let direction: CGSize
+    if predictedDist > max(dist + 28, 48) {
+      direction = predicted
+    } else if dist > 10 {
+      direction = translation
+    } else {
+      direction = velocity
+    }
+
+    let directionDist = max(hypot(direction.width, direction.height), 1)
+    return (
+      shouldClose: shouldClose,
+      ux: direction.width / directionDist,
+      uy: direction.height / directionDist,
+      dx: direction.width
+    )
   }
 
   // MARK: list
@@ -324,7 +379,7 @@ struct FeedGeometry {
   var height: CGFloat { size.height }
 
   let chromeHeight: CGFloat = 50
-  let photoHeight: CGFloat = 238
+  var photoHeight: CGFloat { clamp(size.height * 0.31, 238, 310) }
 
   var photoTop: CGFloat { safeTop + chromeHeight }
   var photoBottom: CGFloat { photoTop + photoHeight }

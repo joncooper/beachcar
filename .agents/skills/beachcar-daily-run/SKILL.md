@@ -23,6 +23,7 @@ Authenticate with the Beachcar automation token as a Bearer token. The token is 
 3. Gather candidates with MCP source tools first. Use `search_bat_cache` for Bring a Trailer public RSS candidates.
 4. Use browser-capable cloud-agent tools only when a source requires rendered pages or user/session access.
 5. Normalize candidates into the Beachcar listing shape. Call `submit_candidates` before publishing if data came from scraping or manual extraction.
+   - For every shortlisted listing where the detail page is reachable, collect enough rich detail to populate `dossier.summary`, `dossier.bidLog`, and `dossier.comments`. These fields power the first-screen read and the native dossier. Omit only fields that are absent, blocked, or unverifiable.
 6. Record model/tool usage with `record_usage` after every meaningful AI or browser-harness call. Include provider, model/tool name, token counts, status, and estimated cost when available. Use `status: "cached"` and zero cost for deterministic MCP cache reads.
 7. Publish the final shortlist with `publish_run`. Include `reportMarkdown`, `sourceSummary`, and useful source image URLs.
 8. Call `verify_latest_run` and confirm the published run id, listing count, and first listings.
@@ -60,7 +61,7 @@ Valid lanes are `family`, `solo`, and `curiosity`.
 
 ### Optional `dossier` (rich detail)
 
-When you read the listing's detail page, attach an optional `dossier` object to power the app's full detail view. Every field is optional — include what you can verify, omit the rest. The shape:
+When you read the listing's detail page, attach an optional `dossier` object to power the app's full detail view. Every field is optional — include what you can verify, omit the rest. Prioritize a concise `summary`, recent `bidLog`, and representative `comments` for every final pick because the app has dedicated UI for those fields. The shape:
 
 ```json
 "dossier": {

@@ -107,6 +107,8 @@ private struct PhotoStrip: View {
       }
       .frame(width: geo.width * CGFloat(count), alignment: .leading)
       .offset(x: stripOffset)
+      .frame(width: geo.width, height: geo.photoHeight, alignment: .leading)
+      .clipped()
       .animation(controller.dragging && controller.mode == .photos && isCurrent ? nil : .photoSpring,
                  value: photoIdx)
 
@@ -199,11 +201,16 @@ private struct InfoSheet: View {
       Text("“\(car.why)”")
         .font(.archivo(14.5, .medium))
         .foregroundStyle(BC.white.opacity(0.86))
-        .lineSpacing(3)
+        .lineSpacing(2)
+        .lineLimit(3)
         .fixedSize(horizontal: false, vertical: true)
         .padding(.top, 11)
 
-      Spacer(minLength: 12)
+      AgentReadPanel(car: car)
+        .padding(.top, 12)
+
+      WatchPointsPanel(car: car)
+        .padding(.top, 10)
 
       // Bid row
       HStack(alignment: .bottom) {
@@ -226,7 +233,7 @@ private struct InfoSheet: View {
             .background(BC.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
         }
       }
-      .padding(.top, 18)
+      .padding(.top, 15)
 
       // Value meter
       VStack(alignment: .leading, spacing: 0) {
@@ -238,11 +245,137 @@ private struct InfoSheet: View {
           .font(.archivo(12.5, .medium))
           .padding(.top, 9)
       }
-      .padding(.top, 13)
+      .padding(.top, 11)
     }
     .padding(EdgeInsets(top: 15, leading: 20, bottom: 18, trailing: 20))
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     .background(BC.bg)
+  }
+}
+
+private struct WatchPointsPanel: View {
+  let car: AuctionListing
+
+  private var checks: String {
+    car.concernList
+      .prefix(2)
+      .joined(separator: " / ")
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(spacing: 7) {
+        metricCell(label: "FAIR", value: compactMarketCopy(car.fair), color: BC.white.opacity(0.78))
+        metricCell(label: "STOP", value: compactMarketCopy(car.ceiling), color: BC.danger.opacity(0.9))
+        metricCell(label: "ENDS", value: car.shadeTime, color: BC.star.opacity(0.92))
+      }
+
+      if !checks.isEmpty {
+        HStack(alignment: .firstTextBaseline, spacing: 7) {
+          Image(systemName: "checklist")
+            .font(.system(size: 10.5, weight: .bold))
+            .foregroundStyle(BC.accent)
+          Text(checks)
+            .font(.archivo(11.8, .semibold))
+            .foregroundStyle(BC.white.opacity(0.68))
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+          Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 3)
+      }
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 9)
+    .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: 13, style: .continuous)
+        .stroke(BC.border.opacity(0.72), lineWidth: 1)
+    }
+  }
+
+  private func metricCell(label: String, value: String, color: Color) -> some View {
+    VStack(alignment: .leading, spacing: 2) {
+      Text(label)
+        .font(.mono(8.5, bold: true))
+        .tracking(0.5)
+        .foregroundStyle(BC.muted)
+      Text(value)
+        .font(.archivo(11.5, .extrabold))
+        .foregroundStyle(color)
+        .lineLimit(1)
+        .minimumScaleFactor(0.66)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(.horizontal, 9)
+    .padding(.vertical, 7)
+    .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+  }
+}
+
+private struct AgentReadPanel: View {
+  let car: AuctionListing
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 9) {
+      HStack(spacing: 8) {
+        Image(systemName: "doc.text.magnifyingglass")
+          .font(.system(size: 12, weight: .black))
+          .foregroundStyle(BC.accent)
+        Text("AGENT READ")
+          .font(.mono(9.5, bold: true))
+          .tracking(0.7)
+          .foregroundStyle(BC.muted)
+        Spacer()
+        if let take = car.currentTake?.trimmedForDisplay, !take.isEmpty {
+          Text(take.uppercased())
+            .font(.mono(8.5, bold: true))
+            .tracking(0.5)
+            .foregroundStyle(BC.accent)
+            .lineLimit(1)
+        }
+      }
+
+      Text(car.frontSummary)
+        .font(.archivo(13.5, .medium))
+        .foregroundStyle(BC.white.opacity(0.78))
+        .lineSpacing(2)
+        .lineLimit(4)
+        .fixedSize(horizontal: false, vertical: true)
+
+      HStack(spacing: 7) {
+        engagementPill(icon: Icon.bidding, value: car.bids, label: "bids")
+        engagementPill(icon: "person.3.fill", value: car.bidders, label: "bidders")
+        engagementPill(icon: Icon.comments, value: car.comments, label: "comments")
+      }
+    }
+    .padding(.horizontal, 13)
+    .padding(.vertical, 12)
+    .background(BC.panel.opacity(0.78), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: 15, style: .continuous)
+        .stroke(BC.border.opacity(0.9), lineWidth: 1)
+    }
+  }
+
+  private func engagementPill(icon: String, value: String?, label: String) -> some View {
+    HStack(spacing: 5) {
+      Image(systemName: icon)
+        .font(.system(size: 9.5, weight: .bold))
+      Text("\(normalized(value)) \(label)")
+        .font(.mono(9.5, bold: true))
+        .lineLimit(1)
+        .minimumScaleFactor(0.72)
+    }
+    .foregroundStyle(BC.white.opacity(0.66))
+    .frame(maxWidth: .infinity)
+    .padding(.vertical, 6)
+    .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+  }
+
+  private func normalized(_ value: String?) -> String {
+    let trimmed = value?.trimmedForDisplay ?? ""
+    return trimmed.isEmpty ? "check" : trimmed
   }
 }
 

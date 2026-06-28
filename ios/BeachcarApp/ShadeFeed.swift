@@ -180,7 +180,7 @@ private struct InfoSheet: View {
         }
         Spacer(minLength: 6)
         Label {
-          Text(car.location ?? "—")
+          Text(car.displayLocationLabel)
         } icon: {
           Image(systemName: Icon.location)
         }

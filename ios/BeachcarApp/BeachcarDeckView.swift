@@ -609,7 +609,7 @@ private struct ListingListRow: View {
           .foregroundStyle(BeachcarColors.ink)
 
         HStack(spacing: 8) {
-          Label(listing.location ?? "Location check", systemImage: "mappin.and.ellipse")
+          Label(listing.displayLocationLabel, systemImage: "mappin.and.ellipse")
             .lineLimit(1)
           Spacer(minLength: 4)
           Text(listing.total)
@@ -692,7 +692,7 @@ private extension AuctionListing {
       lane.rawValue,
       discoveryKind,
       wildcardReason,
-      location,
+      displayLocation,
       currentTake,
       why,
       concerns,

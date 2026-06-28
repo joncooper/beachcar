@@ -272,7 +272,7 @@ struct ListingCardView: View {
   }
 
   private var locationLabel: String {
-    listing.location ?? "Location check"
+    listing.displayLocationLabel
   }
 
   private func save(_ action: FeedbackAction) async {

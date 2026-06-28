@@ -111,7 +111,7 @@ struct ListingDetailBackView: View {
         .lineLimit(2)
         .minimumScaleFactor(0.74)
         .fixedSize(horizontal: false, vertical: true)
-      Label(listing.location ?? "Location check", systemImage: "mappin.and.ellipse")
+      Label(listing.displayLocationLabel, systemImage: "mappin.and.ellipse")
         .font(.footnote.weight(.semibold))
         .foregroundStyle(BeachcarColors.secondary)
     }
@@ -137,7 +137,7 @@ struct ListingDetailBackView: View {
     Panel(title: "Use case", systemImage: "figure.2.and.child.holdinghands") {
       LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
         DetailBadge(systemImage: "beach.umbrella", title: "Beach run", value: listing.lane == .family ? "Family lane" : listing.lane.label)
-        DetailBadge(systemImage: "location", title: "Nearness", value: listing.location ?? "Check")
+        DetailBadge(systemImage: "location", title: "Nearness", value: listing.displayLocationLabel)
         DetailBadge(systemImage: "person.2", title: "Kids", value: "Confirm belts")
         DetailBadge(systemImage: "doc.text.magnifyingglass", title: "CT", value: "Title/registration")
       }

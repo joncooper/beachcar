@@ -349,8 +349,7 @@ export function parseBringATrailerDetailPage(html: string): CandidateDetailEnric
   const commentRows = detailComments(html).slice(0, 8);
   const location = firstNonEmpty(
     specs.location,
-    labeledValue(html, /location/i),
-    textFromClass(html, /listing-location|item-location|location/i),
+    locationFromHtml(html, [...listing, summary].filter(Boolean).join(" ")),
   );
   const bids = countLabel(html, /bids?/i);
   const comments = countLabel(html, /comments?/i);
@@ -555,7 +554,7 @@ function mergeDetail(scored: ScoredCandidate, detail: CandidateDetailEnrichment)
     ...scored,
     candidate: {
       ...candidate,
-      ...(preferDetail(detail.location, candidate.location) ? { location: detail.location } : {}),
+      ...(detail.location ? { location: detail.location } : {}),
       ...(preferDetail(detail.bids, candidate.bids) ? { bids: detail.bids } : {}),
       ...(preferDetail(detail.bidders, candidate.bidders) ? { bidders: detail.bidders } : {}),
       ...(preferDetail(detail.comments, candidate.comments) ? { comments: detail.comments } : {}),
@@ -636,6 +635,7 @@ function candidateFromBatCard(card: string, page: { label: string; url: string }
   const bidNum = parseMoney(bid);
   const image = decodeHtml(firstMatch(card, /<img src="([^"]+)"[^>]*alt=/i));
   const excerpt = decodeHtml(stripHtml(firstMatch(card, /<div class="item-excerpt">([\s\S]*?)<\/div>/i) || ""));
+  const location = locationFromHtml(card);
 
   return {
     source: "bringatrailer",
@@ -646,7 +646,7 @@ function candidateFromBatCard(card: string, page: { label: string; url: string }
     bid,
     bidNum,
     total: bidNum ? `$${Math.round(bidNum * 1.05).toLocaleString()} incl. buyer fee estimate` : "Check listing",
-    location: "Check listing",
+    ...(location ? { location } : {}),
     endsAt,
     timeLeft: "check listing",
     bids: "check listing",
@@ -708,7 +708,7 @@ function detailImageUrls(html: string): string[] {
 }
 
 function detailSpecs(html: string): { location?: string; dossierSpecs?: ShadeDossierData["specs"] } {
-  const location = labeledValue(html, /location/i);
+  const location = locationFromHtml(html);
   const specs: NonNullable<ShadeDossierData["specs"]> = {};
   const fields: Array<[keyof NonNullable<ShadeDossierData["specs"]>, RegExp]> = [
     ["odometer", /odometer|mileage|miles/i],
@@ -729,6 +729,36 @@ function detailSpecs(html: string): { location?: string; dossierSpecs?: ShadeDos
     ...(location ? { location } : {}),
     ...(Object.keys(specs).length ? { dossierSpecs: specs } : {}),
   };
+}
+
+function locationFromHtml(html: string, textFallback?: string): string | undefined {
+  return firstNonEmpty(
+    labeledValue(html, /location/i),
+    locationClassText(html),
+    textFromClass(html, /listing-location|item-location|auction-location|vehicle-location|location/i),
+    locationFromText(textFallback || normalizeText(html)),
+  );
+}
+
+function locationClassText(html: string): string | undefined {
+  const match = html.match(/<[a-z0-9]+\b[^>]*class=["'][^"']*(?:listing-location|item-location|auction-location|vehicle-location)[^"']*["'][^>]*>([\s\S]*?)<\/[a-z0-9]+>/i);
+  return match?.[1] ? normalizeText(match[1]) : undefined;
+}
+
+function locationFromText(text: string): string | undefined {
+  const city = String.raw`[A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+)*`;
+  const state = String.raw`(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*|[A-Z]{2})`;
+  const place = String.raw`(${city},\s*${state})`;
+  const patterns = [
+    new RegExp(String.raw`\b(?:located|based|garaged)\s+in\s+${place}`, "i"),
+    new RegExp(String.raw`\boffered\s+(?:by\s+[^,.]{0,100}\s+)?(?:in|from)\s+${place}`, "i"),
+    new RegExp(String.raw`\b(?:seller|dealer)\s+(?:is\s+)?(?:located|based)?\s*(?:in|from)\s+${place}`, "i"),
+  ];
+  for (const pattern of patterns) {
+    const location = firstMatch(text, pattern);
+    if (location) return location;
+  }
+  return undefined;
 }
 
 function listItemsAfterHeading(html: string, label: RegExp): string[] {

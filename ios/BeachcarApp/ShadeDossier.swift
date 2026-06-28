@@ -112,7 +112,7 @@ struct ShadeDossierOverlay: View {
       VStack(alignment: .leading, spacing: 5) {
         Text(car.title).font(.archivo(23, .extrabold)).tracking(-0.4).foregroundStyle(BC.white)
           .fixedSize(horizontal: false, vertical: true)
-        Text("\(Image(systemName: Icon.location)) \(car.location ?? "—") · \(car.site)")
+        Text("\(Image(systemName: Icon.location)) \(car.displayLocationLabel) · \(car.site)")
           .font(.mono(11)).foregroundStyle(BC.white.opacity(0.72))
       }
       .padding(14)

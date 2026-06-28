@@ -37,6 +37,7 @@ describe("source discovery", () => {
       url: "https://bringatrailer.com/listing/1974-volkswagen-thing/",
       bid: "USD $8,295",
       bidNum: 8295,
+      location: "Downey, CA",
       noReserve: true,
     });
     expect(listings[0]?.imageUrls[0]).toContain("?w=470&h=318&crop=1");
@@ -74,6 +75,24 @@ describe("source discovery", () => {
         comments: [{ user: "lowcountry_blazer", body: "The floors are original and photos of the underside were added today.", ago: "1h", seller: true }],
       },
     });
+  });
+
+  it("extracts Bring a Trailer detail-page locations from listing prose", () => {
+    const detail = parseBringATrailerDetailPage(`
+      <html>
+        <head>
+          <meta property="og:description" content="Family-ready K5 with removable top." />
+        </head>
+        <body>
+          <div class="post-content">
+            <p>This 1973 Chevrolet K5 Blazer is finished in dark green over tan vinyl and is now offered by the selling dealer in Downey, California, with service records and a clean title.</p>
+            <p>Equipment includes a removable hardtop, front bucket seats, rear bench, and Rally wheels.</p>
+          </div>
+        </body>
+      </html>
+    `);
+
+    expect(detail.location).toBe("Downey, California");
   });
 
   it("discovers, scores, and reports blocked sources", async () => {
@@ -304,7 +323,7 @@ describe("source discovery", () => {
   });
 });
 
-function batLiveHtml(title: string, bid: string): string {
+function batLiveHtml(title: string, bid: string, location = "Downey, CA"): string {
   const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   const url = `https://bringatrailer.com/listing/${slug}/`;
   return `
@@ -318,6 +337,7 @@ function batLiveHtml(title: string, bid: string): string {
         </div>
         <div class="content-main">
           <h3><a href="${url}">${title}</a></h3>
+          <div class="item-location">${location}</div>
           <div class="item-tag item-tag-noreserve"><span>No Reserve</span></div>
           <div class="item-excerpt">This open-air beach-town runabout has a soft top and simple mechanicals.</div>
         </div>

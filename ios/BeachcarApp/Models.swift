@@ -394,7 +394,7 @@ struct AuctionListing: Codable, Identifiable, Hashable {
     url = try container.decodeIfPresent(String.self, forKey: .url) ?? ""
     bid = try container.decodeLossyStringIfPresent(forKey: .bid) ?? "Check listing"
     total = try container.decodeLossyStringIfPresent(forKey: .total) ?? "Check listing"
-    location = try container.decodeLossyStringIfPresent(forKey: .location)
+    location = AuctionListing.displayableLocation(try container.decodeLossyStringIfPresent(forKey: .location))
     endsAt = try container.decodeLossyStringIfPresent(forKey: .endsAt)
     ends = try container.decodeLossyStringIfPresent(forKey: .ends)
     timeLeft = try container.decodeLossyStringIfPresent(forKey: .timeLeft)
@@ -412,6 +412,26 @@ struct AuctionListing: Codable, Identifiable, Hashable {
     imageStatus = try container.decodeIfPresent([ListingImageStatus].self, forKey: .imageStatus) ?? []
     feedback = try container.decodeIfPresent(FeedbackRecord.self, forKey: .feedback)
     dossier = try container.decodeIfPresent(ShadeDossierData.self, forKey: .dossier)
+  }
+
+  static func displayableLocation(_ value: String?) -> String? {
+    guard let value else { return nil }
+    let text = value
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+    guard !text.isEmpty else { return nil }
+    let lower = text.lowercased()
+    if lower == "check" || lower == "location check" || lower == "check listing" || lower == "check the listing" { return nil }
+    if lower.hasPrefix("check listing") || lower.hasPrefix("check the listing") { return nil }
+    return text
+  }
+
+  var displayLocation: String? {
+    AuctionListing.displayableLocation(location) ?? AuctionListing.displayableLocation(dossier?.beachUse?.location)
+  }
+
+  var displayLocationLabel: String {
+    displayLocation ?? "Location pending"
   }
 
   var displayImages: [String] {

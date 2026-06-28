@@ -209,8 +209,8 @@ private struct ListRow: View {
 
   private var secondary: String {
     if let feedback { return feedback.action.label }
-    if let upside = car.upsideLabel { return upside + " · " + (car.location ?? "") }
-    return car.location ?? car.kindLabel
+    if let upside = car.upsideLabel, let location = car.displayLocation { return upside + " · " + location }
+    return car.displayLocation ?? car.kindLabel
   }
 
   private var secondaryColor: Color {

@@ -4,6 +4,7 @@ dist/
 .wrangler-logs/
 .home/
 .tmp/
+.cab-profile/
 .dev.vars
 .env
 .env.local

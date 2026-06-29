@@ -39,7 +39,7 @@ Authenticate with the Beachcar automation token as a Bearer token. The token is 
 ## Source Strategy
 
 - Use \`search_bat_cache\` before browsing Bring a Trailer directly; it reads Beachcar's D1-backed public RSS cache and refreshes stale/empty cache rows.
-- For Cars & Bids or rendered marketplace pages, use a browser-capable cloud-agent tool only if the user and environment allow it.
+- For Cars & Bids, prefer the repo's first-class browser scraper when a trusted local session is available: \`bun run cab:login\` once, then \`bun run cab:scrape:targeted\`. For other rendered marketplace pages, use a browser-capable cloud-agent tool only if the user and environment allow it.
 - If a source blocks access, record that in \`sourceSummary.blockedSources\` or \`sourceSummary.notes\`; do not invent candidate data.
 - Prefer fewer, better-validated listings over broad scraped lists. Confirm title, URL, location, price/bid, time left, and image URLs before publishing.
 

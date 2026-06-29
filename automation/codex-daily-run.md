@@ -28,6 +28,14 @@ Use `automation/auction-source-playbook.md`, `automation/preference-steering.md`
 
 If you are using the beach-car starter profile, also read `automation/source-profile.beach-cars.md`.
 
+Run the first-class Cars & Bids targeted scrape before final curation when the source is enabled:
+
+```bash
+bun run cab:scrape:targeted
+```
+
+If Cars & Bids reports a browser challenge or missing session, run `bun run cab:login` locally, complete the browser verification/sign-in, then retry the targeted scrape. The scraper writes `outputs/cars-and-bids-candidates-YYYY-MM-DD.json`; treat those candidates as source material for the normalized daily JSON, not as auto-approved matches.
+
 ## Output
 
 Write normalized JSON to `outputs/daily-run-YYYY-MM-DD.json` using the `AuctionListing` shape documented in `docs/publishing.md`.
@@ -35,7 +43,7 @@ Write normalized JSON to `outputs/daily-run-YYYY-MM-DD.json` using the `AuctionL
 Then publish:
 
 ```bash
-DAILY_JSON=outputs/daily-run-YYYY-MM-DD.json npm run publish:daily
+DAILY_JSON=outputs/daily-run-YYYY-MM-DD.json bun run publish:daily
 ```
 
 Return a concise report with:

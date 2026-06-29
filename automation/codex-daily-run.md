@@ -36,6 +36,8 @@ bun run cab:scrape:targeted
 
 If Cars & Bids reports a browser challenge or missing session, run `bun run cab:login` locally, complete the browser verification/sign-in, then retry the targeted scrape. The scraper writes `outputs/cars-and-bids-candidates-YYYY-MM-DD.json`; treat those candidates as source material for the normalized daily JSON, not as auto-approved matches.
 
+Do not switch Cars & Bids to Lightpanda as a drop-in replacement. The 2026-06-29 Lightpanda spike reached Cloudflare Turnstile/403 on the search page, and a captured signed C&B JSON endpoint also returned 403 without the trusted browser session. Lightpanda may still be useful for lighter rendered sources that do not require interactive verification.
+
 ## Output
 
 Write normalized JSON to `outputs/daily-run-YYYY-MM-DD.json` using the `AuctionListing` shape documented in `docs/publishing.md`.

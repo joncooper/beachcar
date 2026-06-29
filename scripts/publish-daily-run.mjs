@@ -216,9 +216,16 @@ async function loadEnvFile(path) {
     const equals = trimmed.indexOf("=");
     if (equals < 1) continue;
     const key = trimmed.slice(0, equals).trim();
-    const value = trimmed.slice(equals + 1).trim();
+    const value = unquote(trimmed.slice(equals + 1).trim());
     if (!process.env[key]) process.env[key] = value;
   }
+}
+
+function unquote(value) {
+  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    return value.slice(1, -1);
+  }
+  return value;
 }
 
 async function readResponse(response) {

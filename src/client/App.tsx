@@ -25,7 +25,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { FormEvent, ReactNode } from "react";
 import {
   acceptInvite,
   clearFeedback,
@@ -100,6 +100,14 @@ type SourcePreferenceState = {
   noReserveOnly: boolean;
   browserRunner: boolean;
   searchNotes: string;
+};
+type OnboardingStepId = "basics" | "taste" | "sources" | "ai" | "phone" | "review";
+type OnboardingAiPath = "sponsored" | "byok" | "agent";
+type OnboardingStep = {
+  id: OnboardingStepId;
+  title: string;
+  kicker: string;
+  icon: ReactNode;
 };
 type CalibrationOption = {
   id: string;
@@ -229,6 +237,7 @@ const defaultTasteCalibration = ["open-air", "simple", "kid-plausible"];
 const defaultAvoidCalibration = ["rust", "salvage", "heavy-project"];
 
 const appName = import.meta.env.VITE_APP_NAME || "Beach Car Watch";
+const testFlightAppUrl = "https://apps.apple.com/app/testflight/id899247664";
 
 function listingKey(listing: AuctionListing): string {
   return listing.listingKey || listing.url || listing.title;
@@ -2361,6 +2370,7 @@ function OnboardingGate(props: {
     sourceSettings?: SourceSettingsInput;
   }) => void;
 }) {
+  const [stepId, setStepId] = useState<OnboardingStepId>("basics");
   const [displayName, setDisplayName] = useState("");
   const [budgetMax, setBudgetMax] = useState("30000");
   const [stretchBudget, setStretchBudget] = useState("2000");
@@ -2370,113 +2380,422 @@ function OnboardingGate(props: {
   const [tasteCalibration, setTasteCalibration] = useState(() => [...defaultTasteCalibration]);
   const [avoidCalibration, setAvoidCalibration] = useState(() => [...defaultAvoidCalibration]);
   const [aiMode, setAiMode] = useState<UserAiSettings["mode"]>("managed");
+  const [aiPath, setAiPath] = useState<OnboardingAiPath>("sponsored");
   const [dailyAiBudget, setDailyAiBudget] = useState("2.50");
   const [monthlyAiBudget, setMonthlyAiBudget] = useState("25");
   const [gatewayKeyRef, setGatewayKeyRef] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
   const [notifications, setNotifications] = useState(() => initialNotificationSettings({}));
   const [sourcePreferences, setSourcePreferences] = useState(() => initialSourcePreferences([], {}));
+  const steps = useMemo<OnboardingStep[]>(
+    () => [
+      { id: "basics", title: "Start", kicker: "Account, region, budget", icon: <Users size={18} aria-hidden="true" /> },
+      { id: "taste", title: "Taste", kicker: "Signals and deal breakers", icon: <Sparkles size={18} aria-hidden="true" /> },
+      { id: "sources", title: "Sources", kicker: "Where Beachcar looks", icon: <Search size={18} aria-hidden="true" /> },
+      { id: "ai", title: "AI", kicker: "Cost and automation path", icon: <Bot size={18} aria-hidden="true" /> },
+      { id: "phone", title: "Phone", kicker: "TestFlight handoff", icon: <Download size={18} aria-hidden="true" /> },
+      { id: "review", title: "Review", kicker: "Save and sync", icon: <ShieldCheck size={18} aria-hidden="true" /> },
+    ],
+    [],
+  );
+  const stepIndex = Math.max(0, steps.findIndex((step) => step.id === stepId));
+  const activeStep = steps[stepIndex] || steps[0];
+  const activeSourceCount = sourcePreferences.filter((preference) => preference.enabled).length;
+  const totalBudget = numberFromInput(budgetMax);
+  const selectedTasteLabels = selectedCalibrationLabels(tasteCalibration, tasteCalibrationOptions).slice(0, 3);
+  const selectedAvoidLabels = selectedCalibrationLabels(avoidCalibration, avoidCalibrationOptions).slice(0, 3);
+
+  function selectAiPath(nextPath: OnboardingAiPath) {
+    setAiPath(nextPath);
+    setAiMode(nextPath === "byok" ? "byok" : "managed");
+    if (localError) setLocalError(null);
+  }
+
+  function goToStep(nextStep: OnboardingStepId) {
+    setStepId(nextStep);
+    setLocalError(null);
+  }
+
+  function moveStep(delta: number) {
+    const next = steps[Math.max(0, Math.min(steps.length - 1, stepIndex + delta))];
+    if (next) goToStep(next.id);
+  }
+
+  function submitOnboarding(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nextGatewayKeyRef = aiPath === "byok" ? gatewayKeyRef.trim() : "";
+    if (nextGatewayKeyRef && looksLikeRawProviderKey(nextGatewayKeyRef)) {
+      setLocalError(rawProviderKeyMessage);
+      setStepId("ai");
+      return;
+    }
+    setLocalError(null);
+    props.onSubmit({
+      displayName,
+      niche: "Beach cars and runabouts",
+      budgetMax: numberFromInput(budgetMax),
+      stretchBudget: numberFromInput(stretchBudget),
+      homeRegion,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York",
+      profile: {
+        tasteNotes: calibrationNotes(tasteNotes, tasteCalibration, tasteCalibrationOptions, "Selected tastes"),
+        avoidNotes: calibrationNotes(avoidNotes, avoidCalibration, avoidCalibrationOptions, "Selected avoids"),
+        tasteNotesFreeform: tasteNotes.trim(),
+        avoidNotesFreeform: avoidNotes.trim(),
+        tasteCalibration: [...tasteCalibration],
+        avoidCalibration: [...avoidCalibration],
+        lanes: ["family", "solo", "curiosity"],
+        sources: profileSourceList(sourcePreferences),
+        sourcePreferences: sourceSettingsInput(sourcePreferences),
+        notifications: notificationSettingsInput(notifications),
+        automationMode: aiPath,
+        testFlightHandoff: {
+          appUrl: testFlightAppUrl,
+          email: props.email,
+          sameIdentityRequired: true,
+        },
+      },
+      sourceSettings: sourceSettingsInput(sourcePreferences),
+      aiSettings: {
+        mode: aiMode,
+        gatewayKeyRef: nextGatewayKeyRef || null,
+        dailyBudgetCents: centsFromDollarInput(dailyAiBudget),
+        monthlyBudgetCents: centsFromDollarInput(monthlyAiBudget),
+      },
+    });
+  }
 
   return (
-    <main className="shell is-loading">
-      <section className="setup-card is-wide">
-        <p className="eyebrow">Initial preferences</p>
-        <h1>Beach cars and runabouts</h1>
-        <p className="setup-muted">{props.email}</p>
-        <form
-          className="setup-form setup-grid"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const nextGatewayKeyRef = aiMode === "byok" ? gatewayKeyRef.trim() : "";
-            if (nextGatewayKeyRef && looksLikeRawProviderKey(nextGatewayKeyRef)) {
-              setLocalError(rawProviderKeyMessage);
-              return;
-            }
-            setLocalError(null);
-            props.onSubmit({
-              displayName,
-              niche: "Beach cars and runabouts",
-              budgetMax: numberFromInput(budgetMax),
-              stretchBudget: numberFromInput(stretchBudget),
-              homeRegion,
-              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York",
-              profile: {
-                tasteNotes: calibrationNotes(tasteNotes, tasteCalibration, tasteCalibrationOptions, "Selected tastes"),
-                avoidNotes: calibrationNotes(avoidNotes, avoidCalibration, avoidCalibrationOptions, "Selected avoids"),
-                tasteNotesFreeform: tasteNotes.trim(),
-                avoidNotesFreeform: avoidNotes.trim(),
-                tasteCalibration: [...tasteCalibration],
-                avoidCalibration: [...avoidCalibration],
-                lanes: ["family", "solo", "curiosity"],
-                sources: profileSourceList(sourcePreferences),
-                sourcePreferences: sourceSettingsInput(sourcePreferences),
-                notifications: notificationSettingsInput(notifications),
-              },
-              sourceSettings: sourceSettingsInput(sourcePreferences),
-              aiSettings: {
-                mode: aiMode,
-                gatewayKeyRef: nextGatewayKeyRef || null,
-                dailyBudgetCents: centsFromDollarInput(dailyAiBudget),
-                monthlyBudgetCents: centsFromDollarInput(monthlyAiBudget),
-              },
-            });
-          }}
-        >
-          <label>
-            <span>Name</span>
-            <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Optional" />
-          </label>
-          <label>
-            <span>Region</span>
-            <input value={homeRegion} onChange={(event) => setHomeRegion(event.target.value)} />
-          </label>
-          <label>
-            <span>Budget ceiling</span>
-            <input inputMode="numeric" value={budgetMax} onChange={(event) => setBudgetMax(event.target.value)} />
-          </label>
-          <label>
-            <span>Stretch room</span>
-            <input inputMode="numeric" value={stretchBudget} onChange={(event) => setStretchBudget(event.target.value)} />
-          </label>
-          <TasteCalibrationFields
-            selectedAvoid={avoidCalibration}
-            selectedTaste={tasteCalibration}
-            setSelectedAvoid={setAvoidCalibration}
-            setSelectedTaste={setTasteCalibration}
-          />
-          <label className="setup-span">
-            <span>Extra priorities</span>
-            <textarea value={tasteNotes} onChange={(event) => setTasteNotes(event.target.value)} />
-          </label>
-          <label className="setup-span">
-            <span>Extra avoids</span>
-            <textarea value={avoidNotes} onChange={(event) => setAvoidNotes(event.target.value)} />
-          </label>
-          <AiSettingsFields
-            dailyBudget={dailyAiBudget}
-            gatewayKeyRef={gatewayKeyRef}
-            mode={aiMode}
-            monthlyBudget={monthlyAiBudget}
-            setDailyBudget={setDailyAiBudget}
-            setGatewayKeyRef={(value) => {
-              setGatewayKeyRef(value);
-              if (localError) setLocalError(null);
-            }}
-            setMode={(mode) => {
-              setAiMode(mode);
-              if (localError) setLocalError(null);
-            }}
-            setMonthlyBudget={setMonthlyAiBudget}
-          />
-          <NotificationSettingsFields value={notifications} onChange={setNotifications} />
-          <SourceSettingsFields preferences={sourcePreferences} setPreferences={setSourcePreferences} />
-          {localError || props.error ? <p className="auth-error setup-span">{localError || props.error}</p> : null}
-          <button className="source-link setup-span" disabled={props.isPending} type="submit">
-            {props.isPending ? "Saving..." : "Save preferences"}
+    <main className="onboarding-shell">
+      <aside className="onboarding-rail" aria-label="Onboarding progress">
+        <div className="onboarding-brand">
+          <span className="onboarding-mark" aria-hidden="true">
+            <Gavel size={22} />
+          </span>
+          <span>
+            <strong>{appName}</strong>
+            <small>{props.email}</small>
+          </span>
+        </div>
+        <nav className="onboarding-step-list">
+          {steps.map((step, index) => (
+            <button
+              aria-current={step.id === stepId ? "step" : undefined}
+              className={step.id === stepId ? "onboarding-step is-active" : "onboarding-step"}
+              key={step.id}
+              type="button"
+              onClick={() => goToStep(step.id)}
+            >
+              <span className="onboarding-step-icon">{step.icon}</span>
+              <span>
+                <strong>{step.title}</strong>
+                <small>{step.kicker}</small>
+              </span>
+              <em>{index + 1}</em>
+            </button>
+          ))}
+        </nav>
+        <div className="onboarding-rail-note">
+          <strong>{activeSourceCount} sources</strong>
+          <span>{aiPathLabel(aiPath)} · {notifications.channel === "email" ? `${notifications.digestTime} digest` : "notifications muted"}</span>
+        </div>
+      </aside>
+
+      <form className="onboarding-main" onSubmit={submitOnboarding}>
+        <header className="onboarding-header">
+          <div>
+            <p className="eyebrow">Friend setup</p>
+            <h1>{activeStep.title === "Start" ? "Set up your Beachcar feed" : activeStep.title}</h1>
+            <p>{onboardingStepCopy(stepId, aiPath)}</p>
+          </div>
+          <div className="onboarding-progress" aria-label={`Step ${stepIndex + 1} of ${steps.length}`}>
+            <span style={{ width: `${((stepIndex + 1) / steps.length) * 100}%` }} />
+          </div>
+        </header>
+
+        <section className="onboarding-content">
+          {stepId === "basics" ? (
+            <div className="onboarding-grid">
+              <label>
+                <span>Name</span>
+                <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Optional" />
+              </label>
+              <label>
+                <span>Region</span>
+                <input value={homeRegion} onChange={(event) => setHomeRegion(event.target.value)} />
+              </label>
+              <label>
+                <span>Budget ceiling</span>
+                <input inputMode="numeric" value={budgetMax} onChange={(event) => setBudgetMax(event.target.value)} />
+              </label>
+              <label>
+                <span>Stretch room</span>
+                <input inputMode="numeric" value={stretchBudget} onChange={(event) => setStretchBudget(event.target.value)} />
+              </label>
+              <div className="onboarding-callout setup-span">
+                <strong>{totalBudget ? `$${totalBudget.toLocaleString()} ceiling` : "No ceiling saved yet"}</strong>
+                <span>Family, solo, and curiosity lanes will all be available in the app.</span>
+              </div>
+            </div>
+          ) : null}
+
+          {stepId === "taste" ? (
+            <div className="onboarding-grid">
+              <TasteCalibrationFields
+                selectedAvoid={avoidCalibration}
+                selectedTaste={tasteCalibration}
+                setSelectedAvoid={setAvoidCalibration}
+                setSelectedTaste={setTasteCalibration}
+              />
+              <label className="setup-span">
+                <span>Extra priorities</span>
+                <textarea value={tasteNotes} onChange={(event) => setTasteNotes(event.target.value)} />
+              </label>
+              <label className="setup-span">
+                <span>Extra avoids</span>
+                <textarea value={avoidNotes} onChange={(event) => setAvoidNotes(event.target.value)} />
+              </label>
+            </div>
+          ) : null}
+
+          {stepId === "sources" ? (
+            <div className="onboarding-grid">
+              <SourceSettingsFields preferences={sourcePreferences} setPreferences={setSourcePreferences} />
+            </div>
+          ) : null}
+
+          {stepId === "ai" ? (
+            <div className="onboarding-grid">
+              <section className="onboarding-ai setup-span" aria-label="AI path">
+                <div className="setup-section-title">
+                  <span>AI path</span>
+                  <small>{aiPathLabel(aiPath)}</small>
+                </div>
+                <div className="onboarding-ai-grid">
+                  <OnboardingAiPathCard
+                    active={aiPath === "sponsored"}
+                    icon={<ShieldCheck size={18} aria-hidden="true" />}
+                    label="Starter"
+                    meta="Jon-sponsored"
+                    text="Low-friction friendly beta mode with tight spend guards."
+                    onClick={() => selectAiPath("sponsored")}
+                  />
+                  <OnboardingAiPathCard
+                    active={aiPath === "byok"}
+                    icon={<KeyRound size={18} aria-hidden="true" />}
+                    label="BYOK"
+                    meta="Friend pays"
+                    text="Use an AI Gateway alias backed by the friend's provider key."
+                    onClick={() => selectAiPath("byok")}
+                  />
+                  <OnboardingAiPathCard
+                    active={aiPath === "agent"}
+                    icon={<Bot size={18} aria-hidden="true" />}
+                    label="Cloud agent"
+                    meta="Power user"
+                    text="Use Codex, Claude, or another MCP-capable agent with Beachcar tools."
+                    onClick={() => selectAiPath("agent")}
+                  />
+                </div>
+              </section>
+              <section className="ai-settings setup-span">
+                <div className="setup-section-title">
+                  <span>Spend guard</span>
+                  <small>{aiMode === "byok" ? "BYOK" : "Managed"}</small>
+                </div>
+                <div className="ai-budget-grid">
+                  <label>
+                    <span>Daily cap</span>
+                    <input inputMode="decimal" value={dailyAiBudget} onChange={(event) => setDailyAiBudget(event.target.value)} />
+                  </label>
+                  <label>
+                    <span>Monthly cap</span>
+                    <input inputMode="decimal" value={monthlyAiBudget} onChange={(event) => setMonthlyAiBudget(event.target.value)} />
+                  </label>
+                </div>
+                {aiPath === "byok" ? (
+                  <label>
+                    <span>AI Gateway alias</span>
+                    <input
+                      autoComplete="off"
+                      placeholder="cf-aig-byok-friend-openai"
+                      value={gatewayKeyRef}
+                      onChange={(event) => {
+                        setGatewayKeyRef(event.target.value);
+                        if (localError) setLocalError(null);
+                      }}
+                    />
+                  </label>
+                ) : null}
+              </section>
+            </div>
+          ) : null}
+
+          {stepId === "phone" ? (
+            <div className="onboarding-phone-step">
+              <section className="onboarding-phone-copy">
+                <div className="setup-section-title">
+                  <span>iPhone app</span>
+                  <small>same account</small>
+                </div>
+                <div className="onboarding-checks">
+                  <span>
+                    <ShieldCheck size={16} aria-hidden="true" />
+                    Sign in with {props.email}
+                  </span>
+                  <span>
+                    <Download size={16} aria-hidden="true" />
+                    TestFlight beta build
+                  </span>
+                  <span>
+                    <Clock3 size={16} aria-hidden="true" />
+                    Latest run syncs after setup
+                  </span>
+                </div>
+                <a className="source-link" href={testFlightAppUrl} target="_blank" rel="noreferrer">
+                  Open TestFlight
+                </a>
+              </section>
+              <OnboardingPhoneMock aiPath={aiPath} />
+            </div>
+          ) : null}
+
+          {stepId === "review" ? (
+            <div className="onboarding-review-grid">
+              <OnboardingReviewItem label="Budget" value={totalBudget ? `$${totalBudget.toLocaleString()} + $${stretchBudget} stretch` : "Not set"} />
+              <OnboardingReviewItem label="Taste" value={selectedTasteLabels.length ? selectedTasteLabels.join(", ") : "Custom notes"} />
+              <OnboardingReviewItem label="Avoid" value={selectedAvoidLabels.length ? selectedAvoidLabels.join(", ") : "Custom notes"} />
+              <OnboardingReviewItem label="Sources" value={`${activeSourceCount} enabled`} />
+              <OnboardingReviewItem label="AI" value={aiPathLabel(aiPath)} />
+              <OnboardingReviewItem label="Phone" value="TestFlight + same email" />
+              <NotificationSettingsFields value={notifications} onChange={setNotifications} />
+            </div>
+          ) : null}
+        </section>
+
+        <footer className="onboarding-actions">
+          <button className="source-link is-secondary" disabled={props.isPending || stepIndex === 0} type="button" onClick={() => moveStep(-1)}>
+            Back
           </button>
-        </form>
-      </section>
+          <div>
+            {localError || props.error ? <p className="auth-error">{localError || props.error}</p> : null}
+            {stepId === "review" ? (
+              <button className="source-link" disabled={props.isPending} type="submit">
+                {props.isPending ? "Saving..." : "Save setup"}
+              </button>
+            ) : (
+              <button className="source-link" disabled={props.isPending} type="button" onClick={() => moveStep(1)}>
+                Continue
+              </button>
+            )}
+          </div>
+        </footer>
+      </form>
+
+      <aside className="onboarding-preview" aria-label="Setup preview">
+        <OnboardingPreview
+          aiPath={aiPath}
+          budgetMax={budgetMax}
+          sourceCount={activeSourceCount}
+          tasteLabels={selectedTasteLabels}
+          userEmail={props.email}
+        />
+      </aside>
     </main>
+  );
+}
+
+function OnboardingAiPathCard(props: {
+  active: boolean;
+  icon: ReactNode;
+  label: string;
+  meta: string;
+  text: string;
+  onClick: () => void;
+}) {
+  return (
+    <button aria-pressed={props.active} className={props.active ? "onboarding-ai-card is-active" : "onboarding-ai-card"} type="button" onClick={props.onClick}>
+      <span>{props.icon}</span>
+      <strong>{props.label}</strong>
+      <small>{props.meta}</small>
+      <em>{props.text}</em>
+    </button>
+  );
+}
+
+function OnboardingReviewItem(props: { label: string; value: string }) {
+  return (
+    <span className="onboarding-review-item">
+      <small>{props.label}</small>
+      <strong>{props.value}</strong>
+    </span>
+  );
+}
+
+function OnboardingPhoneMock(props: { aiPath: OnboardingAiPath }) {
+  return (
+    <section className="onboarding-phone" aria-label="iPhone preview">
+      <div className="onboarding-phone-status">
+        <span>9:41</span>
+        <span>Beachcar</span>
+      </div>
+      <div className="onboarding-phone-photo" />
+      <div className="onboarding-phone-body">
+        <span className="onboarding-pill">Strong fit</span>
+        <h2>1973 Chevrolet K5 Blazer 4x4</h2>
+        <p>Removable-roof family 4x4 with beach-wagon character and clear checks before bidding.</p>
+        <div>
+          <strong>$8,500</strong>
+          <small>{props.aiPath === "agent" ? "Agent dossier ready" : "Cached deck images"}</small>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function OnboardingPreview(props: {
+  aiPath: OnboardingAiPath;
+  budgetMax: string;
+  sourceCount: number;
+  tasteLabels: string[];
+  userEmail: string;
+}) {
+  const budget = numberFromInput(props.budgetMax);
+  return (
+    <>
+      <section className="onboarding-preview-panel">
+        <p className="eyebrow">After save</p>
+        <h2>Personal feed</h2>
+        <div className="onboarding-preview-list">
+          <span>
+            <strong>{props.userEmail}</strong>
+            <small>Web and iPhone identity</small>
+          </span>
+          <span>
+            <strong>{budget ? `$${budget.toLocaleString()}` : "Budget pending"}</strong>
+            <small>Shortlist ceiling</small>
+          </span>
+          <span>
+            <strong>{props.sourceCount} sources</strong>
+            <small>BaT cache, C&B runner, optional marketplace</small>
+          </span>
+          <span>
+            <strong>{aiPathLabel(props.aiPath)}</strong>
+            <small>Usage recorded with every run</small>
+          </span>
+        </div>
+      </section>
+      <section className="onboarding-preview-panel">
+        <p className="eyebrow">Match signal</p>
+        <div className="onboarding-pill-row">
+          {(props.tasteLabels.length ? props.tasteLabels : ["Open-air", "Simple", "Kid-plausible"]).map((label) => (
+            <span className="onboarding-pill" key={label}>
+              {label}
+            </span>
+          ))}
+        </div>
+      </section>
+    </>
   );
 }
 
@@ -3137,6 +3456,26 @@ function demoAiUsage(dailySpendMicros: number, monthlySpendMicros: number): AiUs
     },
     budgetExceeded: false,
   };
+}
+
+function selectedCalibrationLabels(selected: string[], options: CalibrationOption[]): string[] {
+  const labels = new Map(options.map((option) => [option.id, option.label]));
+  return selected.map((id) => labels.get(id)).filter((label): label is string => Boolean(label));
+}
+
+function aiPathLabel(path: OnboardingAiPath): string {
+  if (path === "byok") return "BYOK";
+  if (path === "agent") return "Cloud agent";
+  return "Starter";
+}
+
+function onboardingStepCopy(step: OnboardingStepId, path: OnboardingAiPath): string {
+  if (step === "taste") return "Pick the signals that should shape the first shortlist.";
+  if (step === "sources") return "Choose the source mix and the amount of browser-heavy research allowed.";
+  if (step === "ai") return `${aiPathLabel(path)} mode with explicit daily and monthly spend guards.`;
+  if (step === "phone") return "Use the same identity on TestFlight so the app opens with this setup.";
+  if (step === "review") return "Save the setup, sync the account, and open the first personalized feed.";
+  return "A short web setup creates the account state used by the iPhone app and daily run.";
 }
 
 function stringProfileValue(profile: Record<string, unknown>, key: string, fallback: string): string {

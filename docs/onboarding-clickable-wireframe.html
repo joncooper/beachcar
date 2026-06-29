@@ -1,0 +1,1678 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Beachcar New User Onboarding Wireframe</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #080c0d;
+        --ink: #f6f1e8;
+        --muted: #aeb7b0;
+        --quiet: #748078;
+        --line: rgba(246, 241, 232, 0.16);
+        --line-strong: rgba(246, 241, 232, 0.28);
+        --panel: #101719;
+        --panel-2: #151e21;
+        --panel-3: #1c272b;
+        --paper: #f6f1e8;
+        --paper-ink: #182023;
+        --green: #55b96e;
+        --green-2: #2d7e4c;
+        --blue: #6e9fc8;
+        --gold: #dbb96c;
+        --red: #d86b5f;
+        --shadow: 0 18px 60px rgba(0, 0, 0, 0.38);
+        --radius: 8px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at 18% 8%, rgba(85, 185, 110, 0.12), transparent 30rem),
+          linear-gradient(140deg, #070a0b 0%, #10191b 58%, #0d1213 100%);
+        color: var(--ink);
+        font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      button,
+      input,
+      textarea {
+        font: inherit;
+      }
+
+      button {
+        color: inherit;
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr);
+        min-height: 100vh;
+      }
+
+      .rail {
+        border-right: 1px solid var(--line);
+        background: rgba(8, 12, 13, 0.82);
+        padding: 24px 18px;
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        overflow-y: auto;
+      }
+
+      .brand {
+        align-items: center;
+        display: flex;
+        gap: 10px;
+        margin-bottom: 22px;
+      }
+
+      .mark {
+        align-items: center;
+        background: linear-gradient(135deg, #24492d, #0f1719);
+        border: 1px solid var(--line-strong);
+        border-radius: 8px;
+        display: grid;
+        height: 42px;
+        justify-items: center;
+        width: 42px;
+      }
+
+      .mark svg {
+        height: 25px;
+        width: 25px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 1.18rem;
+        line-height: 1.05;
+      }
+
+      .subtitle {
+        color: var(--muted);
+        font-size: 0.84rem;
+        margin-top: 3px;
+      }
+
+      .step-list {
+        display: grid;
+        gap: 8px;
+        margin-top: 18px;
+      }
+
+      .step-button {
+        align-items: center;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: var(--radius);
+        cursor: pointer;
+        display: grid;
+        gap: 8px;
+        grid-template-columns: 28px minmax(0, 1fr);
+        padding: 9px;
+        text-align: left;
+        transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+        width: 100%;
+      }
+
+      .step-button:hover {
+        background: rgba(246, 241, 232, 0.06);
+      }
+
+      .step-button.active {
+        background: rgba(85, 185, 110, 0.12);
+        border-color: rgba(85, 185, 110, 0.48);
+      }
+
+      .step-number {
+        align-items: center;
+        background: #1a2326;
+        border: 1px solid var(--line);
+        border-radius: 50%;
+        color: var(--muted);
+        display: grid;
+        font-size: 0.78rem;
+        font-weight: 800;
+        height: 28px;
+        justify-items: center;
+        width: 28px;
+      }
+
+      .step-button.active .step-number {
+        background: var(--green);
+        border-color: var(--green);
+        color: #07100a;
+      }
+
+      .step-title {
+        display: block;
+        font-size: 0.92rem;
+        font-weight: 750;
+        line-height: 1.08;
+      }
+
+      .step-note {
+        color: var(--quiet);
+        display: block;
+        font-size: 0.76rem;
+        line-height: 1.25;
+        margin-top: 3px;
+      }
+
+      .rail-panel {
+        border-top: 1px solid var(--line);
+        margin-top: 20px;
+        padding-top: 18px;
+      }
+
+      .rail-panel h2 {
+        font-size: 0.76rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .choice-row {
+        display: grid;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .choice {
+        align-items: center;
+        background: #11191b;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        cursor: pointer;
+        display: flex;
+        gap: 9px;
+        min-height: 38px;
+        padding: 8px 10px;
+      }
+
+      .choice input {
+        accent-color: var(--green);
+      }
+
+      .choice span {
+        font-size: 0.84rem;
+      }
+
+      .content {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        min-width: 0;
+      }
+
+      .topbar {
+        align-items: center;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        gap: 14px;
+        justify-content: space-between;
+        min-height: 72px;
+        padding: 14px 24px;
+      }
+
+      .topbar h2 {
+        font-size: clamp(1.2rem, 2vw, 1.9rem);
+        line-height: 1.05;
+      }
+
+      .topbar p {
+        color: var(--muted);
+        font-size: 0.9rem;
+        margin-top: 4px;
+      }
+
+      .controls {
+        align-items: center;
+        display: flex;
+        gap: 8px;
+      }
+
+      .button {
+        align-items: center;
+        background: var(--green);
+        border: 1px solid var(--green);
+        border-radius: 8px;
+        color: #07100a;
+        cursor: pointer;
+        display: inline-flex;
+        font-weight: 750;
+        gap: 8px;
+        min-height: 40px;
+        padding: 0 14px;
+        text-decoration: none;
+        transition: filter 150ms ease, transform 150ms ease;
+      }
+
+      .button:hover {
+        filter: brightness(1.08);
+      }
+
+      .button.secondary {
+        background: rgba(246, 241, 232, 0.06);
+        border-color: var(--line-strong);
+        color: var(--ink);
+      }
+
+      .button.ghost {
+        background: transparent;
+        border-color: transparent;
+        color: var(--muted);
+      }
+
+      .button.small {
+        font-size: 0.82rem;
+        min-height: 32px;
+        padding: 0 10px;
+      }
+
+      .button:disabled {
+        cursor: not-allowed;
+        filter: grayscale(1) opacity(0.65);
+      }
+
+      .stage {
+        display: grid;
+        gap: 20px;
+        grid-template-columns: minmax(0, 1fr) 320px;
+        min-height: 0;
+        padding: 24px;
+      }
+
+      .canvas {
+        align-items: center;
+        display: grid;
+        min-height: calc(100vh - 120px);
+      }
+
+      .frame {
+        background: rgba(16, 23, 25, 0.78);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        min-height: min(680px, calc(100vh - 124px));
+        overflow: hidden;
+        position: relative;
+      }
+
+      .screen {
+        display: none;
+        min-height: inherit;
+      }
+
+      .screen.active {
+        display: block;
+      }
+
+      .split {
+        display: grid;
+        grid-template-columns: minmax(300px, 0.92fr) minmax(360px, 1.08fr);
+        min-height: inherit;
+      }
+
+      .split > section {
+        padding: clamp(22px, 3vw, 42px);
+      }
+
+      .split .visual {
+        align-items: center;
+        background: linear-gradient(155deg, #182325, #0c1213);
+        border-left: 1px solid var(--line);
+        display: grid;
+        justify-items: center;
+      }
+
+      .eyebrow {
+        color: var(--green);
+        font-size: 0.76rem;
+        font-weight: 800;
+        letter-spacing: 0.1em;
+        margin-bottom: 8px;
+        text-transform: uppercase;
+      }
+
+      .screen h3 {
+        font-size: clamp(1.5rem, 3vw, 2.6rem);
+        line-height: 1.02;
+        max-width: 700px;
+      }
+
+      .screen-copy {
+        color: var(--muted);
+        font-size: 1.02rem;
+        margin-top: 12px;
+        max-width: 620px;
+      }
+
+      .action-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 24px;
+      }
+
+      .phone {
+        background: #030607;
+        border: 7px solid #0c0f10;
+        border-radius: 36px;
+        box-shadow: 0 18px 44px rgba(0, 0, 0, 0.4);
+        height: 560px;
+        max-width: 100%;
+        overflow: hidden;
+        position: relative;
+        width: 276px;
+      }
+
+      .phone::before {
+        background: #0c0f10;
+        border-radius: 0 0 14px 14px;
+        content: "";
+        height: 19px;
+        left: 82px;
+        position: absolute;
+        top: 0;
+        width: 98px;
+        z-index: 2;
+      }
+
+      .phone-screen {
+        background: #06100d;
+        color: var(--ink);
+        height: 100%;
+        padding: 26px 15px 14px;
+      }
+
+      .status {
+        align-items: center;
+        display: flex;
+        font-size: 0.72rem;
+        justify-content: space-between;
+        margin-bottom: 15px;
+      }
+
+      .bubble {
+        background: #e9e7de;
+        border-radius: 16px;
+        color: #1f2528;
+        font-size: 0.78rem;
+        line-height: 1.35;
+        margin-top: 16px;
+        padding: 12px;
+      }
+
+      .app-card {
+        background: #0d1517;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        margin-top: 10px;
+        overflow: hidden;
+      }
+
+      .app-card img,
+      .fake-photo {
+        background:
+          linear-gradient(120deg, rgba(91, 128, 94, 0.5), rgba(35, 44, 44, 0.8)),
+          repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 36px);
+        height: 138px;
+        width: 100%;
+      }
+
+      .fake-photo.blazer {
+        background:
+          linear-gradient(110deg, rgba(21, 24, 18, 0.95) 0 38%, rgba(70, 88, 72, 0.75) 39% 55%, rgba(180, 178, 155, 0.7) 56% 100%),
+          radial-gradient(circle at 36% 72%, #d5d7c6 0 15px, #1c1f20 16px 25px, transparent 26px),
+          radial-gradient(circle at 78% 72%, #d5d7c6 0 15px, #1c1f20 16px 25px, transparent 26px);
+      }
+
+      .car-body {
+        padding: 12px;
+      }
+
+      .pill-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .pill {
+        background: rgba(246, 241, 232, 0.08);
+        border: 1px solid rgba(246, 241, 232, 0.12);
+        border-radius: 999px;
+        color: var(--muted);
+        display: inline-flex;
+        font-size: 0.72rem;
+        font-weight: 700;
+        gap: 5px;
+        min-height: 24px;
+        padding: 4px 9px;
+      }
+
+      .pill.good {
+        background: rgba(85, 185, 110, 0.17);
+        border-color: rgba(85, 185, 110, 0.42);
+        color: #9fe4ad;
+      }
+
+      .card-title {
+        font-size: 1.05rem;
+        font-weight: 850;
+        letter-spacing: 0;
+        line-height: 1.05;
+        margin-top: 9px;
+      }
+
+      .car-summary {
+        color: var(--muted);
+        font-size: 0.74rem;
+        line-height: 1.34;
+        margin-top: 8px;
+      }
+
+      .phone-tabs {
+        align-items: center;
+        display: grid;
+        gap: 5px;
+        grid-template-columns: repeat(5, 1fr);
+        margin-top: 12px;
+      }
+
+      .tab {
+        color: var(--quiet);
+        font-size: 0.62rem;
+        text-align: center;
+      }
+
+      .tab.active {
+        color: var(--green);
+      }
+
+      .web-window {
+        background: #0c1214;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        box-shadow: var(--shadow);
+        max-width: 760px;
+        overflow: hidden;
+        width: 100%;
+      }
+
+      .browser-bar {
+        align-items: center;
+        background: #11191b;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        gap: 8px;
+        height: 38px;
+        padding: 0 12px;
+      }
+
+      .dot {
+        border-radius: 50%;
+        height: 10px;
+        width: 10px;
+      }
+
+      .dot.red {
+        background: #ff6a5d;
+      }
+
+      .dot.gold {
+        background: #f4bd4f;
+      }
+
+      .dot.green {
+        background: #60c95f;
+      }
+
+      .url {
+        background: #202b2e;
+        border-radius: 6px;
+        color: var(--quiet);
+        flex: 1;
+        font-size: 0.72rem;
+        margin-left: 8px;
+        min-height: 22px;
+        padding: 3px 10px;
+      }
+
+      .web-body {
+        padding: 24px;
+      }
+
+      .web-grid {
+        display: grid;
+        gap: 14px;
+      }
+
+      .form-row {
+        display: grid;
+        gap: 7px;
+        margin-top: 14px;
+      }
+
+      .label {
+        color: var(--muted);
+        font-size: 0.76rem;
+        font-weight: 750;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+      }
+
+      .field {
+        background: #111a1d;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        color: var(--ink);
+        min-height: 42px;
+        padding: 10px 12px;
+        width: 100%;
+      }
+
+      .range-line {
+        align-items: center;
+        display: grid;
+        gap: 12px;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+      }
+
+      .range-track {
+        background: linear-gradient(90deg, var(--green) 0 48%, #404a4c 48% 100%);
+        border-radius: 999px;
+        height: 7px;
+        position: relative;
+      }
+
+      .range-track::after {
+        background: var(--paper);
+        border: 2px solid var(--green);
+        border-radius: 50%;
+        content: "";
+        height: 17px;
+        left: 48%;
+        position: absolute;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 17px;
+      }
+
+      .chip-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .chip {
+        background: #131d20;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 0.82rem;
+        min-height: 34px;
+        padding: 7px 10px;
+      }
+
+      .chip.selected {
+        background: rgba(85, 185, 110, 0.16);
+        border-color: rgba(85, 185, 110, 0.62);
+        color: #b9f1c2;
+      }
+
+      .option-stack {
+        display: grid;
+        gap: 10px;
+        margin-top: 18px;
+      }
+
+      .option-card {
+        align-items: start;
+        background: #11191b;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        cursor: pointer;
+        display: grid;
+        gap: 10px;
+        grid-template-columns: 30px minmax(0, 1fr) auto;
+        padding: 14px;
+      }
+
+      .option-card.active {
+        background: rgba(85, 185, 110, 0.1);
+        border-color: rgba(85, 185, 110, 0.6);
+      }
+
+      .radio-dot {
+        border: 2px solid var(--line-strong);
+        border-radius: 50%;
+        height: 19px;
+        margin-top: 2px;
+        width: 19px;
+      }
+
+      .option-card.active .radio-dot {
+        background: radial-gradient(circle, var(--green) 0 42%, transparent 45% 100%);
+        border-color: var(--green);
+      }
+
+      .option-title {
+        font-weight: 850;
+      }
+
+      .option-copy {
+        color: var(--muted);
+        font-size: 0.84rem;
+        margin-top: 3px;
+      }
+
+      .price {
+        background: rgba(246, 241, 232, 0.08);
+        border-radius: 999px;
+        color: var(--muted);
+        font-size: 0.72rem;
+        font-weight: 800;
+        padding: 5px 8px;
+        white-space: nowrap;
+      }
+
+      .flow-diagram {
+        align-items: center;
+        display: grid;
+        gap: 14px;
+        grid-template-columns: 1fr 54px 1fr;
+        margin-top: 22px;
+      }
+
+      .node {
+        background: var(--paper);
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        border-radius: 8px;
+        color: var(--paper-ink);
+        min-height: 96px;
+        padding: 14px;
+      }
+
+      .node strong {
+        display: block;
+        font-size: 0.9rem;
+      }
+
+      .node span {
+        color: #5c6661;
+        display: block;
+        font-size: 0.78rem;
+        margin-top: 5px;
+      }
+
+      .arrow {
+        color: var(--green);
+        font-size: 2.1rem;
+        font-weight: 800;
+        text-align: center;
+      }
+
+      .dashboard {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: 150px minmax(0, 1fr);
+      }
+
+      .side-menu {
+        border-right: 1px solid var(--line);
+        display: grid;
+        gap: 6px;
+        padding-right: 14px;
+      }
+
+      .menu-item {
+        border-radius: 7px;
+        color: var(--muted);
+        font-size: 0.82rem;
+        padding: 8px 9px;
+      }
+
+      .menu-item.active {
+        background: rgba(85, 185, 110, 0.13);
+        color: #b8f1c5;
+      }
+
+      .metrics {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(3, 1fr);
+        margin-top: 14px;
+      }
+
+      .metric {
+        background: #10191b;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px;
+      }
+
+      .metric strong {
+        display: block;
+        font-size: 1.42rem;
+      }
+
+      .metric span {
+        color: var(--quiet);
+        font-size: 0.74rem;
+      }
+
+      .activity {
+        display: grid;
+        gap: 9px;
+        margin-top: 14px;
+      }
+
+      .activity-item {
+        align-items: center;
+        background: #10191b;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        display: flex;
+        justify-content: space-between;
+        min-height: 42px;
+        padding: 10px 12px;
+      }
+
+      .activity-item span {
+        color: var(--muted);
+        font-size: 0.82rem;
+      }
+
+      .ok {
+        color: #a5e7b1;
+        font-weight: 850;
+      }
+
+      .aside {
+        display: grid;
+        gap: 14px;
+        align-content: start;
+      }
+
+      .review-card {
+        background: rgba(16, 23, 25, 0.78);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        padding: 18px;
+      }
+
+      .review-card h3 {
+        font-size: 0.88rem;
+        letter-spacing: 0.08em;
+        margin-bottom: 10px;
+        text-transform: uppercase;
+      }
+
+      .review-card p,
+      .review-card li {
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .review-card ul {
+        margin: 0;
+        padding-left: 18px;
+      }
+
+      .review-card li + li {
+        margin-top: 8px;
+      }
+
+      .feedback-box {
+        min-height: 164px;
+        resize: vertical;
+      }
+
+      .toast {
+        background: var(--paper);
+        border-radius: 8px;
+        bottom: 22px;
+        box-shadow: var(--shadow);
+        color: var(--paper-ink);
+        font-weight: 750;
+        left: 50%;
+        opacity: 0;
+        padding: 11px 14px;
+        pointer-events: none;
+        position: fixed;
+        transform: translate(-50%, 12px);
+        transition: opacity 180ms ease, transform 180ms ease;
+        z-index: 5;
+      }
+
+      .toast.show {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+
+      .compact-only {
+        display: none;
+      }
+
+      @media (max-width: 1100px) {
+        .shell {
+          grid-template-columns: 1fr;
+        }
+
+        .rail {
+          height: auto;
+          position: static;
+        }
+
+        .step-list {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
+        .stage {
+          grid-template-columns: 1fr;
+        }
+
+        .canvas {
+          min-height: auto;
+        }
+
+        .aside {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 760px) {
+        .topbar {
+          align-items: stretch;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .controls {
+          justify-content: space-between;
+        }
+
+        .stage {
+          padding: 14px;
+        }
+
+        .step-list {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .split {
+          grid-template-columns: 1fr;
+        }
+
+        .split .visual {
+          border-left: 0;
+          border-top: 1px solid var(--line);
+        }
+
+        .flow-diagram {
+          grid-template-columns: 1fr;
+        }
+
+        .arrow {
+          transform: rotate(90deg);
+        }
+
+        .dashboard,
+        .metrics {
+          grid-template-columns: 1fr;
+        }
+
+        .side-menu {
+          border-right: 0;
+          grid-template-columns: repeat(2, 1fr);
+          padding-right: 0;
+        }
+
+        .aside {
+          grid-template-columns: 1fr;
+        }
+
+        .wide-only {
+          display: none;
+        }
+
+        .compact-only {
+          display: inline;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="rail" aria-label="Wireframe steps">
+        <div class="brand">
+          <div class="mark" aria-hidden="true">
+            <svg viewBox="0 0 64 64" fill="none">
+              <path d="M33 7c7 10 13 15 24 17-10 6-16 13-17 27-6-8-13-14-27-15 9-7 15-14 20-29Z" fill="#55b96e" />
+              <path d="M17 47c8-2 19-2 30 0" stroke="#f6f1e8" stroke-width="5" stroke-linecap="round" />
+            </svg>
+          </div>
+          <div>
+            <h1>Beachcar Onboarding</h1>
+            <p class="subtitle">Clickable friend-beta flow</p>
+          </div>
+        </div>
+
+        <nav class="step-list" id="stepList"></nav>
+
+        <div class="rail-panel">
+          <h2>Scenario</h2>
+          <div class="choice-row" role="radiogroup" aria-label="AI setup scenario">
+            <label class="choice">
+              <input type="radio" name="scenario" value="sponsored" checked />
+              <span>Jon-sponsored starter</span>
+            </label>
+            <label class="choice">
+              <input type="radio" name="scenario" value="byok" />
+              <span>Friend brings key</span>
+            </label>
+            <label class="choice">
+              <input type="radio" name="scenario" value="agent" />
+              <span>Cloud agent + skill</span>
+            </label>
+          </div>
+        </div>
+      </aside>
+
+      <main class="content">
+        <header class="topbar">
+          <div>
+            <h2 id="screenTitle">Invite</h2>
+            <p id="screenSubtitle">Friend receives a low-friction invite with two paths: setup web first or install TestFlight first.</p>
+          </div>
+          <div class="controls">
+            <button class="button secondary" id="prevButton" type="button">Back</button>
+            <button class="button" id="nextButton" type="button">Next</button>
+          </div>
+        </header>
+
+        <div class="stage">
+          <section class="canvas" aria-live="polite">
+            <div class="frame">
+              <article class="screen active" data-screen="invite">
+                <div class="split">
+                  <section>
+                    <p class="eyebrow">Step 1</p>
+                    <h3>Start with an invite that explains the exchange.</h3>
+                    <p class="screen-copy">
+                      The friend should understand that Beachcar needs preferences, a phone app install,
+                      and one AI/automation choice before daily picks work.
+                    </p>
+                    <div class="action-row">
+                      <button class="button" type="button" data-go="signin">Open web setup</button>
+                      <button class="button secondary" type="button" data-go="phone">Open TestFlight</button>
+                    </div>
+                  </section>
+                  <section class="visual">
+                    <div class="phone" aria-label="Invite phone mock">
+                      <div class="phone-screen">
+                        <div class="status"><span>9:41</span><span>5G 100%</span></div>
+                        <p class="label">Messages</p>
+                        <div class="bubble">
+                          Hey, I’d love you to try Beachcar beta. It finds interesting auction cars and gives you a daily short list.
+                          <br /><br />
+                          Start here: beachcar.app/invite/jon
+                        </div>
+                        <div class="app-card" style="padding: 12px">
+                          <div class="pill-row">
+                            <span class="pill good">Beta invite</span>
+                            <span class="pill">2 minute setup</span>
+                          </div>
+                          <p class="card-title">Beachcar</p>
+                          <p class="car-summary">Install the app, set preferences, choose how AI runs.</p>
+                          <div class="action-row" style="margin-top: 14px">
+                            <button class="button small" type="button" data-go="phone">TestFlight</button>
+                            <button class="button small secondary" type="button" data-go="signin">Web setup</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </article>
+
+              <article class="screen" data-screen="signin">
+                <div class="split">
+                  <section>
+                    <p class="eyebrow">Step 2</p>
+                    <h3>Use the web for account creation and setup.</h3>
+                    <p class="screen-copy">
+                      Sign-in should be familiar and short. The job here is identity, not product education.
+                      After auth, the user lands directly in preferences.
+                    </p>
+                    <div class="action-row">
+                      <button class="button" type="button" data-go="preferences">Continue with email</button>
+                      <button class="button secondary" type="button" data-go="preferences">Use passkey</button>
+                    </div>
+                  </section>
+                  <section class="visual">
+                    <div class="web-window">
+                      <div class="browser-bar">
+                        <span class="dot red"></span><span class="dot gold"></span><span class="dot green"></span>
+                        <span class="url">app.beachcar.app/invite/jon</span>
+                      </div>
+                      <div class="web-body">
+                        <div class="brand">
+                          <div class="mark" aria-hidden="true"></div>
+                          <div>
+                            <h1>Welcome to Beachcar Beta</h1>
+                            <p class="subtitle">A daily auction shortlist tuned to your life.</p>
+                          </div>
+                        </div>
+                        <div class="form-row">
+                          <label class="label" for="email">Email</label>
+                          <input class="field" id="email" value="friend@example.com" />
+                        </div>
+                        <div class="action-row">
+                          <button class="button" type="button" data-go="preferences">Continue</button>
+                          <button class="button secondary" type="button" data-go="preferences">Passkey</button>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </article>
+
+              <article class="screen" data-screen="preferences">
+                <div class="split">
+                  <section>
+                    <p class="eyebrow">Step 3</p>
+                    <h3>Collect preference signal before asking about AI.</h3>
+                    <p class="screen-copy">
+                      The user should feel like they are describing taste and constraints, not configuring a scraper.
+                      These fields become the profile used by the website, agent skill, and phone feed.
+                    </p>
+                    <div class="action-row">
+                      <button class="button" type="button" data-go="ai">Save preferences</button>
+                      <button class="button secondary" type="button" data-go="phone">Skip for now</button>
+                    </div>
+                  </section>
+                  <section class="visual">
+                    <div class="web-window">
+                      <div class="browser-bar">
+                        <span class="dot red"></span><span class="dot gold"></span><span class="dot green"></span>
+                        <span class="url">app.beachcar.app/setup/preferences</span>
+                      </div>
+                      <div class="web-body web-grid">
+                        <h1>Set your preferences</h1>
+                        <div class="form-row">
+                          <span class="label">Budget</span>
+                          <div class="range-line"><span>$5k</span><span class="range-track"></span><span>$25k</span></div>
+                        </div>
+                        <div class="form-row">
+                          <span class="label">Use case</span>
+                          <div class="chip-grid">
+                            <button class="chip selected" type="button">Family</button>
+                            <button class="chip selected" type="button">Beach</button>
+                            <button class="chip selected" type="button">4x4</button>
+                            <button class="chip" type="button">Daily</button>
+                            <button class="chip" type="button">Project</button>
+                          </div>
+                        </div>
+                        <div class="form-row">
+                          <span class="label">Avoid</span>
+                          <div class="chip-grid">
+                            <button class="chip selected" type="button">Salvage</button>
+                            <button class="chip selected" type="button">High rust</button>
+                            <button class="chip" type="button">No AC</button>
+                            <button class="chip" type="button">Huge lift</button>
+                          </div>
+                        </div>
+                        <button class="button" type="button" data-go="ai">Save & continue</button>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </article>
+
+              <article class="screen" data-screen="ai">
+                <div class="split">
+                  <section>
+                    <p class="eyebrow">Step 4</p>
+                    <h3>Make cost and agency explicit.</h3>
+                    <p class="screen-copy">
+                      This is the main trust screen. The user chooses who pays, how much AI is allowed,
+                      and whether a cloud agent will do deeper research.
+                    </p>
+                    <div class="action-row">
+                      <button class="button" type="button" data-go="automation">Continue</button>
+                      <button class="button secondary" type="button" data-go="phone">Use simple mode</button>
+                    </div>
+                  </section>
+                  <section class="visual">
+                    <div class="web-window">
+                      <div class="browser-bar">
+                        <span class="dot red"></span><span class="dot gold"></span><span class="dot green"></span>
+                        <span class="url">app.beachcar.app/setup/ai</span>
+                      </div>
+                      <div class="web-body">
+                        <h1>How should Beachcar use AI?</h1>
+                        <div class="option-stack">
+                          <button class="option-card" type="button" data-scenario="byok">
+                            <span class="radio-dot"></span>
+                            <span><span class="option-title">Bring your own key</span><span class="option-copy">OpenAI or OpenRouter. You set the model and spend cap.</span></span>
+                            <span class="price">Friend pays</span>
+                          </button>
+                          <button class="option-card active" type="button" data-scenario="sponsored">
+                            <span class="radio-dot"></span>
+                            <span><span class="option-title">Jon-sponsored starter</span><span class="option-copy">Limited deterministic run path. Good for friendly beta.</span></span>
+                            <span class="price">Recommended</span>
+                          </button>
+                          <button class="option-card" type="button" data-scenario="agent">
+                            <span class="radio-dot"></span>
+                            <span><span class="option-title">Connect cloud agent</span><span class="option-copy">Use Codex or Claude with the Beachcar skill and hosted MCP.</span></span>
+                            <span class="price">Power user</span>
+                          </button>
+                        </div>
+                        <div class="form-row">
+                          <span class="label">Daily spend guard</span>
+                          <div class="range-line"><span>$0</span><span class="range-track"></span><span>$20</span></div>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </article>
+
+              <article class="screen" data-screen="automation">
+                <div class="split">
+                  <section>
+                    <p class="eyebrow">Step 5</p>
+                    <h3 id="automationHeadline">Connect automation only when it adds value.</h3>
+                    <p class="screen-copy" id="automationCopy">
+                      In starter mode, the system can use the hosted daily path. For power users, this screen becomes the bridge to Codex or Claude.
+                    </p>
+                    <div class="action-row">
+                      <button class="button" type="button" data-go="phone">Send me to the app</button>
+                      <button class="button secondary" type="button" data-go="loop">View dashboard</button>
+                    </div>
+                  </section>
+                  <section class="visual">
+                    <div class="web-window">
+                      <div class="browser-bar">
+                        <span class="dot red"></span><span class="dot gold"></span><span class="dot green"></span>
+                        <span class="url">app.beachcar.app/setup/automation</span>
+                      </div>
+                      <div class="web-body">
+                        <h1 id="automationTitle">Daily run connection</h1>
+                        <p class="screen-copy" id="automationSubcopy">Beachcar will create a scoped run identity and show recent automation activity here.</p>
+                        <div class="flow-diagram">
+                          <div class="node">
+                            <strong id="leftNodeTitle">Beachcar Worker</strong>
+                            <span id="leftNodeCopy">Runs deterministic source ingest and image warmup.</span>
+                          </div>
+                          <div class="arrow">→</div>
+                          <div class="node">
+                            <strong>Personal feed</strong>
+                            <span>Structured dossiers, cached images, run status, feedback.</span>
+                          </div>
+                        </div>
+                        <div class="action-row">
+                          <button class="button small" type="button">Create token</button>
+                          <button class="button small secondary" type="button">Download skill</button>
+                          <button class="button small secondary" type="button">Test connection</button>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </article>
+
+              <article class="screen" data-screen="phone">
+                <div class="split">
+                  <section>
+                    <p class="eyebrow">Step 6</p>
+                    <h3>The app should feel preconfigured after sign-in.</h3>
+                    <p class="screen-copy">
+                      Phone onboarding should be short: install, sign in, sync preferences, load the first cached feed.
+                      Detailed controls stay on the web.
+                    </p>
+                    <div class="action-row">
+                      <button class="button" type="button" data-go="feed">Open first feed</button>
+                      <button class="button secondary" type="button" data-go="preferences">Edit preferences</button>
+                    </div>
+                  </section>
+                  <section class="visual">
+                    <div class="phone">
+                      <div class="phone-screen">
+                        <div class="status"><span>9:41</span><span>5G 100%</span></div>
+                        <p class="label">TestFlight</p>
+                        <div class="app-card" style="padding: 14px">
+                          <div class="brand" style="margin-bottom: 12px">
+                            <div class="mark" aria-hidden="true"></div>
+                            <div>
+                              <h1>Beachcar</h1>
+                              <p class="subtitle">Beta build ready</p>
+                            </div>
+                          </div>
+                          <button class="button small" type="button" data-go="feed">Install / Open</button>
+                        </div>
+                        <div class="app-card" style="padding: 14px">
+                          <p class="card-title">Syncing your setup</p>
+                          <p class="car-summary">Preferences, AI mode, and latest run are loading from Beachcar.</p>
+                          <div class="range-track" style="margin-top: 18px"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </article>
+
+              <article class="screen" data-screen="feed">
+                <div class="split">
+                  <section>
+                    <p class="eyebrow">Step 7</p>
+                    <h3>First value should be visible immediately.</h3>
+                    <p class="screen-copy">
+                      The first feed needs fast cached images, a clear match reason, bid context, and simple feedback controls.
+                      No empty setup screens after login.
+                    </p>
+                    <div class="action-row">
+                      <button class="button" type="button" data-go="loop">View ongoing loop</button>
+                      <button class="button secondary" type="button" data-go="preferences">Tune picks</button>
+                    </div>
+                  </section>
+                  <section class="visual">
+                    <div class="phone">
+                      <div class="phone-screen">
+                        <div class="status"><span>9:41</span><span>Beachcar</span></div>
+                        <div class="pill-row">
+                          <span class="pill good">Strong fit</span>
+                          <span class="pill">01 / 18</span>
+                          <span class="pill">Cached</span>
+                        </div>
+                        <div class="app-card">
+                          <div class="fake-photo blazer"></div>
+                          <div class="car-body">
+                            <p class="card-title">1973 Chevrolet K5 Blazer 4x4</p>
+                            <p class="car-summary">
+                              Removable-roof family 4x4 with beach wagon character. Check frame, floor pans,
+                              rear belts, and bidding heat before chasing.
+                            </p>
+                            <div class="pill-row" style="margin-top: 10px">
+                              <span class="pill">$8.5k bid</span>
+                              <span class="pill good">$3.5k under fair</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="action-row" style="justify-content: space-between; margin-top: 12px">
+                          <button class="button small secondary" type="button">Pass</button>
+                          <button class="button small secondary" type="button">Save</button>
+                          <button class="button small" type="button">Like</button>
+                        </div>
+                        <div class="phone-tabs">
+                          <span class="tab active">Feed</span><span class="tab">Search</span><span class="tab">Saved</span><span class="tab">Alerts</span><span class="tab">Profile</span>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </article>
+
+              <article class="screen" data-screen="loop">
+                <div class="split">
+                  <section>
+                    <p class="eyebrow">Step 8</p>
+                    <h3>Keep the web as the operational dashboard.</h3>
+                    <p class="screen-copy">
+                      The friend can check freshness, see the latest run, inspect AI usage, change spend controls,
+                      and understand whether automation is working.
+                    </p>
+                    <div class="action-row">
+                      <button class="button" type="button" data-go="invite">Replay flow</button>
+                      <button class="button secondary" type="button" id="copySummaryButton">Copy review summary</button>
+                    </div>
+                  </section>
+                  <section class="visual">
+                    <div class="web-window">
+                      <div class="browser-bar">
+                        <span class="dot red"></span><span class="dot gold"></span><span class="dot green"></span>
+                        <span class="url">app.beachcar.app/dashboard</span>
+                      </div>
+                      <div class="web-body dashboard">
+                        <div class="side-menu">
+                          <span class="menu-item active">Dashboard</span>
+                          <span class="menu-item">Runs</span>
+                          <span class="menu-item">Preferences</span>
+                          <span class="menu-item">Automation</span>
+                          <span class="menu-item">AI usage</span>
+                        </div>
+                        <div>
+                          <h1>Today’s run</h1>
+                          <p class="subtitle">Completed 6:12 AM. Next run in 16h 47m.</p>
+                          <div class="metrics">
+                            <div class="metric"><strong>18</strong><span>dossiers</span></div>
+                            <div class="metric"><strong>96%</strong><span>images warm</span></div>
+                            <div class="metric"><strong>$0.00</strong><span>AI spend today</span></div>
+                          </div>
+                          <div class="activity">
+                            <div class="activity-item"><span>BaT RSS cache refreshed</span><strong class="ok">OK</strong></div>
+                            <div class="activity-item"><span>Image variants warmed</span><strong class="ok">OK</strong></div>
+                            <div class="activity-item"><span>Friend feedback captured</span><strong class="ok">3 new</strong></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <aside class="aside">
+            <section class="review-card">
+              <h3>What to react to</h3>
+              <ul id="reviewPrompts"></ul>
+            </section>
+            <section class="review-card">
+              <h3>Current assumption</h3>
+              <p id="assumptionText"></p>
+            </section>
+            <section class="review-card">
+              <h3>Your notes</h3>
+              <textarea class="field feedback-box" id="feedbackBox" placeholder="Type reactions here while clicking through. This stays local in the page."></textarea>
+              <div class="action-row">
+                <button class="button small" type="button" id="copyFeedbackButton">Copy notes</button>
+                <button class="button small secondary" type="button" id="clearFeedbackButton">Clear</button>
+              </div>
+            </section>
+          </aside>
+        </div>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status">Copied</div>
+
+    <script>
+      const steps = [
+        {
+          id: "invite",
+          title: "Invite",
+          subtitle: "Friend receives a low-friction invite with two paths: setup web first or install TestFlight first.",
+          note: "Message + TestFlight",
+          prompts: [
+            "Should the invite push web setup first, TestFlight first, or offer both equally?",
+            "What needs to be said about beta quality, privacy, and cost before they click?",
+            "Should you send this manually, or should the web app generate invite links?"
+          ],
+          assumption: "The first touch is personal and lightweight: a message from you with a web setup link and TestFlight link."
+        },
+        {
+          id: "signin",
+          title: "Web Sign In",
+          subtitle: "Auth happens on the web before setup, using Clerk-style email/passkey sign-in.",
+          note: "Clerk identity",
+          prompts: [
+            "Is email/passkey enough for friends, or do we need Apple/Google sign-in immediately?",
+            "Should invited users be auto-approved, or should you explicitly provision each account?",
+            "Should sign-in mention that the same account is used on the phone?"
+          ],
+          assumption: "The web is the source of account setup; the phone should inherit this state after login."
+        },
+        {
+          id: "preferences",
+          title: "Preferences",
+          subtitle: "The friend describes taste, budget, use case, deal-breakers, and search radius.",
+          note: "Taste profile",
+          prompts: [
+            "Are these the right first-run fields, or should we ask fewer questions?",
+            "Do we need examples for vague preferences like “family beach car”?",
+            "Should preferences support multiple saved profiles later?"
+          ],
+          assumption: "A short preference form creates enough signal for the first daily run without feeling like admin work."
+        },
+        {
+          id: "ai",
+          title: "AI Option",
+          subtitle: "The user chooses who pays, how much AI is allowed, and whether an agent will run deeper research.",
+          note: "Cost + tokens",
+          prompts: [
+            "Should Jon-sponsored starter mode be the default for friendly beta?",
+            "Is BYO key too much friction for the first cohort?",
+            "How explicit should token/spend caps be for nontechnical friends?"
+          ],
+          assumption: "Cost needs to be explicit, but most friends should start with a simple sponsored or deterministic path."
+        },
+        {
+          id: "automation",
+          title: "Automation Connect",
+          subtitle: "A hosted MCP/skill path lets Codex, Claude, or another cloud agent publish dossiers without a local MCP server.",
+          note: "Skill + MCP",
+          prompts: [
+            "Should cloud-agent setup be hidden unless the user asks for deeper research?",
+            "Do users need to see tokens, or should OAuth/MCP discovery handle most of this?",
+            "What run status would make you trust that automation worked?"
+          ],
+          assumption: "Automation is powerful but should be optional; starter users should not have to understand MCP."
+        },
+        {
+          id: "phone",
+          title: "Phone Login",
+          subtitle: "The phone path is install, sign in, sync, then show personalized data.",
+          note: "TestFlight + sync",
+          prompts: [
+            "Should the app show setup progress, or simply land in the feed once ready?",
+            "What should happen if the user opens the phone before finishing web setup?",
+            "Do we need QR/deep-link handoff from web to phone?"
+          ],
+          assumption: "The phone app is primarily consumption and feedback; web setup should keep it from feeling empty."
+        },
+        {
+          id: "feed",
+          title: "First Feed",
+          subtitle: "The first app experience is a fast personalized feed with cached images and simple feedback.",
+          note: "Immediate value",
+          prompts: [
+            "What information must be on the first card versus the detail view?",
+            "Are Like/Save/Pass the right first actions?",
+            "How much AI summary is enough without crowding the car photos?"
+          ],
+          assumption: "A friend will judge the product on the first three vehicles, image speed, and whether the match rationale feels personal."
+        },
+        {
+          id: "loop",
+          title: "Ongoing Loop",
+          subtitle: "The web dashboard explains freshness, run history, AI usage, image warming, and feedback impact.",
+          note: "Trust dashboard",
+          prompts: [
+            "What dashboard status would you check before telling a friend it is working?",
+            "Should normal users see AI spend and token usage, or only power users?",
+            "What feedback should feed future runs: likes, saves, comments, manual notes?"
+          ],
+          assumption: "A small dashboard builds trust that daily automation is alive, current, and not silently spending money."
+        }
+      ];
+
+      let activeIndex = 0;
+      let scenario = "sponsored";
+
+      const stepList = document.getElementById("stepList");
+      const title = document.getElementById("screenTitle");
+      const subtitle = document.getElementById("screenSubtitle");
+      const prevButton = document.getElementById("prevButton");
+      const nextButton = document.getElementById("nextButton");
+      const reviewPrompts = document.getElementById("reviewPrompts");
+      const assumptionText = document.getElementById("assumptionText");
+      const feedbackBox = document.getElementById("feedbackBox");
+      const toast = document.getElementById("toast");
+
+      function renderStepButtons() {
+        stepList.innerHTML = "";
+        steps.forEach((step, index) => {
+          const button = document.createElement("button");
+          button.className = "step-button";
+          button.type = "button";
+          button.dataset.index = String(index);
+          button.innerHTML = `
+            <span class="step-number">${index + 1}</span>
+            <span>
+              <span class="step-title">${step.title}</span>
+              <span class="step-note">${step.note}</span>
+            </span>
+          `;
+          button.addEventListener("click", () => setActive(index));
+          stepList.appendChild(button);
+        });
+      }
+
+      function setActive(index) {
+        activeIndex = Math.max(0, Math.min(index, steps.length - 1));
+        const step = steps[activeIndex];
+        document.querySelectorAll(".screen").forEach((screen) => {
+          screen.classList.toggle("active", screen.dataset.screen === step.id);
+        });
+        document.querySelectorAll(".step-button").forEach((button) => {
+          button.classList.toggle("active", Number(button.dataset.index) === activeIndex);
+        });
+        title.textContent = step.title;
+        subtitle.textContent = step.subtitle;
+        prevButton.disabled = activeIndex === 0;
+        nextButton.textContent = activeIndex === steps.length - 1 ? "Replay" : "Next";
+        reviewPrompts.innerHTML = step.prompts.map((prompt) => `<li>${prompt}</li>`).join("");
+        assumptionText.textContent = step.assumption;
+        updateScenarioUI();
+      }
+
+      function goTo(id) {
+        const index = steps.findIndex((step) => step.id === id);
+        if (index >= 0) {
+          setActive(index);
+        }
+      }
+
+      function setScenario(nextScenario) {
+        scenario = nextScenario;
+        document.querySelectorAll("input[name='scenario']").forEach((input) => {
+          input.checked = input.value === scenario;
+        });
+        updateScenarioUI();
+      }
+
+      function updateScenarioUI() {
+        document.querySelectorAll("[data-scenario]").forEach((card) => {
+          card.classList.toggle("active", card.dataset.scenario === scenario);
+        });
+
+        const headline = document.getElementById("automationHeadline");
+        const copy = document.getElementById("automationCopy");
+        const title = document.getElementById("automationTitle");
+        const subcopy = document.getElementById("automationSubcopy");
+        const leftTitle = document.getElementById("leftNodeTitle");
+        const leftCopy = document.getElementById("leftNodeCopy");
+
+        if (!headline) return;
+
+        const variants = {
+          sponsored: {
+            headline: "Starter mode hides automation complexity.",
+            copy: "Beachcar can run a low-cost daily path for friendly beta users while still showing clear freshness and spend status.",
+            title: "Jon-sponsored starter",
+            subcopy: "No friend key required. Runs are limited, observable, and can graduate to agent mode later.",
+            leftTitle: "Beachcar Worker",
+            leftCopy: "Cached sources, deterministic summaries, image warmup, and run publishing."
+          },
+          byok: {
+            headline: "BYO key makes payment explicit.",
+            copy: "The friend can provide an OpenAI/OpenRouter key, choose a daily cap, and keep spend under their control.",
+            title: "Bring your own key",
+            subcopy: "Beachcar stores the provider setting and spend guard; the run path records tokens and usage.",
+            leftTitle: "AI Provider",
+            leftCopy: "Friend-owned key with model choice, cap, and token accounting."
+          },
+          agent: {
+            headline: "Cloud agent mode is the power-user path.",
+            copy: "The user downloads the Beachcar skill or connects via hosted MCP, then the cloud agent gathers data and publishes dossiers.",
+            title: "Connect cloud agent",
+            subcopy: "OAuth/MCP discovery should be first choice, with scoped tokens as fallback for clients that need them.",
+            leftTitle: "Codex / Claude",
+            leftCopy: "Uses Beachcar MCP tools to search, submit candidates, publish runs, and record usage."
+          }
+        };
+
+        const selected = variants[scenario];
+        headline.textContent = selected.headline;
+        copy.textContent = selected.copy;
+        title.textContent = selected.title;
+        subcopy.textContent = selected.subcopy;
+        leftTitle.textContent = selected.leftTitle;
+        leftCopy.textContent = selected.leftCopy;
+      }
+
+      function showToast(message) {
+        toast.textContent = message;
+        toast.classList.add("show");
+        window.setTimeout(() => toast.classList.remove("show"), 1500);
+      }
+
+      function copyText(text, message) {
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(text).then(() => showToast(message)).catch(() => showToast("Copy failed"));
+        } else {
+          showToast("Clipboard unavailable");
+        }
+      }
+
+      document.addEventListener("click", (event) => {
+        const target = event.target.closest("[data-go]");
+        if (target) {
+          goTo(target.dataset.go);
+        }
+
+        const scenarioTarget = event.target.closest("[data-scenario]");
+        if (scenarioTarget) {
+          setScenario(scenarioTarget.dataset.scenario);
+        }
+      });
+
+      document.querySelectorAll("input[name='scenario']").forEach((input) => {
+        input.addEventListener("change", () => setScenario(input.value));
+      });
+
+      prevButton.addEventListener("click", () => setActive(activeIndex - 1));
+      nextButton.addEventListener("click", () => {
+        setActive(activeIndex === steps.length - 1 ? 0 : activeIndex + 1);
+      });
+
+      document.getElementById("copyFeedbackButton").addEventListener("click", () => {
+        copyText(feedbackBox.value || "No notes yet.", "Notes copied");
+      });
+
+      document.getElementById("clearFeedbackButton").addEventListener("click", () => {
+        feedbackBox.value = "";
+        showToast("Notes cleared");
+      });
+
+      document.getElementById("copySummaryButton").addEventListener("click", () => {
+        const summary = steps.map((step, index) => `${index + 1}. ${step.title}: ${step.assumption}`).join("\n");
+        copyText(summary, "Summary copied");
+      });
+
+      renderStepButtons();
+      setActive(0);
+    </script>
+  </body>
+</html>

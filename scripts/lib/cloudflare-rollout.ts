@@ -25,6 +25,24 @@ export type CloudflareAccountGate = {
   credentialsCanAccessExpected: boolean;
 };
 
+export type D1IdentityGate = {
+  configuredName: string;
+  configuredId: string;
+  remoteNameMatchId: string;
+  remoteIdMatchName: string;
+  exactMatch: boolean;
+};
+
+export type DurableObjectRollbackGate = {
+  ok: boolean;
+  activeVersionId: string;
+  activePercentage: number;
+  activeVersionCount: number;
+  expectedMigrationTag: string;
+  remoteMigrationTag: string;
+  reason: string;
+};
+
 export function evaluateCloudflareAccountGate(options: {
   configAccountId?: string;
   env?: Environment;
@@ -57,6 +75,93 @@ export function accountIdsFromWhoami(value: unknown): string[] {
   );
 }
 
+export function evaluateD1IdentityGate(options: {
+  configuredName?: string;
+  configuredId?: string;
+  databases?: unknown[];
+}): D1IdentityGate {
+  const configuredName = clean(options.configuredName);
+  const configuredId = clean(options.configuredId);
+  const databases = Array.isArray(options.databases) ? options.databases : [];
+  const nameMatch = databases.find((entry) => recordString(entry, "name") === configuredName);
+  const idMatch = databases.find((entry) => recordString(entry, "uuid") === configuredId);
+  const remoteNameMatchId = recordString(nameMatch, "uuid");
+  const remoteIdMatchName = recordString(idMatch, "name");
+
+  return {
+    configuredName,
+    configuredId,
+    remoteNameMatchId,
+    remoteIdMatchName,
+    exactMatch: Boolean(
+      configuredName &&
+        configuredId &&
+        remoteNameMatchId === configuredId &&
+        remoteIdMatchName === configuredName,
+    ),
+  };
+}
+
+export function guardedWorkerDeployArgs(options: {
+  dryRun?: boolean;
+  secretsFile?: string;
+  skipContainerRollout?: boolean;
+} = {}): string[] {
+  const args = ["deploy", "--strict", "--keep-vars"];
+  if (options.dryRun) args.push("--dry-run");
+  const secretsFile = clean(options.secretsFile);
+  if (secretsFile) args.push("--secrets-file", secretsFile);
+  if (options.skipContainerRollout) args.push("--containers-rollout", "none");
+  return args;
+}
+
+export function evaluateDurableObjectRollbackGate(options: {
+  deploymentStatus?: unknown;
+  expectedMigrationTag?: string;
+  remoteMigrationTag?: string;
+}): DurableObjectRollbackGate {
+  const expectedMigrationTag = clean(options.expectedMigrationTag);
+  const remoteMigrationTag = clean(options.remoteMigrationTag);
+  const versions = recordArray(options.deploymentStatus, "versions")
+    .map((entry) => ({
+      versionId: recordString(entry, "version_id") || recordString(entry, "id"),
+      percentage: Number(recordValue(entry, "percentage")),
+    }))
+    .filter((entry) => entry.versionId && Number.isFinite(entry.percentage) && entry.percentage > 0);
+  const activeVersion = versions.length === 1 ? versions[0] : null;
+  const singleVersionAtFullTraffic = Boolean(activeVersion && activeVersion.percentage === 100);
+  const migrationTagMatches = Boolean(expectedMigrationTag && remoteMigrationTag === expectedMigrationTag);
+  const ok = singleVersionAtFullTraffic && migrationTagMatches;
+  let reason = "The active Worker is a single version at 100% traffic and already has the configured Durable Object migration tag.";
+  if (!activeVersion) {
+    reason = `Expected exactly one active Worker version, found ${versions.length}.`;
+  } else if (activeVersion.percentage !== 100) {
+    reason = `Expected the active Worker version at 100% traffic, found ${activeVersion.percentage}%.`;
+  } else if (!expectedMigrationTag) {
+    reason = "No final Durable Object migration tag is configured locally.";
+  } else if (!remoteMigrationTag) {
+    reason = "The remote Worker did not report a Durable Object migration tag.";
+  } else if (remoteMigrationTag !== expectedMigrationTag) {
+    reason = `Remote Durable Object migration tag ${remoteMigrationTag} does not match configured tag ${expectedMigrationTag}.`;
+  }
+
+  return {
+    ok,
+    activeVersionId: activeVersion?.versionId || "",
+    activePercentage: activeVersion?.percentage || 0,
+    activeVersionCount: versions.length,
+    expectedMigrationTag,
+    remoteMigrationTag,
+    reason,
+  };
+}
+
+export function workerMigrationTagFromServiceMetadata(value: unknown): string {
+  const defaultEnvironment = recordValue(value, "default_environment");
+  const script = recordValue(defaultEnvironment, "script");
+  return recordString(script, "migration_tag");
+}
+
 export function collectWorkerSecrets(env: Environment): Record<string, string> {
   const secrets: Record<string, string> = {};
   for (const name of WORKER_SECRET_NAMES) {
@@ -64,6 +169,27 @@ export function collectWorkerSecrets(env: Environment): Record<string, string> {
     if (value && !isPlaceholder(value)) secrets[name] = value;
   }
   return secrets;
+}
+
+export function collectRolloutWorkerSecrets(options: {
+  deployFileEnv?: Environment;
+  ambientEnv?: Environment;
+  runnerMode: "deterministic" | "codex";
+  deployContainers: boolean;
+}): Record<string, string> {
+  const deployFileEnv = options.deployFileEnv || {};
+  const values: Environment = {
+    ...deployFileEnv,
+    ...(options.ambientEnv || {}),
+    BEACHCAR_RUNNER_MODE: options.runnerMode,
+  };
+  delete values.OPENAI_API_KEY;
+  delete values.BEACHCAR_CODEX_MODEL;
+  if (options.runnerMode === "codex" && options.deployContainers) {
+    values.OPENAI_API_KEY = deployFileEnv.OPENAI_API_KEY;
+    values.BEACHCAR_CODEX_MODEL = deployFileEnv.BEACHCAR_CODEX_MODEL;
+  }
+  return collectWorkerSecrets(values);
 }
 
 export function missingRequiredWorkerSecrets(remoteNames: string[], localNames: string[]): string[] {
@@ -150,6 +276,21 @@ function numericResult(output: string, key: string): number {
 
 function isAccountId(value: string): boolean {
   return /^[a-f0-9]{32}$/i.test(value);
+}
+
+function recordValue(value: unknown, key: string): unknown {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)[key]
+    : undefined;
+}
+
+function recordString(value: unknown, key: string): string {
+  return clean(recordValue(value, key));
+}
+
+function recordArray(value: unknown, key: string): unknown[] {
+  const current = recordValue(value, key);
+  return Array.isArray(current) ? current : [];
 }
 
 function clean(value: unknown): string {

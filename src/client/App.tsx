@@ -1707,7 +1707,13 @@ function RunDetailSheet(props: {
   return (
     <div className="filter-overlay" role="dialog" aria-modal="true" aria-label="Run detail">
       <button className="filter-backdrop" type="button" onClick={props.onClose} aria-label="Close run detail" />
-      <section className="filter-sheet run-detail-sheet">
+      <section
+        className="filter-sheet run-detail-sheet"
+        data-agent-run-id={props.agentRun?.id || ""}
+        data-published-run-id={props.run?.id || ""}
+        data-run-generated-at={props.run?.generatedAt || ""}
+        data-workflow-instance-id={props.agentRun?.workflowInstanceId || summary.workflowInstanceId || ""}
+      >
         <div className="sheet-grabber" />
         <div className="sheet-title">
           <strong>Run detail</strong>

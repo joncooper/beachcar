@@ -21,6 +21,10 @@ if (!smokeEmail || !smokeEmail.includes("@")) {
   fail("Set SMOKE_TEST_EMAIL, BOOTSTRAP_OWNER_EMAILS, ALLOWED_EMAILS, or ALLOWED_EMAIL to a valid local smoke-test email.");
 }
 
+const runtimeCapability = await requestJson("/api/admin/runtime", { admin: true });
+assert(typeof runtimeCapability.aiGatewayConfigured === "boolean", "Expected admin runtime capability to report AI Gateway availability without revealing credentials.");
+assert(["deterministic", "codex"].includes(runtimeCapability.runnerMode), "Expected admin runtime capability to report the effective runner mode.");
+
 const me = await requestJson("/api/me");
 assert(me.email === smokeEmail, `Expected /api/me email ${smokeEmail}; received ${me.email || "(missing)"}`);
 assert(me.status === "active", `Expected ${smokeEmail} to be active. Set BOOTSTRAP_OWNER_EMAILS=${smokeEmail} or ALLOWED_EMAIL=${smokeEmail} for local smoke tests.`);
@@ -66,6 +70,14 @@ const profilePayload = {
 };
 const profiled = await requestJson("/api/profile", { method: "PUT", body: profilePayload });
 assert(profiled.onboarding?.completed === true, "Expected profile save to complete onboarding.");
+const scheduleStatus = await requestJson("/api/agent-schedule");
+assertTimezoneAwareSchedule(scheduleStatus, "profile-save schedule status");
+const resyncedScheduleStatus = await requestJson("/api/agent-schedule/sync", { method: "POST", body: {} });
+assertTimezoneAwareSchedule(resyncedScheduleStatus, "explicit schedule resync");
+assert(
+  resyncedScheduleStatus.scheduleId === scheduleStatus.scheduleId,
+  "Expected repeated timezone-aware schedule sync to reuse the existing idempotent one-shot schedule.",
+);
 const ownerSources = await requestJson("/api/source-settings", {
   method: "PUT",
   body: {
@@ -126,12 +138,38 @@ const byok = await requestJson("/api/ai-settings", {
 assert(byok.aiSettings?.mode === "byok", "Expected BYOK AI settings to save.");
 assert(byok.aiSettings?.gatewayKeyRef === "gateway-key-ref-local-smoke", "Expected BYOK gateway reference to round-trip.");
 
-const agentRun = await requestJson("/api/agent-runs", {
+const manualRunRequestId = crypto.randomUUID();
+const manualRunReason = `local smoke workflow ${new Date().toISOString()}`;
+const firstAgentRunResponse = await rawRequest("/api/agent-runs", {
   method: "POST",
-  body: { reason: `local smoke workflow ${new Date().toISOString()}` },
+  body: { requestId: manualRunRequestId, reason: manualRunReason },
 });
+assert(firstAgentRunResponse.status === 201, `Expected first idempotent Agent-run request to return HTTP 201; received ${firstAgentRunResponse.status}.`);
+const agentRun = firstAgentRunResponse.body;
 assert(agentRun.id, "Expected manual agent run to return an id.");
+assert(agentRun.id === `agent-run-request-${manualRunRequestId}`, "Expected manual Agent-run id to derive from its requestId.");
+assert(agentRun.progress?.requestId === manualRunRequestId, "Expected manual Agent run to retain its requestId in progress metadata.");
 assert(agentRun.workflowInstanceId, "Expected manual agent run to start a Cloudflare Workflow instance.");
+const retriedAgentRunResponse = await rawRequest("/api/agent-runs", {
+  method: "POST",
+  body: { requestId: manualRunRequestId, reason: manualRunReason },
+});
+assert(retriedAgentRunResponse.status === 200, `Expected repeated idempotent Agent-run request to return HTTP 200; received ${retriedAgentRunResponse.status}.`);
+assert(retriedAgentRunResponse.body?.id === agentRun.id, "Expected repeated Agent-run request to return the original run.");
+assert(
+  retriedAgentRunResponse.body?.workflowInstanceId === agentRun.workflowInstanceId,
+  "Expected repeated Agent-run request to reuse the original Workflow instead of starting another.",
+);
+const conflictingAgentRunResponse = await rawRequest("/api/agent-runs", {
+  method: "POST",
+  body: { requestId: manualRunRequestId, reason: `${manualRunReason} changed` },
+});
+assert(conflictingAgentRunResponse.status === 409, `Expected conflicting requestId reuse to return HTTP 409; received ${conflictingAgentRunResponse.status}.`);
+const invalidAgentRunResponse = await rawRequest("/api/agent-runs", {
+  method: "POST",
+  body: { requestId: "not-a-uuid", reason: manualRunReason },
+});
+assert(invalidAgentRunResponse.status === 400, `Expected invalid Agent-run requestId to return HTTP 400; received ${invalidAgentRunResponse.status}.`);
 
 const published = await pollLatestAgentRun(agentRun.id);
 assert(published.status === "published", `Expected agent run ${agentRun.id} to publish; received ${published.status}.`);
@@ -436,7 +474,7 @@ async function smokeAccountExportAndDeletion() {
   const cappedRun = await rawRequest("/api/agent-runs", {
     email: friendEmail,
     method: "POST",
-    body: { reason: "budget exceeded smoke" },
+    body: { requestId: crypto.randomUUID(), reason: "budget exceeded smoke" },
   });
   assert(cappedRun.status === 402, `Expected budget-exceeded run request to return HTTP 402; received HTTP ${cappedRun.status}.`);
   assert(cappedRun.body?.error === "AI budget exceeded for this user", "Expected budget-exceeded run request to explain the AI cap.");
@@ -452,7 +490,7 @@ async function smokeAccountExportAndDeletion() {
   const friendRun = await requestJson("/api/agent-runs", {
     email: friendEmail,
     method: "POST",
-    body: { reason: "account export delete smoke" },
+    body: { requestId: crypto.randomUUID(), reason: "account export delete smoke" },
   });
   assert(friendRun.workflowInstanceId, "Expected temporary friend run to start a Workflow.");
   const friendPublished = await pollLatestAgentRun(friendRun.id, friendEmail);
@@ -885,6 +923,22 @@ function delay(ms) {
 
 function assert(condition, message) {
   if (!condition) fail(message);
+}
+
+function assertTimezoneAwareSchedule(status, label) {
+  const dailySchedules = Array.isArray(status?.schedules)
+    ? status.schedules.filter((schedule) => schedule?.callback === "queueScheduledRun")
+    : [];
+  assert(status?.userId === `email:${smokeEmail}`, `Expected ${label} to remain scoped to the signed-in owner.`);
+  assert(status?.scheduleCron === "0 8 * * *", `Expected ${label} to report the saved daily cron.`);
+  assert(status?.scheduleTimezone === "America/New_York", `Expected ${label} to report the saved profile timezone.`);
+  assert(status?.phase === "scheduled", `Expected ${label} to report the Agent as scheduled.`);
+  assert(dailySchedules.length === 1, `Expected ${label} to expose exactly one daily Agent schedule; received ${dailySchedules.length}.`);
+  assert(dailySchedules[0]?.id === status.scheduleId, `Expected ${label} state and schedule-list ids to agree.`);
+  assert(dailySchedules[0]?.type === "scheduled", `Expected ${label} to use a timezone-aware one-shot schedule.`);
+  assert(dailySchedules[0]?.nextRunAt === status.nextRunAt, `Expected ${label} state and schedule-list timestamps to agree.`);
+  assert(Date.parse(status.nextRunAt) > Date.now(), `Expected ${label} next-run timestamp to be in the future.`);
+  assert(!Object.prototype.hasOwnProperty.call(dailySchedules[0], "payload"), `Expected ${label} to redact the Agent callback payload.`);
 }
 
 function fail(message) {

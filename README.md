@@ -146,19 +146,19 @@ bun run deploy:env:check
 bun run deploy:remote -- --dry-run
 ```
 
-After explicit approval, the guarded rollout command verifies the production account, captures private Worker/D1 recovery artifacts, validates and applies the expected migration, deploys code plus any locally supplied secret changes as one Worker version, and verifies the deployed Worker. Existing remote secrets omitted locally are preserved:
+After explicit approval, the guarded rollout command couples the production D1 name and UUID, proves the active Worker is a single 100%-traffic version already on Durable Object migration tag `v2`, captures private Worker/D1 recovery artifacts, runs a strict configuration dry run, validates and applies the expected migration, deploys code plus locally supplied secret changes once with `--strict --keep-vars`, and verifies the deployed Worker. Recovery artifacts never contain the separate temporary Worker-secret staging file. Existing remote secrets and audited dashboard-only plain vars omitted locally are preserved:
 
 ```bash
 bun run deploy:remote -- --execute --yes
 ```
 
-While `BEACHCAR_RUNNER_MODE=deterministic`, the rollout skips Cloudflare Container image publishing with Wrangler's `--containers-rollout none` option. To intentionally build or update the deployed Container image for Codex-backed runner work, run:
+Execution requires an explicit `BEACHCAR_RUNNER_MODE=deterministic|codex` in `.deploy.env`, and the effective mode is read back after deploy. The friend pilot uses `deterministic`, which skips Cloudflare Container image publishing with Wrangler's `--containers-rollout none` option. To intentionally build or update the deployed Container image for Codex-backed runner work, set `codex`, place its `OPENAI_API_KEY` in `.deploy.env` (ambient shell keys are never uploaded), and run:
 
 ```bash
 bun run deploy:remote -- --execute --yes --deploy-containers
 ```
 
-Manual fallback should follow the same safety order: capture the current Worker version plus a D1 Time Travel bookmark/export, dry-run the bundle, apply and verify the migration, then deploy code and any rotated secrets together with `wrangler deploy --secrets-file`. Do not run a post-deploy `secret bulk` release.
+Direct bootstrap mutation and `db:migrate:remote` shortcuts are disabled because they could bypass the identity, rollback, backup, and pending-migration gates. `bun run deploy:remote -- --execute --yes` is the sole production mutation entrypoint; repair or extend that guarded path instead of substituting a manual migration/deploy sequence.
 
 After the public/admin deployment checks pass, use the stored single-use Clerk ticket once to prove the real managed pilot path:
 
@@ -166,7 +166,7 @@ After the public/admin deployment checks pass, use the stored single-use Clerk t
 bun run cloudflare:verify-managed -- --execute --yes
 ```
 
-The verifier keeps the short-lived Clerk JWT in memory, queues one production Workflow run, follows the exact Agent/run ids, and checks enabled-source diagnostics, shortlist publication, Beachcar image-cache hits, and budget status. Do not use it as an auth-only rehearsal because the sign-in ticket may be consumed.
+The verifier binds the stored ticket to an exact trusted origin, redeems it only on the configured deployment, and fails its public/admin pilot-state gates before ticket exchange. The admin preflight selects the effective Gateway or heuristic scoring mode before consuming the ticket; `--require-ai-gateway` and `--require-heuristic` can pin either expectation. It sends a persisted idempotency UUID with bounded same-process retry, follows the exact Agent/Workflow/published-run ids, proves all three source diagnostics plus accepted terminal C&B/Hemmings results, location completeness, same-origin image bytes/cache hits, exact signed-in Run-detail identity, a healthy budget, and finally the exact next timezone-aware schedule occurrence. Use `--configure-pilot` only for an explicit managed/source repair. Terminal runner evidence is required by default; `--allow-runner-handoff-only` exists for non-release diagnostics and cannot produce release proof. Once the browser session exists, consumed ticket fields are atomically cleared from `.env.local`; the non-secret `.tmp/managed-production-verification.json` remains as evidence. Do not use it as an auth-only rehearsal.
 
 `CLERK_JWT_ISSUER` is your Clerk issuer URL, usually like `https://your-instance.clerk.accounts.dev`.
 `bun run deploy:env:check` hides secret values and reports only missing or malformed deployment inputs. Use `-- --strict` to make missing required values fail.

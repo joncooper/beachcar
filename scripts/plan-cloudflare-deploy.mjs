@@ -33,6 +33,7 @@ function buildPlan(check, wranglerConfig) {
   const configuredR2Name = stringValue(wranglerConfig?.r2_buckets?.[0]?.bucket_name) || "beachcar-watch-images";
   const exactD1 = check.resources.d1.find((db) => db?.name === configuredD1Name) || null;
   const similarD1 = check.resources.d1.find((db) => normalizeName(db?.name) === normalizeName(configuredD1Name)) || null;
+  const d1IdentityReady = checkStatus(check, "Configured D1 name and database_id identify the same remote database") === "ok";
   const r2Exists = check.resources.r2Buckets.includes(configuredR2Name);
   const workerExists = checkStatus(check, "Configured Worker exists remotely") === "ok";
   const accountReady =
@@ -53,32 +54,36 @@ function buildPlan(check, wranglerConfig) {
       : `Selected account ${check.accountId || "(unknown)"} has not been proven to match and access expected account ${check.expectedAccountId || "(missing)"}.`,
   });
 
-  if (exactD1) {
+  if (exactD1 && d1IdentityReady) {
     steps.push({
-      title: "Use existing matching D1 database",
-      kind: "file-edit",
+      title: "Use the exact configured D1 database",
+      kind: "read-only",
       status: "ready",
-      commands: [`# Set wrangler.jsonc d1_databases[0].database_id to ${exactD1.uuid}`],
-      detail: `Remote D1 ${configuredD1Name} already exists.`,
+      commands: ["bun scripts/check-cloudflare-resources.mjs --strict"],
+      detail: `Remote D1 ${configuredD1Name} and configured UUID ${exactD1.uuid} identify the same database.`,
     });
   } else {
     steps.push({
-      title: "Create the production D1 database",
-      kind: "mutating",
-      status: "required",
-      commands: [`bunx wrangler d1 create ${configuredD1Name}`, "# Copy the returned database_id into wrangler.jsonc"],
-      detail: similarD1
-        ? `Recommended: create a fresh ${configuredD1Name}. A similar legacy database exists (${similarD1.name}, ${similarD1.uuid}); inspect it before intentionally reusing it.`
-        : `Create ${configuredD1Name} so the remote name matches wrangler.jsonc.`,
+      title: "Resolve the production D1 prerequisite",
+      kind: "read-only",
+      status: "blocked",
+      commands: ["bun scripts/check-cloudflare-resources.mjs --strict"],
+      detail: exactD1
+        ? `The configured D1 name and UUID do not identify the same remote database. Correct wrangler.jsonc through a separately reviewed infrastructure change before rollout.`
+        : similarD1
+          ? `No exact D1 named ${configuredD1Name} exists; a similar database exists (${similarD1.name}, ${similarD1.uuid}). Provision or select the intended database through a separately reviewed infrastructure change before rollout.`
+          : `Provision ${configuredD1Name} through a separately reviewed infrastructure change before rollout. deploy:remote never auto-creates production resources.`,
     });
   }
 
   steps.push({
     title: "Confirm R2 image bucket",
-    kind: r2Exists ? "read-only" : "mutating",
-    status: r2Exists ? "ready" : "required",
-    commands: r2Exists ? ["bunx wrangler r2 bucket list"] : [`bunx wrangler r2 bucket create ${configuredR2Name}`],
-    detail: r2Exists ? `Remote R2 bucket ${configuredR2Name} exists.` : `Create ${configuredR2Name} before first deploy.`,
+    kind: "read-only",
+    status: r2Exists ? "ready" : "blocked",
+    commands: ["bunx wrangler r2 bucket list"],
+    detail: r2Exists
+      ? `Remote R2 bucket ${configuredR2Name} exists.`
+      : `Provision ${configuredR2Name} through a separately reviewed infrastructure change before rollout. deploy:remote never auto-creates production resources.`,
   });
 
   steps.push({
@@ -112,9 +117,9 @@ function buildPlan(check, wranglerConfig) {
   steps.push({
     title: workerExists ? "Run guarded migration and single-version deployment" : "Run guarded first deployment",
     kind: "mutating",
-    status: exactD1 ? "ready-after-dry-run" : "after-d1-created",
+    status: exactD1 && d1IdentityReady && r2Exists ? "ready-after-dry-run" : "blocked",
     commands: ["bun run deploy:remote -- --execute --yes"],
-    detail: `Captures private Worker/D1 recovery artifacts, accepts only migration 0011 (or none), validates the applied schema, and deploys ${workerName} once with any supplied secret changes.`,
+    detail: `Requires one active 100%-traffic Worker already on the final Durable Object migration tag, captures minimal private rollback evidence plus D1 recovery artifacts, accepts only migration 0011 (or none), validates the applied schema, and strictly deploys ${workerName} once while preserving audited remote vars and omitted secrets.`,
   });
 
   steps.push({
@@ -135,9 +140,9 @@ function buildPlan(check, wranglerConfig) {
     generatedAt: new Date().toISOString(),
     accountId: check.accountId,
     workerName,
-    recommendation: exactD1
+    recommendation: exactD1 && d1IdentityReady
       ? `Use configured D1 ${configuredD1Name} (${exactD1.uuid}) through the guarded rollout, which gates pending migration 0011 and verifies the schema before deploy.`
-      : `Create a fresh D1 database named ${configuredD1Name} unless you intentionally decide to inspect and reuse a legacy similarly named database.`,
+      : `Resolve the configured D1 name/UUID identity through a separately reviewed infrastructure change before the guarded rollout.`,
     currentFindings: check.checks.filter((entry) => entry.status !== "ok"),
     steps,
     mutatingCommandsPresent: steps.some((step) => step.kind === "mutating"),

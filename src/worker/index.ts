@@ -1,10 +1,9 @@
 import { getAgentByName } from "agents";
 import { getContainer } from "@cloudflare/containers";
-import type { ImportPayload, UserProfile } from "../shared/types";
+import type { AgentRunRecord, ImportPayload, UserProfile } from "../shared/types";
 import { AuthError, isBootstrapOwnerId, primaryBootstrapOwnerId, requirePublisher, requireUser } from "./auth";
 import {
   acceptInvite,
-  assertAiBudgetAvailable,
   createAutomationToken,
   claimAgentRun,
   claimNextAgentRun,
@@ -28,6 +27,7 @@ import {
   getLatestRun,
   getNextQueuedAgentRun,
   getNextRunnerTask,
+  getProfile,
   getRunnerTaskById,
   getSourceCacheStatus,
   getUserPayload,
@@ -39,18 +39,21 @@ import {
   markAgentRunPublished,
   mergeCompletedRunnerTask,
   missingByokAliasError,
+  inactiveAiSettingsError,
   listAutomationTokens,
   recordAiUsageEvent,
   recordAutomationEvent,
   createPreferenceEvent,
   revokeAutomationToken,
   revokeOAuthAccessTokenById,
+  RunnerTaskTransitionError,
   type UserScope,
   upsertAiSettings,
   upsertProfile,
   upsertSourceSettings,
   upsertFeedback,
 } from "./db";
+import { agentRunRequestConflictMessage, invalidAgentRunRequestIdMessage, normalizeAgentRunRequestId } from "./agent-run-idempotency";
 import { errorResponse, jsonResponse, readJson } from "./http";
 import { mirrorImage, prewarmImportedImages, serveImage, uploadImage } from "./image-cache";
 import { automationBundleMarkdown } from "./automation-bundle";
@@ -65,6 +68,7 @@ import {
   oauthTokenEndpoint,
 } from "./oauth-server";
 import { ingestBringATrailerRssCache } from "./source-cache";
+import { aiGatewayRuntimeConfigured } from "./workflows/ai-gateway-scoring";
 export { BeachcarAgent } from "./agents/beachcar-agent";
 export { BeachcarRunnerContainer } from "./containers/beachcar-runner-container";
 export { BeachcarRunWorkflow } from "./workflows/beachcar-run-workflow";
@@ -88,9 +92,10 @@ export default {
       if (url.pathname.startsWith("/api/")) {
         return await handleApi(request, env, ctx, url);
       }
-      return env.ASSETS.fetch(request);
+      return withAppSecurityHeaders(await env.ASSETS.fetch(request));
     } catch (error) {
       if (error instanceof AuthError) return errorResponse(error.message, error.status);
+      if (error instanceof RunnerTaskTransitionError) return errorResponse(error.message, error.status);
       const message = error instanceof Error ? error.message : "Unexpected error";
       console.error(JSON.stringify({ level: "error", message, path: url.pathname }));
       return errorResponse(message, 500);
@@ -101,6 +106,18 @@ export default {
     ctx.waitUntil(refreshScheduledSourceCaches(env, event.cron));
   },
 };
+
+function withAppSecurityHeaders(response: Response): Response {
+  const headers = new Headers(response.headers);
+  // Clerk sign-in tickets are single-use credentials carried in the URL. Do
+  // not allow a browser navigation from the app shell to disclose them.
+  headers.set("Referrer-Policy", "no-referrer");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
 
 async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url: URL): Promise<Response> {
   const imageMatch = url.pathname.match(/^\/api\/images\/([^/]+)$/);
@@ -173,6 +190,24 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url:
     const body = await readJson<{ sources?: unknown }>(request);
     await upsertSourceSettings(env.DB, authUser.id, body);
     return jsonResponse(await getUserPayload(env.DB, authUser.id));
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/agent-schedule") {
+    const agent = await getBeachcarAgent(env, authUser.id);
+    return jsonResponse(await agent.getScheduleStatus({ userId: authUser.id }));
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/agent-schedule/sync") {
+    const profile = await getProfile(env.DB, authUser.id);
+    if (!profile?.onboardingCompletedAt) return errorResponse("Complete onboarding before enabling the daily schedule", 409);
+    const agent = await getBeachcarAgent(env, authUser.id);
+    await agent.syncSchedule({
+      userId: authUser.id,
+      scheduleCron: profile.scheduleCron,
+      timezone: profile.timezone,
+      enabled: true,
+    });
+    return jsonResponse(await agent.getScheduleStatus({ userId: authUser.id }));
   }
 
   if (request.method === "GET" && url.pathname === "/api/account/export") {
@@ -293,15 +328,25 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url:
   }
 
   if (request.method === "POST" && url.pathname === "/api/agent-runs") {
-    const body = await readJson<{ reason?: unknown }>(request);
+    const body = await readJson<{ reason?: unknown; requestId?: unknown }>(request);
+    let requestId: string | undefined;
+    if (body.requestId !== undefined) {
+      try {
+        requestId = normalizeAgentRunRequestId(body.requestId);
+      } catch {
+        return errorResponse(invalidAgentRunRequestIdMessage, 400);
+      }
+    }
     try {
-      await assertAiBudgetAvailable(env.DB, authUser.id);
       const agent = await getBeachcarAgent(env, authUser.id);
-      return jsonResponse(await agent.queueManualRun({ userId: authUser.id, reason: body.reason }), { status: 201 });
+      const queued = (await agent.queueManualRun({ userId: authUser.id, reason: body.reason, requestId })) as AgentRunRecord;
+      return jsonResponse(queued, { status: queued.progress.idempotentReused === true ? 200 : 201 });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      if (message.includes(agentRunRequestConflictMessage)) return errorResponse(agentRunRequestConflictMessage, 409);
+      if (message.includes(invalidAgentRunRequestIdMessage)) return errorResponse(invalidAgentRunRequestIdMessage, 400);
       if (message.includes("AI budget exceeded")) return errorResponse(message, 402);
-      if (message === missingByokAliasError) return errorResponse(message, 400);
+      if (message === missingByokAliasError || message === inactiveAiSettingsError) return errorResponse(message, 400);
       throw error;
     }
   }
@@ -333,6 +378,15 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url:
 }
 
 async function handleAdmin(request: Request, env: Env, ctx: ExecutionContext, url: URL): Promise<Response> {
+  if (request.method === "GET" && url.pathname === "/api/admin/runtime") {
+    const runnerMode = normalizedRunnerMode(env);
+    return jsonResponse({
+      aiGatewayConfigured: aiGatewayRuntimeConfigured(env),
+      runnerMode,
+      containerDeploymentRequired: runnerMode === "codex",
+    });
+  }
+
   if (request.method === "POST" && url.pathname === "/api/admin/invites") {
     const body = await readJson<{ email?: unknown; expiresAt?: unknown }>(request);
     return jsonResponse(await createInvite(env.DB, body), { status: 201 });
@@ -362,7 +416,8 @@ async function handleAdmin(request: Request, env: Env, ctx: ExecutionContext, ur
 
   if (request.method === "POST" && url.pathname === "/api/admin/runner-tasks/claim") {
     const body = await readJson<{ taskId?: unknown; agentRunId?: unknown; runnerId?: unknown }>(request);
-    return jsonResponse({ task: await claimRunnerTask(env.DB, body) });
+    const task = await claimRunnerTask(env.DB, body);
+    return task ? jsonResponse({ task }) : errorResponse("Runner task is no longer available to claim", 409);
   }
 
   const runnerTaskContainerMatch = url.pathname.match(/^\/api\/admin\/runner-tasks\/([^/]+)\/run-container$/);
@@ -370,6 +425,7 @@ async function handleAdmin(request: Request, env: Env, ctx: ExecutionContext, ur
     try {
       return jsonResponse(await runRunnerTaskInContainer(env, decodeURIComponent(runnerTaskContainerMatch[1])));
     } catch (error) {
+      if (error instanceof RunnerTaskTransitionError) return errorResponse(error.message, error.status);
       return errorResponse(error instanceof Error ? error.message : "Container runner failed", 500);
     }
   }
@@ -597,9 +653,9 @@ function automationEndpoints(request: Request): { mcpEndpoint: string; bundleEnd
 }
 
 async function runRunnerTaskInContainer(env: Env, taskId: string): Promise<unknown> {
-  const runnerId = "cloudflare-container";
+  const runnerId = `cloudflare-container-${crypto.randomUUID()}`;
   const task = await claimRunnerTask(env.DB, { taskId, runnerId });
-  if (!task) throw new Error("Runner task not found");
+  if (!task) throw new RunnerTaskTransitionError("Runner task is no longer available to claim", 409);
 
   const container = getContainer(env.BEACHCAR_RUNNER_CONTAINER, task.id);
   await container.startAndWaitForPorts({
@@ -662,14 +718,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function runnerContainerEnvVars(env: Env, runnerId: string): Record<string, string> {
-  const requestedMode = (env.BEACHCAR_RUNNER_MODE || "deterministic").trim().toLowerCase();
-  const mode = requestedMode === "codex" ? "codex" : "deterministic";
+  const mode = normalizedRunnerMode(env);
   return {
     BEACHCAR_RUNNER_ID: runnerId,
     BEACHCAR_RUNNER_MODE: mode,
     ...(env.BEACHCAR_CODEX_MODEL ? { BEACHCAR_CODEX_MODEL: env.BEACHCAR_CODEX_MODEL } : {}),
     ...(mode === "codex" && env.OPENAI_API_KEY ? { OPENAI_API_KEY: env.OPENAI_API_KEY } : {}),
   };
+}
+
+function normalizedRunnerMode(env: Env): "codex" | "deterministic" {
+  return (env.BEACHCAR_RUNNER_MODE || "deterministic").trim().toLowerCase() === "codex" ? "codex" : "deterministic";
 }
 
 async function getBeachcarAgent(env: Env, userId: string): Promise<DurableObjectStub<import("./agents/beachcar-agent").BeachcarAgent>> {

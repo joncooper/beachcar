@@ -1,6 +1,16 @@
 import { Agent } from "agents";
 import type { AgentRunRecord } from "../../shared/types";
-import { createAgentRunRequest, getProfile, markAgentRunPrepared, markAgentRunRunning } from "../db";
+import { agentRunNeedsWorkflowDispatch, scheduledAgentRunRequestId } from "../agent-run-idempotency";
+import { sanitizeAgentSchedules, type BeachcarAgentScheduleStatus } from "../agent-schedule-status";
+import {
+  createAgentRunRequest,
+  createIdempotentAgentRunRequest,
+  getProfile,
+  inactiveAiSettingsError,
+  markAgentRunPrepared,
+  markAgentRunRunning,
+  missingByokAliasError,
+} from "../db";
 import { isDailyCron, nextDailyRunAt, normalizeTimezone } from "../daily-schedule";
 import type { BeachcarRunWorkflowParams } from "../workflows/beachcar-run-workflow";
 
@@ -61,13 +71,30 @@ export class BeachcarAgent extends Agent<Env, BeachcarAgentState, BeachcarAgentP
     }
   }
 
-  async queueManualRun(input: { userId: string; reason?: unknown }): Promise<AgentRunRecord> {
-    const run = await createAgentRunRequest(this.env.DB, { userId: input.userId, source: "manual", reason: input.reason });
+  async queueManualRun(input: { userId: string; reason?: unknown; requestId?: unknown }): Promise<AgentRunRecord> {
+    const requested =
+      input.requestId === undefined
+        ? {
+            run: await createAgentRunRequest(this.env.DB, { userId: input.userId, source: "manual", reason: input.reason }),
+            created: true,
+          }
+        : await createIdempotentAgentRunRequest(this.env.DB, {
+            userId: input.userId,
+            source: "manual",
+            reason: input.reason,
+            requestId: input.requestId,
+          });
+    const idempotentReused = !requested.created;
+    if (idempotentReused && !agentRunNeedsWorkflowDispatch(requested.run)) {
+      return { ...requested.run, progress: { ...requested.run.progress, idempotentReused: true } };
+    }
+
+    const run = requested.run;
     const started = await this.startRunWorkflow(run, {
       userId: input.userId,
       runId: run.id,
       source: "manual",
-      reason: typeof input.reason === "string" ? input.reason.trim().slice(0, 240) : null,
+      reason: typeof run.progress.reason === "string" ? run.progress.reason : null,
     });
     this.setState({
       ...this.state,
@@ -77,7 +104,7 @@ export class BeachcarAgent extends Agent<Env, BeachcarAgentState, BeachcarAgentP
       phase: started.status === "running" ? "queued" : "queued",
       updatedAt: started.updatedAt,
     });
-    return started;
+    return { ...started, progress: { ...started.progress, idempotentReused } };
   }
 
   async syncSchedule(input: {
@@ -116,7 +143,25 @@ export class BeachcarAgent extends Agent<Env, BeachcarAgentState, BeachcarAgentP
     return nextState;
   }
 
+  async getScheduleStatus(input: { userId: string }): Promise<BeachcarAgentScheduleStatus> {
+    if (this.state.userId && this.state.userId !== input.userId) {
+      throw new Error("Agent schedule user mismatch");
+    }
+    return {
+      userId: input.userId,
+      scheduleCron: this.state.scheduleCron,
+      scheduleTimezone: this.state.scheduleTimezone,
+      scheduleId: this.state.scheduleId,
+      nextRunAt: this.state.nextRunAt,
+      phase: this.state.phase,
+      updatedAt: this.state.updatedAt,
+      schedules: sanitizeAgentSchedules(await this.listSchedules()),
+    };
+  }
+
   async queueScheduledRun(input: ScheduledRunCallbackPayload): Promise<AgentRunRecord | null> {
+    // Capture the delivery identity before replacing state with the next occurrence.
+    const scheduledFor = input.scheduledFor || this.state.nextRunAt;
     const profile = await getProfile(this.env.DB, input.userId);
     if (!profile?.onboardingCompletedAt) {
       await this.cancelDailySchedules();
@@ -148,15 +193,39 @@ export class BeachcarAgent extends Agent<Env, BeachcarAgentState, BeachcarAgentP
       updatedAt: new Date().toISOString(),
     });
 
-    let run: AgentRunRecord;
+    let requested: { run: AgentRunRecord; created: boolean };
     try {
-      run = await createAgentRunRequest(this.env.DB, { userId: input.userId, source: "schedule", reason: "scheduled_agent" });
+      requested = scheduledFor
+        ? await createIdempotentAgentRunRequest(this.env.DB, {
+            userId: input.userId,
+            source: "schedule",
+            reason: "scheduled_agent",
+            requestId: await scheduledAgentRunRequestId(input.userId, scheduledFor),
+          })
+        : {
+            // Old cron-backed callbacks predate scheduledFor. Keep them operable until
+            // the next schedule sync replaces them with timezone-aware one-shot entries.
+            run: await createAgentRunRequest(this.env.DB, { userId: input.userId, source: "schedule", reason: "scheduled_agent" }),
+            created: true,
+          };
     } catch (error) {
       if (error instanceof Error && error.message.includes("AI budget exceeded")) {
         console.log(
           JSON.stringify({
             level: "info",
             message: "scheduled_agent.skipped_budget",
+            userId: input.userId,
+            scheduledFor: input.scheduledFor || null,
+            nextRunAt: scheduled.nextRunAt,
+          }),
+        );
+        return null;
+      }
+      if (error instanceof Error && [inactiveAiSettingsError, missingByokAliasError].includes(error.message)) {
+        console.log(
+          JSON.stringify({
+            level: "info",
+            message: "scheduled_agent.skipped_ai_settings",
             userId: input.userId,
             scheduledFor: input.scheduledFor || null,
             nextRunAt: scheduled.nextRunAt,
@@ -179,6 +248,21 @@ export class BeachcarAgent extends Agent<Env, BeachcarAgentState, BeachcarAgentP
       }
       throw error;
     }
+    const idempotentReused = !requested.created;
+    if (idempotentReused && !agentRunNeedsWorkflowDispatch(requested.run)) {
+      const run = requested.run;
+      this.setState({
+        ...this.state,
+        userId: input.userId,
+        latestRunId: run.id,
+        latestStatus: run.status,
+        phase: run.status === "queued" || run.status === "running" ? "queued" : "scheduled",
+        updatedAt: run.updatedAt,
+      });
+      return { ...run, progress: { ...run.progress, idempotentReused: true } };
+    }
+
+    const run = requested.run;
     const started = await this.startRunWorkflow(run, {
       userId: input.userId,
       runId: run.id,
@@ -193,7 +277,7 @@ export class BeachcarAgent extends Agent<Env, BeachcarAgentState, BeachcarAgentP
       phase: "queued",
       updatedAt: started.updatedAt,
     });
-    return started;
+    return idempotentReused ? { ...started, progress: { ...started.progress, idempotentReused: true } } : started;
   }
 
   async prepareQueuedRun(input: QueuePayload): Promise<{ runId: string; handoff: "queued_for_external_runner" }> {
@@ -300,9 +384,10 @@ export class BeachcarAgent extends Agent<Env, BeachcarAgentState, BeachcarAgentP
   }
 
   private async startRunWorkflow(run: AgentRunRecord, params: BeachcarRunWorkflowParams): Promise<AgentRunRecord> {
+    const expectedWorkflowInstanceId = workflowInstanceIdFor(run.id);
     try {
       const workflowInstanceId = await this.runWorkflow("BEACHCAR_RUN_WORKFLOW", params, {
-        id: workflowInstanceIdFor(run.id),
+        id: expectedWorkflowInstanceId,
         metadata: { userId: params.userId, agentRunId: run.id, source: params.source },
         agentBinding: "BeachcarAgent",
       });
@@ -312,6 +397,8 @@ export class BeachcarAgent extends Agent<Env, BeachcarAgentState, BeachcarAgentP
         runnerId: "cloudflare-workflow",
       });
     } catch (error) {
+      const reconciled = await this.reconcileRunWorkflowDispatch(run, params, expectedWorkflowInstanceId);
+      if (reconciled) return reconciled;
       console.error(
         JSON.stringify({
           level: "warn",
@@ -322,6 +409,34 @@ export class BeachcarAgent extends Agent<Env, BeachcarAgentState, BeachcarAgentP
       );
       await this.queue("prepareQueuedRun", { userId: params.userId, runId: run.id });
       return run;
+    }
+  }
+
+  private async reconcileRunWorkflowDispatch(
+    run: AgentRunRecord,
+    params: BeachcarRunWorkflowParams,
+    workflowInstanceId: string,
+  ): Promise<AgentRunRecord | null> {
+    try {
+      const instance = await this.env.BEACHCAR_RUN_WORKFLOW.get(workflowInstanceId);
+      const instanceStatus = await instance.status();
+      console.log(
+        JSON.stringify({
+          level: "info",
+          message: "agent_run.workflow_dispatch_reconciled",
+          runId: run.id,
+          userId: params.userId,
+          workflowInstanceId,
+          workflowStatus: instanceStatus.status,
+        }),
+      );
+      return await markAgentRunRunning(this.env.DB, {
+        runId: run.id,
+        workflowInstanceId,
+        runnerId: "cloudflare-workflow",
+      });
+    } catch {
+      return null;
     }
   }
 }

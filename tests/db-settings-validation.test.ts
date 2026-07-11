@@ -66,6 +66,28 @@ describe("database settings validation", () => {
     ).rejects.toThrow("BYOK mode requires an AI Gateway key alias");
     expect(db.writes).toBe(0);
   });
+
+  it("refuses to run before active AI settings are configured", async () => {
+    const missing = new SettingsValidationD1();
+    await expect(
+      createAgentRunRequest(missing as unknown as D1Database, { userId: "user-a", source: "manual" }),
+    ).rejects.toThrow("Active managed or BYOK AI settings are required before running");
+    expect(missing.writes).toBe(0);
+
+    const disabled = new SettingsValidationD1(null, "active", {
+      user_id: "user-a",
+      mode: "managed",
+      gateway_key_ref: null,
+      monthly_budget_cents: 1_000,
+      daily_budget_cents: 100,
+      status: "disabled",
+      updated_at: "2026-07-01T12:00:00.000Z",
+    });
+    await expect(
+      createAgentRunRequest(disabled as unknown as D1Database, { userId: "user-a", source: "manual" }),
+    ).rejects.toThrow("Active managed or BYOK AI settings are required before running");
+    expect(disabled.writes).toBe(0);
+  });
 });
 
 function profileRow(scheduleCron: string): ProfileTestRow {

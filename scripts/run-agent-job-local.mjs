@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 
 await loadEnvFile(resolve(".publish.env"));
 
@@ -77,7 +78,7 @@ async function queueRun(email) {
       "Content-Type": "application/json",
       "X-Beachcar-Test-Email": email,
     },
-    body: JSON.stringify({ reason: `local simulator ${new Date().toISOString()}` }),
+    body: JSON.stringify({ requestId: randomUUID(), reason: `local simulator ${new Date().toISOString()}` }),
   });
   const body = await readResponse(response);
   if (!response.ok) {

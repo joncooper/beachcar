@@ -7,8 +7,7 @@ interface Env {
   TEAM_DOMAIN?: string;
   POLICY_AUD?: string;
   CLOUDFLARE_ACCOUNT_ID?: string;
-  CLOUDFLARE_API_TOKEN?: string;
-  BEACHCAR_AI_GATEWAY_TOKEN?: string;
+	BEACHCAR_AI_GATEWAY_TOKEN?: string;
   BEACHCAR_AI_GATEWAY_BASE_URL?: string;
   BEACHCAR_AI_GATEWAY_ID?: string;
   BEACHCAR_AI_GATEWAY_MODEL?: string;

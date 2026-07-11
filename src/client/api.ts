@@ -10,6 +10,7 @@ import type {
   AutomationTokenCreateResult,
   AutomationTokenRecord,
   AgentRunRecord,
+  AgentRunRequest,
   FeedbackAction,
   FeedbackRecord,
   InvitePayload,
@@ -149,11 +150,12 @@ export async function getLatestAgentRun(): Promise<AgentRunRecord | null> {
   return requestJson<AgentRunRecord | null>("/api/agent-runs/latest");
 }
 
-export async function requestAgentRun(reason?: string): Promise<AgentRunRecord> {
+export async function requestAgentRun(reason?: string, requestId = globalThis.crypto.randomUUID()): Promise<AgentRunRecord> {
+  const input: AgentRunRequest = { requestId, ...(reason ? { reason } : {}) };
   return requestJson<AgentRunRecord>("/api/agent-runs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ reason }),
+    body: JSON.stringify(input),
   });
 }
 

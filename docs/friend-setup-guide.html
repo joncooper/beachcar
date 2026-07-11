@@ -330,7 +330,7 @@ bun run ios:asc:check</code></pre>
         </table>
 
         <h3>If you need to deploy an app update</h3>
-        <p>The guarded rollout path validates env, builds the client, applies migrations, deploys the Worker, sets Worker secrets, and verifies the remote surface.</p>
+        <p>The guarded rollout path validates env, couples the production D1 name and UUID, proves rollback availability, captures private recovery evidence, runs a strict keep-vars dry run, applies only the expected migration, deploys the Worker and supplied secrets atomically, and verifies the remote surface. Direct bootstrap and remote-migration shortcuts are disabled.</p>
         <pre><code>bun run deploy:remote -- --dry-run
 bun run deploy:remote -- --execute --yes
 bun run cloudflare:verify
@@ -346,11 +346,12 @@ bun run cloudflare:check</code></pre>
 
         <h3>Optional Worker secrets for owner-paid AI</h3>
         <ul>
-          <li><code>BEACHCAR_AI_GATEWAY_TOKEN</code> or <code>CLOUDFLARE_API_TOKEN</code>.</li>
+          <li><code>BEACHCAR_AI_GATEWAY_TOKEN</code>. <code>CLOUDFLARE_API_TOKEN</code> is deployment authentication only and is never used as a Worker runtime AI credential.</li>
           <li><code>BEACHCAR_AI_GATEWAY_BASE_URL</code>, or <code>CLOUDFLARE_ACCOUNT_ID</code> plus <code>BEACHCAR_AI_GATEWAY_ID</code>.</li>
           <li><code>BEACHCAR_AI_GATEWAY_MODEL</code>, using the model id expected by the selected provider.</li>
           <li><code>BEACHCAR_AI_ESTIMATED_MICROS_PER_1K_TOKENS</code>, if Gateway/provider responses do not return exact cost.</li>
         </ul>
+        <p>If the dedicated Gateway token is absent, the guarded rollout explicitly reports heuristic-only mode and the first friend pilot can proceed without paid AI scoring.</p>
       </section>
 
       <section>

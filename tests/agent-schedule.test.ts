@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import type { Schedule } from "agents";
+import { sanitizeAgentSchedules } from "../src/worker/agent-schedule-status";
 import { isDailyCron, nextDailyRunAt } from "../src/worker/daily-schedule";
 
 describe("nextDailyRunAt", () => {
@@ -40,5 +42,40 @@ describe("nextDailyRunAt", () => {
     );
     expect(() => nextDailyRunAt("*/15 * * * *", "America/New_York")).toThrow("Daily schedule must use");
     expect(() => nextDailyRunAt("0 8 * * *", "Not/A_Timezone")).toThrow("Invalid profile timezone");
+  });
+});
+
+describe("agent schedule status", () => {
+  it("returns ordered schedule metadata without exposing callback payloads", () => {
+    const schedules = [
+      {
+        id: "cron-later",
+        callback: "queueScheduledRun",
+        payload: { userId: "email:friend@example.com", privateNote: "must not leave the Agent" },
+        type: "cron",
+        time: 1_800_003_600,
+        cron: "0 8 * * *",
+      },
+      {
+        id: "scheduled-next",
+        callback: "queueScheduledRun",
+        payload: { userId: "email:friend@example.com", scheduledFor: "2027-01-15T07:00:00.000Z" },
+        type: "scheduled",
+        time: 1_800_000_000,
+      },
+    ] satisfies Schedule<unknown>[];
+
+    const result = sanitizeAgentSchedules(schedules);
+
+    expect(result.map((schedule) => schedule.id)).toEqual(["scheduled-next", "cron-later"]);
+    expect(result[0]).toEqual({
+      id: "scheduled-next",
+      callback: "queueScheduledRun",
+      type: "scheduled",
+      nextRunAt: new Date(1_800_000_000 * 1_000).toISOString(),
+    });
+    expect(result[1]).toMatchObject({ type: "cron", cron: "0 8 * * *" });
+    expect(result[0]).not.toHaveProperty("payload");
+    expect(result[1]).not.toHaveProperty("payload");
   });
 });

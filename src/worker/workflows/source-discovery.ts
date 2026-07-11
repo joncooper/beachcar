@@ -232,8 +232,18 @@ export async function discoverAndScoreCandidates(
 
   scored = scored.slice(0, 8);
 
-  if (options.aiScorer && scored.length) {
-    aiScoring = await runAiScoring(options.aiScorer, context, params, scored);
+  if (scored.length) {
+    aiScoring = options.aiScorer
+      ? await runAiScoring(options.aiScorer, context, params, scored)
+      : {
+          status: "skipped",
+          provider: "heuristic",
+          model: null,
+          totalTokens: 0,
+          costMicros: 0,
+          message: "Dedicated AI Gateway runtime is not configured; deterministic heuristic scoring was used.",
+          scores: [],
+        };
     checkedSources.push(aiScoringCheck(aiScoring, generatedAt));
     if (aiScoring.status === "ok") {
       scored = applyAiScoring(scored, aiScoring)
@@ -1036,9 +1046,10 @@ async function runAiScoring(
 }
 
 function aiScoringCheck(result: CandidateAiScoringResult, checkedAt: string): SourceDiscoveryCheck {
+  const heuristic = result.provider === "heuristic";
   return {
-    source: "ai-gateway",
-    site: "Cloudflare AI Gateway",
+    source: heuristic ? "heuristic-scoring" : "ai-gateway",
+    site: heuristic ? "Beachcar heuristic scoring" : "Cloudflare AI Gateway",
     status: result.status === "ok" ? "ok" : result.status,
     label: result.model || undefined,
     candidateCount: result.scores.length,

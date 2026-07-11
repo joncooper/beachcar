@@ -130,6 +130,11 @@ export interface AgentRunRecord {
   updatedAt: string;
 }
 
+export interface AgentRunRequest {
+  requestId: string;
+  reason?: string;
+}
+
 export interface ImportPayload {
   runId?: string;
   userId?: string;
@@ -430,6 +435,8 @@ export interface UserPayload extends UserRecord {
 export interface AdminUserSummary extends UserRecord {
   onboardingCompletedAt?: string | null;
   latestRunAt?: string | null;
+  sourceSettings?: SourceSetting[];
+  aiSettings?: UserAiSettings | null;
   aiUsage?: AiUsageSummary | null;
   createdAt: string;
   lastSeenAt: string;

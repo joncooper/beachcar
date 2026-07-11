@@ -27,6 +27,12 @@ import type {
   UserProfile,
 } from "../shared/types";
 import type { AuthUser } from "./auth";
+import {
+  agentRunIdForRequest,
+  assertMatchingAgentRunRequest,
+  normalizeAgentRunReason,
+  normalizeAgentRunRequestId,
+} from "./agent-run-idempotency";
 import { nextDailyRunAt, normalizeTimezone } from "./daily-schedule";
 import {
   analyzeRunnerResult,
@@ -378,6 +384,19 @@ export interface AuthenticatedAutomationToken {
 
 export const defaultAutomationScopes: AutomationScope[] = ["setup:read", "sources:read", "runs:publish", "usage:write", "events:read"];
 export const missingByokAliasError = "BYOK mode requires an AI Gateway key alias";
+export const inactiveAiSettingsError = "Active managed or BYOK AI settings are required before running";
+export const runnerTaskRunnerIdRequiredMessage = "runnerId is required for runner task ownership";
+export const runnerTaskOwnershipConflictMessage = "Runner task is not running for this runner";
+
+export class RunnerTaskTransitionError extends Error {
+  constructor(
+    message: string,
+    readonly status: 400 | 404 | 409,
+  ) {
+    super(message);
+    this.name = "RunnerTaskTransitionError";
+  }
+}
 
 export interface SourceCacheUpsertResult {
   source: string;
@@ -487,6 +506,8 @@ export async function listAdminUsers(db: D1Database): Promise<
     status: UserPayload["status"];
     onboardingCompletedAt?: string | null;
     latestRunAt?: string | null;
+    sourceSettings?: SourceSetting[];
+    aiSettings?: UserAiSettings | null;
     aiUsage?: AiUsageSummary | null;
     createdAt: string;
     lastSeenAt: string;
@@ -511,17 +532,26 @@ export async function listAdminUsers(db: D1Database): Promise<
     )
     .all<AdminUserRow>();
   return Promise.all(
-    results.map(async (row) => ({
-      id: row.id,
-      email: row.email,
-      displayName: row.display_name,
-      status: row.status,
-      onboardingCompletedAt: row.onboarding_completed_at,
-      latestRunAt: row.latest_run_at,
-      aiUsage: await getAiUsageSummary(db, row.id),
-      createdAt: row.created_at,
-      lastSeenAt: row.last_seen_at,
-    })),
+    results.map(async (row) => {
+      const [sourceSettings, aiSettings, aiUsage] = await Promise.all([
+        getSourceSettings(db, row.id),
+        getAiSettings(db, row.id),
+        getAiUsageSummary(db, row.id),
+      ]);
+      return {
+        id: row.id,
+        email: row.email,
+        displayName: row.display_name,
+        status: row.status,
+        onboardingCompletedAt: row.onboarding_completed_at,
+        latestRunAt: row.latest_run_at,
+        sourceSettings,
+        aiSettings,
+        aiUsage,
+        createdAt: row.created_at,
+        lastSeenAt: row.last_seen_at,
+      };
+    }),
   );
 }
 
@@ -798,14 +828,18 @@ export async function getAiUsageSummary(db: D1Database, userId: string, now = ne
 
 export async function assertAiBudgetAvailable(db: D1Database, userId: string): Promise<void> {
   const settings = await getAiSettings(db, userId);
-  if (!hasRunnableAiSettings(settings)) throw new Error(missingByokAliasError);
+  if (!settings || settings.status !== "active") throw new Error(inactiveAiSettingsError);
+  if (settings.mode === "byok" && !settings.gatewayKeyRef?.trim()) throw new Error(missingByokAliasError);
   const summary = await getAiUsageSummary(db, userId);
   if (!summary.budgetExceeded) return;
   throw new Error("AI budget exceeded for this user");
 }
 
 function hasRunnableAiSettings(settings: UserAiSettings | null): boolean {
-  return settings?.mode !== "byok" || Boolean(settings.gatewayKeyRef?.trim());
+  return Boolean(
+    settings?.status === "active" &&
+      (settings.mode === "managed" || (settings.mode === "byok" && settings.gatewayKeyRef?.trim())),
+  );
 }
 
 export async function recordAiUsageEvent(
@@ -1494,14 +1528,16 @@ export async function claimRunnerTask(
   db: D1Database,
   input: { taskId?: unknown; agentRunId?: unknown; runnerId?: unknown } = {},
 ): Promise<RunnerTaskRecord | null> {
+  const runnerId = requireRunnerTaskRunnerId(input.runnerId);
   const taskId = stringOrNull(input.taskId, null);
   const agentRunId = stringOrNull(input.agentRunId, null);
   const task = taskId ? await getRunnerTaskById(db, taskId) : await getNextRunnerTask(db, agentRunId);
   if (!task) return null;
-  if (task.status !== "queued") return task;
+  if (taskId && task.status === "running" && task.runnerId === runnerId) return task;
+  if (task.status !== "queued") return null;
 
   const now = new Date().toISOString();
-  await db
+  const claimed = await db
     .prepare(
       `UPDATE runner_tasks
        SET status = 'running',
@@ -1511,9 +1547,14 @@ export async function claimRunnerTask(
            updated_at = ?
        WHERE id = ? AND status = 'queued'`,
     )
-    .bind(stringOrNull(input.runnerId, null), now, now, task.id)
+    .bind(runnerId, now, now, task.id)
     .run();
-  return getRunnerTaskById(db, task.id);
+  if (claimed.meta.changes !== 1) {
+    const current = taskId ? await getRunnerTaskById(db, task.id) : null;
+    return current?.status === "running" && current.runnerId === runnerId ? current : null;
+  }
+  const current = await getRunnerTaskById(db, task.id);
+  return current?.status === "running" && current.runnerId === runnerId ? current : null;
 }
 
 export async function completeRunnerTask(
@@ -1521,42 +1562,55 @@ export async function completeRunnerTask(
   id: string,
   input: { result?: unknown; runnerId?: unknown } = {},
 ): Promise<RunnerTaskRecord> {
+  const runnerId = requireRunnerTaskRunnerId(input.runnerId);
   const now = new Date().toISOString();
-  await db
+  const completed = await db
     .prepare(
       `UPDATE runner_tasks
        SET status = 'completed',
            result_json = ?,
            error = NULL,
-           runner_id = COALESCE(?, runner_id),
            finished_at = ?,
            updated_at = ?
-       WHERE id = ?`,
+       WHERE id = ? AND status = 'running' AND runner_id = ?`,
     )
-    .bind(JSON.stringify(normalizeJsonObject(input.result, {})), stringOrNull(input.runnerId, null), now, now, id)
+    .bind(JSON.stringify(normalizeJsonObject(input.result, {})), now, now, id, runnerId)
     .run();
+  if (completed.meta.changes !== 1) await throwRunnerTaskTransitionError(db, id);
   const task = await getRunnerTaskById(db, id);
-  if (!task) throw new Error("Runner task not found");
+  if (!task) throw new RunnerTaskTransitionError("Runner task not found", 404);
   return task;
 }
 
 export async function failRunnerTask(db: D1Database, id: string, input: { error?: unknown; runnerId?: unknown } = {}): Promise<RunnerTaskRecord> {
+  const runnerId = requireRunnerTaskRunnerId(input.runnerId);
   const now = new Date().toISOString();
-  await db
+  const failed = await db
     .prepare(
       `UPDATE runner_tasks
        SET status = 'failed',
            error = ?,
-           runner_id = COALESCE(?, runner_id),
            finished_at = ?,
            updated_at = ?
-       WHERE id = ?`,
+       WHERE id = ? AND status = 'running' AND runner_id = ?`,
     )
-    .bind(String(input.error || "Runner task failed").slice(0, 1000), stringOrNull(input.runnerId, null), now, now, id)
+    .bind(String(input.error || "Runner task failed").slice(0, 1000), now, now, id, runnerId)
     .run();
+  if (failed.meta.changes !== 1) await throwRunnerTaskTransitionError(db, id);
   const task = await getRunnerTaskById(db, id);
-  if (!task) throw new Error("Runner task not found");
+  if (!task) throw new RunnerTaskTransitionError("Runner task not found", 404);
   return task;
+}
+
+function requireRunnerTaskRunnerId(value: unknown): string {
+  const runnerId = stringOrNull(value, null);
+  if (!runnerId) throw new RunnerTaskTransitionError(runnerTaskRunnerIdRequiredMessage, 400);
+  return runnerId;
+}
+
+async function throwRunnerTaskTransitionError(db: D1Database, id: string): Promise<never> {
+  if (!(await getRunnerTaskById(db, id))) throw new RunnerTaskTransitionError("Runner task not found", 404);
+  throw new RunnerTaskTransitionError(runnerTaskOwnershipConflictMessage, 409);
 }
 
 export async function upsertSourceSettings(
@@ -2423,14 +2477,13 @@ export async function createAgentRunRequest(
   db: D1Database,
   input: { userId: string; source: "manual" | "schedule"; reason?: unknown },
 ): Promise<AgentRunRecord> {
-  const user = await db.prepare("SELECT status FROM users WHERE id = ?").bind(input.userId).first<{ status: string }>();
-  if (user?.status !== "active") throw new Error("Active user required to create an agent run");
+  await assertActiveAgentRunUser(db, input.userId);
   await assertAiBudgetAvailable(db, input.userId);
   const now = new Date().toISOString();
   const id = `agent-run-${now.replace(/[^0-9a-z]/gi, "-").toLowerCase()}-${crypto.randomUUID().slice(0, 8)}`;
   const progress = {
     source: input.source,
-    reason: typeof input.reason === "string" ? input.reason.trim().slice(0, 240) : null,
+    reason: normalizeAgentRunReason(input.reason),
     requestedAt: now,
     handoff: "queued_for_cloudflare_agent",
   };
@@ -2445,6 +2498,49 @@ export async function createAgentRunRequest(
     if (!run) throw new Error("Could not create agent run");
     return run;
   });
+}
+
+export async function createIdempotentAgentRunRequest(
+  db: D1Database,
+  input: { userId: string; source: "manual" | "schedule"; reason?: unknown; requestId: unknown },
+): Promise<{ run: AgentRunRecord; created: boolean }> {
+  const requestId = normalizeAgentRunRequestId(input.requestId);
+  const reason = normalizeAgentRunReason(input.reason);
+  const id = agentRunIdForRequest(requestId);
+  await assertActiveAgentRunUser(db, input.userId);
+
+  const existing = await getAgentRunById(db, id);
+  if (existing) {
+    assertMatchingAgentRunRequest(existing, { userId: input.userId, source: input.source, reason, requestId });
+    return { run: existing, created: false };
+  }
+
+  await assertAiBudgetAvailable(db, input.userId);
+  const now = new Date().toISOString();
+  const progress = {
+    source: input.source,
+    reason,
+    requestId,
+    requestedAt: now,
+    handoff: "queued_for_cloudflare_agent",
+  };
+  const inserted = await db
+    .prepare(
+      `INSERT INTO agent_runs (id, user_id, status, progress_json, created_at, updated_at)
+       VALUES (?, ?, 'queued', ?, ?, ?)
+       ON CONFLICT(id) DO NOTHING`,
+    )
+    .bind(id, input.userId, JSON.stringify(progress), now, now)
+    .run();
+  const run = await getAgentRunById(db, id);
+  if (!run) throw new Error("Could not create agent run");
+  assertMatchingAgentRunRequest(run, { userId: input.userId, source: input.source, reason, requestId });
+  return { run, created: Boolean(inserted.meta.changes) };
+}
+
+async function assertActiveAgentRunUser(db: D1Database, userId: string): Promise<void> {
+  const user = await db.prepare("SELECT status FROM users WHERE id = ?").bind(userId).first<{ status: string }>();
+  if (user?.status !== "active") throw new Error("Active user required to create an agent run");
 }
 
 export async function getLatestAgentRun(db: D1Database, userId: string): Promise<AgentRunRecord | null> {
@@ -2553,7 +2649,7 @@ export async function markAgentRunRunning(
            error = NULL,
            started_at = COALESCE(started_at, ?),
            updated_at = ?
-       WHERE id = ?`,
+       WHERE id = ? AND status IN ('queued', 'running')`,
     )
     .bind(input.workflowInstanceId || null, JSON.stringify(progress), now, now, input.runId)
     .run();

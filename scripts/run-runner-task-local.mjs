@@ -1,26 +1,46 @@
 #!/usr/bin/env node
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+const args = process.argv.slice(2);
+
+if (args.includes("--help") || args.includes("-h")) {
+  printHelp();
+  process.exit(0);
+}
 
 await loadEnvFile(resolve(".publish.env"));
 
 const baseUrl = (process.env.AUCTION_WATCH_URL || "http://127.0.0.1:8787").replace(/\/+$/, "");
 const publishToken = process.env.PUBLISH_TOKEN || "";
-const runnerId = process.env.RUNNER_TASK_ID || "local-container-codex-sim";
+const runnerId = valueArg("--runner-id") || process.env.RUNNER_TASK_RUNNER_ID || `local-codex-${process.pid}-${randomUUID()}`;
+const targetTaskId = valueArg("--task-id") || process.env.RUNNER_TASK_TARGET_ID || "";
+const targetAgentRunId = valueArg("--agent-run-id") || process.env.RUNNER_TASK_AGENT_RUN_ID || "";
+const targetSource = normalizeSource(valueArg("--source") || process.env.RUNNER_TASK_SOURCE || "");
 const executorUrl = (process.env.RUNNER_TASK_EXECUTOR_URL || "").replace(/\/+$/, "");
 const browserRunner = booleanEnv(process.env.RUNNER_TASK_BROWSER) || booleanEnv(process.env.RUNNER_TASK_CARS_AND_BIDS_BROWSER);
 
 if (!publishToken) {
   fail("Set PUBLISH_TOKEN to the same secret configured on the local Worker.");
 }
+if (!isLocalUrl(baseUrl) && !targetTaskId && !targetAgentRunId) {
+  fail("Remote runner execution requires --task-id or --agent-run-id so an unrelated queued task cannot be claimed.");
+}
 
 const task = await claimTask();
 if (!task) {
   fail("No queued runner task was available to claim.");
+}
+if (targetTaskId && task.id !== targetTaskId) fail(`Claimed task ${task.id} did not match requested task ${targetTaskId}.`);
+if (targetAgentRunId && task.agentRunId !== targetAgentRunId) {
+  fail(`Claimed task belongs to Agent run ${task.agentRunId || "(missing)"}, not ${targetAgentRunId}.`);
+}
+if (targetSource && normalizeSource(task.source) !== targetSource) {
+  fail(`Claimed task source ${task.source || "(missing)"} did not match ${targetSource}.`);
 }
 
 const execution = executorUrl ? await runExecutor(task) : await runLocalTask(task);
@@ -56,7 +76,11 @@ if (!response.ok) {
   fail(`Complete failed: ${response.status} ${formatBody(body)}`);
 }
 
-console.log(`Completed runner task ${body.task.id} for ${body.task.source}; status=${body.task.status}.`);
+const merge = body?.merge || {};
+console.log(
+  `Completed runner task ${body.task.id} for ${body.task.source}; status=${body.task.status}; ` +
+    `run=${merge.runId || "none"}; inserted=${Number(merge.inserted || 0)}; patched=${Number(merge.patched || 0)}; images=${Array.isArray(merge.images) ? merge.images.length : 0}.`,
+);
 
 async function runExecutor(task) {
   const response = await fetch(`${executorUrl}/run-task`, {
@@ -207,19 +231,43 @@ async function readJsonOptional(path) {
 }
 
 async function claimTask() {
+  let exactTaskId = targetTaskId;
+  if (targetTaskId || targetAgentRunId) {
+    const query = new URLSearchParams(targetTaskId ? { taskId: targetTaskId } : { agentRunId: targetAgentRunId });
+    const previewResponse = await fetch(`${baseUrl}/api/admin/runner-tasks/next?${query}`, { headers: authHeaders() });
+    const previewBody = await readResponse(previewResponse);
+    if (!previewResponse.ok) fail(`Task preflight failed: ${previewResponse.status} ${formatBody(previewBody)}`);
+    const preview = previewBody?.task || null;
+    if (!preview) return null;
+    if (targetTaskId && preview.id !== targetTaskId) fail(`Task preflight returned ${preview.id}, not ${targetTaskId}.`);
+    if (targetAgentRunId && preview.agentRunId !== targetAgentRunId) {
+      fail(`Task preflight returned Agent run ${preview.agentRunId || "(missing)"}, not ${targetAgentRunId}.`);
+    }
+    if (targetSource && normalizeSource(preview.source) !== targetSource) {
+      fail(`Task preflight source ${preview.source || "(missing)"} did not match ${targetSource}.`);
+    }
+    exactTaskId = preview.id;
+  }
   const response = await fetch(`${baseUrl}/api/admin/runner-tasks/claim`, {
     method: "POST",
     headers: {
       ...authHeaders(),
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ runnerId }),
+    body: JSON.stringify({
+      runnerId,
+      ...(exactTaskId ? { taskId: exactTaskId } : {}),
+      ...(targetAgentRunId ? { agentRunId: targetAgentRunId } : {}),
+    }),
   });
   const body = await readResponse(response);
   if (!response.ok) {
     fail(`Claim failed: ${response.status} ${formatBody(body)}`);
   }
   if (body.task) {
+    if (body.task.status !== "running" || body.task.runnerId !== runnerId) {
+      fail(`Claim returned task ${body.task.id} without ownership for runner ${runnerId}.`);
+    }
     console.log(`Claimed runner task ${body.task.id} for source ${body.task.source}.`);
   }
   return body.task || null;
@@ -281,6 +329,20 @@ function booleanEnv(value) {
   return /^(1|true|yes|on)$/i.test(String(value || "").trim());
 }
 
+function valueArg(name) {
+  const index = args.indexOf(name);
+  return index >= 0 ? String(args[index + 1] || "").trim() : "";
+}
+
+function isLocalUrl(value) {
+  try {
+    const host = new URL(value).hostname;
+    return host === "localhost" || host === "127.0.0.1" || host === "::1";
+  } catch {
+    return false;
+  }
+}
+
 async function readResponse(response) {
   const contentType = response.headers.get("content-type") || "";
   if (contentType.includes("application/json")) return response.json();
@@ -295,4 +357,19 @@ function formatBody(body) {
 function fail(message) {
   console.error(message);
   process.exit(1);
+}
+
+function printHelp() {
+  console.log(`Usage: bun scripts/run-runner-task-local.mjs [options]
+
+Claims and completes one runner task. Remote execution must be bound to an
+exact task or Agent run so it cannot consume unrelated queued work.
+
+Options:
+  --task-id <id>       Claim this exact runner task.
+  --agent-run-id <id> Claim a task belonging to this exact Agent run.
+  --source <name>      Refuse the claimed task unless its source matches.
+  --runner-id <id>     Unique execution owner (defaults per process).
+  -h, --help           Show this help.
+`);
 }

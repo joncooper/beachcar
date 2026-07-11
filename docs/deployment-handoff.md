@@ -91,16 +91,19 @@ bun run deploy:remote -- --execute --yes
 Before migration, the orchestrator creates a random private `/tmp/beachcar-rollout-*` directory with mode `0700`. It writes the following recovery evidence with mode `0600`:
 
 - Current Worker deployments.
-- Current Worker versions, including the pre-rollout version needed for a code rollback.
+- Current Worker versions and the single active 100%-traffic version needed for a code rollback.
+- Minimal rollback evidence containing the active version id, timestamps, and remote Durable Object migration tag. The tag must already match configured `v2`; otherwise rollout stops before D1 backup or mutation because a code rollback would not be proven available.
 - A pre-migration D1 Time Travel bookmark.
 - The pending-migration report, which must be empty or list only `0011_source_cache_listing_fields.sql`.
 - A full pre-migration D1 SQL export and its SHA-256 digest.
 
-Keep the printed directory until verification is complete, then move the artifacts to durable, access-controlled storage according to the project retention policy.
+Keep the printed directory until verification is complete, then move the artifacts to durable, access-controlled storage according to the project retention policy. Cloudflare auth tokens and headers, full service metadata, plain variable values, secret values, and the separate temporary Worker-secret staging directory are kept out of these artifacts.
 
-The remaining execution order is: apply the verified pending migration; require all 12 migration-0011 columns, all three indexes, and `PRAGMA quick_check=ok`; deploy code and any supplied secrets together as one Worker version; run verification; and repeat the strict resource check. A failed schema gate leaves the old Worker live with the additive migration applied. There is no post-deploy secret-only release.
+The remaining execution order is: require the configured D1 name and UUID to identify the same remote database; prove rollback availability; capture recovery state; run an exact `wrangler deploy --strict --keep-vars --dry-run` with any supplied secrets; apply only the verified pending migration; require all 12 migration-0011 columns, all three indexes, and `PRAGMA quick_check=ok`; deploy code and supplied secrets together once with `--strict --keep-vars`; run verification; and repeat the strict resource check. Strict mode stops remote configuration conflicts, while `--keep-vars` preserves audited dashboard-only plain vars. A failed schema gate leaves the old Worker live with the additive migration applied. There is no post-deploy secret-only release.
 
-While `BEACHCAR_RUNNER_MODE=deterministic`, the orchestrator skips Cloudflare Container image publishing with `--containers-rollout none`. To intentionally build or update the Container image for Codex-backed runner work, run:
+Direct remote migration and bootstrap mutation commands are disabled. `bun run deploy:remote -- --execute --yes` is the sole production mutation entrypoint. If `BEACHCAR_AI_GATEWAY_TOKEN` is unavailable locally and remotely, the command explicitly records heuristic-only pilot mode and continues; `CLOUDFLARE_API_TOKEN` is never substituted as a runtime AI credential.
+
+The orchestrator requires an explicit `BEACHCAR_RUNNER_MODE=deterministic|codex` in `.deploy.env` and reads the effective mode back after deployment. `deterministic` skips Cloudflare Container image publishing with `--containers-rollout none`. To intentionally use `codex`, supply its `OPENAI_API_KEY` in `.deploy.env` (never only in the ambient shell) and run:
 
 ```bash
 bun run deploy:remote -- --execute --yes --deploy-containers
@@ -142,14 +145,16 @@ For the friend-pilot managed-path proof, use the protected single-use Clerk tick
 bun run cloudflare:verify-managed -- --execute --yes
 ```
 
-This verifier performs its public/admin gates before exchanging the ticket, keeps the resulting short-lived Clerk JWT in memory, queues exactly one real managed Workflow run, polls that Agent run by id, fetches the exact published run by id, and checks enabled-source diagnostics, direct discovery, the shortlist, Beachcar deck-image cache headers, and the budget ledger. Do not run it as a rehearsal: the ticket may be single-use and the command intentionally creates a production run.
+The verifier fails closed before ticket exchange unless the target, deployed Clerk key, exact protected pilot id, active/onboarded state, budget, managed mode, BaT/C&B/Hemmings settings, and effective Gateway/heuristic mode are ready. The recognized legacy ticket URL is never visited: only its single `__clerk_ticket` value is extracted in memory and redeemed on `BEACHCAR_DEPLOY_URL`. It sends a persisted UUID `requestId`, follows the exact Agent/Workflow/published-run ids, proves exact Run-detail identity and same-origin image bytes/cache headers, and synchronizes plus validates the exact next timezone-aware schedule occurrence last.
+
+Use `--configure-pilot` only to explicitly repair managed mode and the three required source settings after the admin preflight reports drift. The preflight auto-selects the effective AI proof; `--require-ai-gateway` or `--require-heuristic` pins it. The default runner gate waits for C&B candidates to merge and for Hemmings to merge candidates or terminate honestly empty/blocked. `--allow-runner-handoff-only` reports exact task ids for non-release diagnostics but does not qualify as release evidence. The UUID request gets bounded idempotent retry only inside the same authenticated process. As soon as the Clerk session exists, the consumed token and both ticket URLs are atomically cleared from `.env.local` while token id/user/email remain; `.tmp/managed-production-verification.json` contains only non-secret evidence. Do not run the verifier as a rehearsal.
 
 ## Rollback
 
-If post-deploy verification fails, use the pre-rollout Worker version recorded in the private artifact directory:
+If post-deploy verification fails, use the `activeWorkerVersionId` recorded in `manifest.json`. The rollout creates that manifest only after proving the active Worker already has migration tag `v2`, so this deploy does not add an intervening Durable Object migration:
 
 ```bash
-bunx wrangler rollback <PREVIOUS_VERSION_ID> \
+bunx wrangler rollback <activeWorkerVersionId> \
   --name beachcar-watch \
   --message "Rollback Source Quality v1"
 ```

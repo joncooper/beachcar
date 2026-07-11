@@ -23,14 +23,25 @@ mkdir -p "$appicon_dir" "$accent_dir"
 make_icon() {
   local px="$1"
   local file="$2"
-  magick "$source_icon" \
-    -resize "${px}x${px}" \
-    -background '#f7f4ec' \
-    -gravity center \
-    -extent "${px}x${px}" \
-    -alpha remove \
-    -alpha off \
-    "$appicon_dir/$file"
+  local target="$appicon_dir/$file"
+  local generated
+  generated="$(mktemp "$appicon_dir/.${file}.XXXXXX")"
+  if ! magick "$source_icon" \
+      -resize "${px}x${px}" \
+      -background '#f7f4ec' \
+      -gravity center \
+      -extent "${px}x${px}" \
+      -alpha remove \
+      -alpha off \
+      "png:$generated"; then
+    rm -f "$generated"
+    return 1
+  fi
+  if [[ -f "$target" ]] && magick compare -metric AE "$target" "$generated" null: >/dev/null 2>&1; then
+    rm -f "$generated"
+  else
+    mv "$generated" "$target"
+  fi
 }
 
 make_icon 40 AppIcon-20@2x.png

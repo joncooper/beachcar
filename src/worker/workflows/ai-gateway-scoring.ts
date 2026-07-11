@@ -57,11 +57,20 @@ export function createAiGatewayCandidateScorer(
   };
 }
 
+export function aiGatewayRuntimeConfigured(env: Env): boolean {
+  return scorerConfigFromEnv(env) !== null;
+}
+
 function scorerConfigFromEnv(env: Env): ScorerConfig | null {
-  const token = firstNonEmpty(env.BEACHCAR_AI_GATEWAY_TOKEN, env.CLOUDFLARE_API_TOKEN);
+  // Wrangler's operator credential is never a runtime model credential. Using
+  // it here would couple deploy authority to user-triggered model requests and
+  // could disclose an account-wide token to a configured third-party endpoint.
+  const token = firstNonEmpty(env.BEACHCAR_AI_GATEWAY_TOKEN);
   if (!token) return null;
 
-  const baseEndpoint = normalizeEndpoint(env.BEACHCAR_AI_GATEWAY_BASE_URL);
+  const configuredBaseEndpoint = trimToNull(env.BEACHCAR_AI_GATEWAY_BASE_URL);
+  const baseEndpoint = normalizeEndpoint(configuredBaseEndpoint || undefined);
+  if (configuredBaseEndpoint && !baseEndpoint) return null;
   const accountId = trimToNull(env.CLOUDFLARE_ACCOUNT_ID);
   const endpoint = baseEndpoint || (accountId ? `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions` : null);
   if (!endpoint) return null;
@@ -95,6 +104,10 @@ async function scoreCandidatesWithGateway(
     }),
   });
 
+  if (config.gatewayId && config.endpoint.startsWith("https://api.cloudflare.com/")) {
+    headers.set("cf-aig-gateway-id", config.gatewayId);
+  }
+
   if (usageContext.mode === "byok" && usageContext.gatewayKeyRef) {
     headers.set("cf-aig-byok-alias", usageContext.gatewayKeyRef);
   }
@@ -104,6 +117,7 @@ async function scoreCandidatesWithGateway(
       method: "POST",
       headers,
       body: JSON.stringify(buildGatewayRequest(config.model, input)),
+      redirect: "manual",
     });
     const text = await response.text();
     const requestId = response.headers.get("cf-aig-request-id") || response.headers.get("cf-aig-log-id") || response.headers.get("x-request-id") || gatewayRequestIdFallback;
@@ -140,7 +154,9 @@ async function scoreCandidatesWithGateway(
 
     const json = parseJsonObject<ChatCompletionResponse>(text);
     const content = json?.choices?.[0]?.message?.content || "";
-    const scores = normalizeAiScores(parseAiScoreContent(content));
+    const normalizedScores = normalizeAiScores(parseAiScoreContent(content));
+    const submittedCandidateUrls = new Set(input.candidates.slice(0, 8).map((candidate) => candidate.candidate.url));
+    const scores = normalizedScores.filter((score) => submittedCandidateUrls.has(score.url));
     const usage = usageFromResponse(json, config);
 
     await recordAiUsageEvent(env.DB, {
@@ -157,10 +173,11 @@ async function scoreCandidatesWithGateway(
       outputTokens: usage.outputTokens,
       totalTokens: usage.totalTokens,
       costMicros: usage.costMicros,
-      status: "ok",
+      status: scores.length ? "ok" : "error",
       metadata: {
         estimatedCost: usage.estimatedCost,
         scoreCount: scores.length,
+        rejectedScoreCount: normalizedScores.length - scores.length,
       },
     });
 
@@ -342,7 +359,23 @@ function usageFromResponse(response: ChatCompletionResponse | null, config: Scor
 function normalizeEndpoint(value: string | undefined): string | null {
   const trimmed = trimToNull(value);
   if (!trimmed) return null;
-  return trimmed.endsWith("/chat/completions") ? trimmed : `${trimmed.replace(/\/+$/, "")}/chat/completions`;
+  try {
+    const endpoint = new URL(trimmed);
+    if (
+      endpoint.protocol !== "https:" ||
+      endpoint.username ||
+      endpoint.password ||
+      endpoint.search ||
+      endpoint.hash ||
+      !["api.cloudflare.com", "gateway.ai.cloudflare.com"].includes(endpoint.hostname)
+    ) {
+      return null;
+    }
+    const normalized = endpoint.toString().replace(/\/+$/, "");
+    return normalized.endsWith("/chat/completions") ? normalized : `${normalized}/chat/completions`;
+  } catch {
+    return null;
+  }
 }
 
 function firstNonEmpty(...values: Array<string | undefined>): string | null {

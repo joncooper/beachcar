@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
   accountIdsFromWhoami,
+  evaluateD1IdentityGate,
   evaluateCloudflareAccountGate,
 } from "./lib/cloudflare-rollout.ts";
 
@@ -83,6 +84,11 @@ if (d1List.ok) {
   report.resources.d1 = parseJson(d1List.stdout, []);
   const exactD1 = report.resources.d1.find((db) => db?.name === configuredD1Name);
   const configuredIdMatch = configuredD1Id && !isPlaceholder(configuredD1Id) ? report.resources.d1.find((db) => db?.uuid === configuredD1Id) : null;
+  const d1IdentityGate = evaluateD1IdentityGate({
+    configuredName: configuredD1Name,
+    configuredId: configuredD1Id,
+    databases: report.resources.d1,
+  });
   const similarD1 = report.resources.d1.find((db) => normalizeName(db?.name) === normalizeName(configuredD1Name));
   addCheck("Remote D1 list is readable", true, `${report.resources.d1.length} database(s) visible.`);
   addCheck(
@@ -100,6 +106,12 @@ if (d1List.ok) {
     isPlaceholder(configuredD1Id)
       ? `Replace placeholder database_id with the remote D1 id before deploy. ${exactD1 ? `Candidate: ${exactD1.uuid}.` : ""}`
       : `Configured database_id ${configuredD1Id || "(missing)"} was not found in the account.`,
+  );
+  addCheck(
+    "Configured D1 name and database_id identify the same remote database",
+    d1IdentityGate.exactMatch,
+    d1IdentityGate.exactMatch ? `${configuredD1Name} (${configuredD1Id}).` : null,
+    `Configured name ${configuredD1Name || "(missing)"} resolves to ${d1IdentityGate.remoteNameMatchId || "(missing)"}, while configured id ${configuredD1Id || "(missing)"} resolves to ${d1IdentityGate.remoteIdMatchName || "(missing)"}. Stop before backup or migration and correct wrangler.jsonc.`,
   );
 } else {
   addCheck("Remote D1 list is readable", false, null, summarizeFailure(d1List));

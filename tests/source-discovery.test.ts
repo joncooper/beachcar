@@ -688,6 +688,35 @@ describe("source discovery", () => {
     });
   });
 
+  it("records explicit deterministic scoring when no dedicated AI Gateway runtime is configured", async () => {
+    const fetchImpl = async (input: string): Promise<Response> => {
+      if (input.includes("/suzuki/samurai/")) return new Response(batLiveHtml("1988 Suzuki Samurai Convertible 5-Speed", "USD $4,890"));
+      if (input.includes("carsandbids.com")) return new Response("<title>Just a moment...</title>");
+      return new Response(`<div class="listings-live"></div><div class="auctions-completed"></div>`);
+    };
+
+    const result = await discoverAndScoreCandidates(
+      context,
+      { runId: "agent-run-heuristic-test", source: "manual", reason: "test" },
+      { fetchImpl, now: new Date("2026-06-25T12:00:00Z") },
+    );
+
+    expect(result.aiScoring).toEqual({
+      status: "skipped",
+      provider: "heuristic",
+      model: null,
+      totalTokens: 0,
+      costMicros: 0,
+      message: "Dedicated AI Gateway runtime is not configured; deterministic heuristic scoring was used.",
+      scores: [],
+    });
+    expect(result.checkedSources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: "heuristic-scoring", site: "Beachcar heuristic scoring", status: "skipped" }),
+      ]),
+    );
+  });
+
   it("can apply AI Gateway-style reranking without changing the source parser", async () => {
     const fetchImpl = async (input: string): Promise<Response> => {
       if (input.includes("/volkswagen/thing/")) return new Response(batLiveHtml("1974 Volkswagen Thing", "USD $8,295"));

@@ -21,7 +21,8 @@ const mcpToken = valueArg("--mcp-token") || process.env.BEACHCAR_MCP_TOKEN || ""
 const strictPublic = hasFlag("--strict");
 const requireAuthenticated = hasFlag("--require-authenticated");
 const requireClerk = requireAuthenticated || hasFlag("--require-clerk");
-const requirePublish = requireAuthenticated || hasFlag("--require-publish");
+const expectedRunnerMode = valueArg("--expected-runner-mode");
+const requirePublish = requireAuthenticated || hasFlag("--require-publish") || Boolean(expectedRunnerMode);
 const requireMcp = requireAuthenticated || hasFlag("--require-mcp");
 const isLocal = isLocalUrl(baseUrl);
 
@@ -45,10 +46,20 @@ const report = {
 await checkAppShell();
 await checkMcpDiscovery();
 await checkRemoteAuthFallback();
-await checkOAuthAuthorizationCodeFlow();
-await checkSignedInSurface();
-await checkAdminSurface();
-await checkAuthenticatedMcp();
+const publicOriginFailed = report.checks.some((check) => check.status === "fail");
+if (!publicOriginFailed) {
+  await checkOAuthAuthorizationCodeFlow();
+  await checkSignedInSurface();
+  await checkAdminSurface();
+  await checkAuthenticatedMcp();
+} else {
+  addCheck(
+    "Authenticated verification is withheld after a public origin failure",
+    false,
+    "No Clerk, publish, or MCP credential was sent.",
+    "Fix the public deployment/origin failures before any authenticated gate runs.",
+  );
+}
 
 if (jsonOutput) {
   console.log(JSON.stringify(report, null, 2));
@@ -63,6 +74,12 @@ async function checkAppShell() {
   const response = await request("/");
   const text = await response.text();
   addCheck("App shell responds", response.ok && /<html/i.test(text), `HTTP ${response.status}`, "Worker assets did not return an HTML shell.");
+  addCheck(
+    "App shell prevents credential referrer leakage",
+    response.headers.get("referrer-policy") === "no-referrer",
+    response.headers.get("referrer-policy") || "missing",
+    "The app shell must send Referrer-Policy: no-referrer before a Clerk ticket is redeemed.",
+  );
   addCheck(
     "App shell includes client mount",
     text.includes('id="root"') || text.includes("/assets/"),
@@ -299,6 +316,23 @@ async function checkAdminSurface() {
     `HTTP ${response.status}`,
     "Admin source-cache status failed with the provided publish token.",
   );
+
+  const runtimeResponse = await request("/api/admin/runtime", { headers: { "X-Publish-Token": publishToken } });
+  const runtime = await readJson(runtimeResponse);
+  addCheck(
+    "Admin runtime capability is readable",
+    runtimeResponse.ok && typeof runtime?.aiGatewayConfigured === "boolean" && ["deterministic", "codex"].includes(runtime?.runnerMode),
+    `HTTP ${runtimeResponse.status}; ${runtime?.runnerMode || "unknown"}`,
+    "Admin runtime capability did not return the effective non-secret scoring/runner modes.",
+  );
+  if (expectedRunnerMode) {
+    addCheck(
+      "Effective runner mode matches the rollout choice",
+      runtimeResponse.ok && runtime?.runnerMode === expectedRunnerMode,
+      runtime?.runnerMode || `HTTP ${runtimeResponse.status}`,
+      `Expected ${expectedRunnerMode}; production reported ${runtime?.runnerMode || "unknown"}.`,
+    );
+  }
 }
 
 async function checkAuthenticatedMcp() {
@@ -329,13 +363,18 @@ async function checkAuthenticatedMcp() {
 }
 
 async function request(path, init = {}) {
-  return fetch(absoluteUrl(path), {
+  const response = await fetch(absoluteUrl(path), {
     ...init,
+    redirect: "error",
     headers: {
       Accept: "application/json, text/html;q=0.9, */*;q=0.8",
       ...(init.headers || {}),
     },
   });
+  if (new URL(response.url).origin !== new URL(baseUrl).origin) {
+    throw new Error("Verification response escaped the configured deployment origin.");
+  }
+  return response;
 }
 
 async function readJson(response) {

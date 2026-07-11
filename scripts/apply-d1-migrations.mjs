@@ -4,8 +4,15 @@ import { resolve } from "node:path";
 
 const args = process.argv.slice(2);
 const remote = args.includes("--remote");
-const local = args.includes("--local") || !remote;
 const persistTo = valueArg("--persist-to");
+
+if (remote) {
+  console.error(
+    "Direct remote D1 migration is disabled. Use bun run deploy:remote -- --execute --yes so production account, D1 identity, rollback, backup, pending-migration, schema, and strict-deploy gates run first.",
+  );
+  process.exit(1);
+}
+
 const wrangler = await readJsonc(resolve("wrangler.jsonc"));
 const databaseName = stringValue(wrangler?.d1_databases?.[0]?.database_name);
 
@@ -14,12 +21,7 @@ if (!databaseName) {
   process.exit(1);
 }
 
-if (remote && persistTo) {
-  console.error("--persist-to can only be used with --local migrations.");
-  process.exit(1);
-}
-
-const command = ["bunx", "wrangler", "d1", "migrations", "apply", databaseName, local ? "--local" : "--remote"];
+const command = ["bunx", "wrangler", "d1", "migrations", "apply", databaseName, "--local"];
 if (persistTo) command.push("--persist-to", persistTo);
 const proc = Bun.spawn(command, {
   cwd: process.cwd(),

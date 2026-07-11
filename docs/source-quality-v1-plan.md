@@ -14,7 +14,7 @@ Local implementation is complete on `codex/source-quality-v1-pilot` as of 2026-0
 - iOS surfaces source health, location/missing-location, no-image, cached/error/queued states, filtering, dossier actions, and undo.
 - Verification is green: 87 unit tests, all TypeScript checks, a fresh end-to-end local Worker run with eight published listings and both runner-source merges, native iOS build, and 17/17 iOS UI tests.
 
-Production rollout remains pending. The public deployed baseline passes 12 verifier checks with no failures, but migration `0011` and this Worker/client build have not been deployed because the local environment lacks Cloudflare non-interactive auth plus the production Clerk and AI Gateway deployment inputs.
+Production rollout remains pending. The public deployed baseline passes 12 verifier checks with no failures, but migration `0011` and this Worker/client build have not been deployed because the production Cloudflare account and Clerk-backed managed verification still need to pass their guarded gates. AI Gateway scoring is optional for the first pilot; without its dedicated runtime token the rollout must explicitly report heuristic-only mode.
 
 ## Goal
 

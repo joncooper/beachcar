@@ -38,6 +38,7 @@ await run("Runner task simulator syntax", "node", ["--check", "scripts/run-runne
 await run("Hemmings scraper syntax", "node", ["--check", "scripts/scrape-hemmings.mjs"]);
 await run("Cloudflare verifier syntax", "node", ["--check", "scripts/verify-cloudflare-deploy.mjs"]);
 await run("Remote rollout syntax", "node", ["--check", "scripts/run-remote-rollout.mjs"]);
+await run("Managed production verifier syntax", "node", ["--check", "scripts/verify-managed-production.mjs"]);
 await run("Service worker syntax", "node", ["--check", "public/sw.js"]);
 await runScript("Deploy readiness report", "deploy:check");
 await runScript("Client build", "build", { env: buildEnv });

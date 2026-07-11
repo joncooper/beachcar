@@ -23,6 +23,7 @@ import {
   getAgentRunById,
   getAutomationEvents,
   getFeedback,
+  getRunById,
   getLatestAgentRun,
   getLatestRun,
   getNextQueuedAgentRun,
@@ -275,8 +276,20 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url:
     return jsonResponse(run);
   }
 
+  const runByIdMatch = url.pathname.match(/^\/api\/runs\/([^/]+)$/);
+  if (request.method === "GET" && runByIdMatch) {
+    const run = await getRunById(env.DB, scope, decodeURIComponent(runByIdMatch[1]));
+    return run ? jsonResponse(run) : errorResponse("Run not found", 404);
+  }
+
   if (request.method === "GET" && url.pathname === "/api/agent-runs/latest") {
     return jsonResponse(await getLatestAgentRun(env.DB, authUser.id));
+  }
+
+  const agentRunByIdMatch = url.pathname.match(/^\/api\/agent-runs\/([^/]+)$/);
+  if (request.method === "GET" && agentRunByIdMatch) {
+    const run = await getAgentRunById(env.DB, decodeURIComponent(agentRunByIdMatch[1]));
+    return run?.userId === authUser.id ? jsonResponse(run) : errorResponse("Agent run not found", 404);
   }
 
   if (request.method === "POST" && url.pathname === "/api/agent-runs") {

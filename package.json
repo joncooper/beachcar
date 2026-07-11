@@ -45,6 +45,7 @@
     "cloudflare:plan": "bun scripts/plan-cloudflare-deploy.mjs",
     "cloudflare:bootstrap": "bun scripts/bootstrap-cloudflare-rollout.mjs",
     "cloudflare:verify": "bun scripts/verify-cloudflare-deploy.mjs",
+    "cloudflare:verify-managed": "bun scripts/verify-managed-production.mjs",
     "images:audit": "bun scripts/audit-image-cache.mjs",
     "images:warm": "bun scripts/warm-image-variants.mjs",
     "ios:generate": "xcodegen generate --spec ios/project.yml",

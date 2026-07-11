@@ -138,10 +138,14 @@ assert(published.status === "published", `Expected agent run ${agentRun.id} to p
 assert(published.workflowInstanceId, "Expected published agent run to retain a Workflow instance id.");
 assert(published.progress?.handoff === "cloudflare_workflow", "Expected agent run progress handoff to be cloudflare_workflow.");
 assert(typeof published.progress?.publishedRunId === "string", "Expected published run id in agent run progress.");
+const publishedById = await requestJson(`/api/agent-runs/${encodeURIComponent(agentRun.id)}`);
+assert(publishedById.id === published.id && publishedById.status === "published", "Expected the signed-in Agent-run id endpoint to return the requested run.");
 
 const latestRun = await requestJson("/api/runs/latest");
 assert(latestRun.id === published.progress.publishedRunId, "Expected /api/runs/latest to return the Workflow-published run.");
 assert(Array.isArray(latestRun.listings) && latestRun.listings.length > 0, "Expected Workflow-published run to include listings.");
+const publishedRunById = await requestJson(`/api/runs/${encodeURIComponent(published.progress.publishedRunId)}`);
+assert(publishedRunById.id === latestRun.id, "Expected the signed-in run id endpoint to return the Workflow-published run.");
 assert(
   latestRun.sourceSummary?.publisher === "cloudflare-workflow-source-discovery",
   "Expected latest run to identify the Cloudflare Workflow source-discovery publisher.",

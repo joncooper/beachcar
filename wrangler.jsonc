@@ -1,6 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "beachcar-watch",
+  "account_id": "b8873e78bf5e48fcdc91e87f2324cf55",
   "main": "src/worker/index.ts",
   "compatibility_date": "2026-06-25",
   "compatibility_flags": ["nodejs_compat"],

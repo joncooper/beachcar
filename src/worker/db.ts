@@ -2199,6 +2199,16 @@ export async function getLatestRun(db: D1Database, scope: UserScope): Promise<Ru
   return runPayloadFromRow(db, scope, run);
 }
 
+export async function getRunById(db: D1Database, scope: UserScope, id: string): Promise<RunPayload | null> {
+  const runWhere = scope.includeLegacyData ? "(user_id = ? OR user_id IS NULL)" : "user_id = ?";
+  const run = await db
+    .prepare(`SELECT * FROM runs WHERE id = ? AND ${runWhere} LIMIT 1`)
+    .bind(id, scope.userId)
+    .first<RunRow>();
+  if (!run) return null;
+  return runPayloadFromRow(db, scope, run);
+}
+
 export async function exportAccount(db: D1Database, scope: UserScope): Promise<AccountExport> {
   const [user, feedback, runs, agentRuns, aiUsageEvents, runnerTasks, automationTokens, oauthAccessTokens, automationEvents] = await Promise.all([
     getUserPayload(db, scope.userId),

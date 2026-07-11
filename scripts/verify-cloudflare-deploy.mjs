@@ -2,8 +2,13 @@
 
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { missingVerificationGateStatus } from "./lib/cloudflare-rollout.ts";
 
 const args = process.argv.slice(2);
+if (hasFlag("--help") || hasFlag("-h")) {
+  printHelp();
+  process.exit(0);
+}
 await loadEnvFile(resolve(".dev.vars"));
 await loadEnvFile(resolve(".publish.env"));
 
@@ -13,7 +18,11 @@ const testEmail = firstEmail(valueArg("--email"), process.env.SMOKE_TEST_EMAIL, 
 const clerkToken = valueArg("--clerk-token") || process.env.BEACHCAR_CLERK_TOKEN || "";
 const publishToken = valueArg("--publish-token") || process.env.PUBLISH_TOKEN || "";
 const mcpToken = valueArg("--mcp-token") || process.env.BEACHCAR_MCP_TOKEN || "";
-const failOnWarn = hasFlag("--strict");
+const strictPublic = hasFlag("--strict");
+const requireAuthenticated = hasFlag("--require-authenticated");
+const requireClerk = requireAuthenticated || hasFlag("--require-clerk");
+const requirePublish = requireAuthenticated || hasFlag("--require-publish");
+const requireMcp = requireAuthenticated || hasFlag("--require-mcp");
 const isLocal = isLocalUrl(baseUrl);
 
 const report = {
@@ -24,6 +33,12 @@ const report = {
     clerkToken: Boolean(clerkToken),
     publishToken: Boolean(publishToken),
     mcpToken: Boolean(mcpToken),
+  },
+  requirements: {
+    strictPublic,
+    clerk: requireClerk,
+    publish: requirePublish,
+    mcp: requireMcp,
   },
 };
 
@@ -41,7 +56,7 @@ if (jsonOutput) {
   printReport();
 }
 
-const failed = report.checks.filter((check) => check.status === "fail" || (failOnWarn && check.status === "warn"));
+const failed = report.checks.filter((check) => check.status === "fail");
 if (failed.length) process.exit(1);
 
 async function checkAppShell() {
@@ -142,7 +157,11 @@ async function checkRemoteAuthFallback() {
 async function checkOAuthAuthorizationCodeFlow() {
   const canAuthorize = isLocal || Boolean(clerkToken);
   if (!canAuthorize) {
-    addCheck("OAuth authorization-code PKCE smoke", false, "Set BEACHCAR_CLERK_TOKEN or run against localhost to verify the OAuth code flow.", "", "warn");
+    addMissingGate(
+      "OAuth authorization-code PKCE smoke",
+      "Set BEACHCAR_CLERK_TOKEN or run against localhost to verify the OAuth code flow.",
+      requireClerk,
+    );
     return;
   }
 
@@ -239,7 +258,11 @@ async function checkOAuthAuthorizationCodeFlow() {
 
 async function checkSignedInSurface() {
   if (!clerkToken) {
-    addCheck("Signed-in API smoke", false, "Set BEACHCAR_CLERK_TOKEN or pass --clerk-token to verify /api/me and automation status.", "", "warn");
+    addMissingGate(
+      "Signed-in API smoke",
+      "Set BEACHCAR_CLERK_TOKEN or pass --clerk-token to verify /api/me and automation status.",
+      requireClerk,
+    );
     return;
   }
 
@@ -260,7 +283,11 @@ async function checkSignedInSurface() {
 
 async function checkAdminSurface() {
   if (!publishToken) {
-    addCheck("Admin source-cache smoke", false, "Set PUBLISH_TOKEN or pass --publish-token to verify admin source-cache status.", "", "warn");
+    addMissingGate(
+      "Admin source-cache smoke",
+      "Set PUBLISH_TOKEN or pass --publish-token to verify admin source-cache status.",
+      requirePublish,
+    );
     return;
   }
 
@@ -276,7 +303,11 @@ async function checkAdminSurface() {
 
 async function checkAuthenticatedMcp() {
   if (!mcpToken) {
-    addCheck("Authenticated MCP tools/list", false, "Set BEACHCAR_MCP_TOKEN or pass --mcp-token to verify a scoped automation token.", "", "warn");
+    addMissingGate(
+      "Authenticated MCP tools/list",
+      "Set BEACHCAR_MCP_TOKEN or pass --mcp-token to verify a scoped automation token.",
+      requireMcp,
+    );
     return;
   }
 
@@ -325,13 +356,21 @@ function addCheck(label, ok, detail, failDetail, severity = "fail") {
   });
 }
 
+function addMissingGate(label, detail, required) {
+  report.checks.push({
+    label,
+    status: missingVerificationGateStatus(required),
+    detail: required ? `${detail} This gate was explicitly required.` : detail,
+  });
+}
+
 function printReport() {
   console.log("Beachcar deployed Worker verification");
   console.log(`Generated: ${report.generatedAt}`);
   console.log(`URL: ${report.baseUrl}`);
   console.log("");
   for (const check of report.checks) {
-    const marker = check.status === "ok" ? "OK" : check.status === "warn" ? "WARN" : "FAIL";
+    const marker = check.status === "ok" ? "OK" : check.status === "skip" ? "SKIP" : check.status === "warn" ? "WARN" : "FAIL";
     console.log(`${marker} ${check.label}`);
     if (check.detail) console.log(`    ${check.detail}`);
   }
@@ -340,8 +379,26 @@ function printReport() {
     return acc;
   }, {});
   console.log("");
-  console.log(`Summary: ${counts.ok || 0} ok, ${counts.warn || 0} warnings, ${counts.fail || 0} failures.`);
+  console.log(`Summary: ${counts.ok || 0} ok, ${counts.skip || 0} skipped, ${counts.warn || 0} warnings, ${counts.fail || 0} failures.`);
   console.log("No Cloudflare resources were created, changed, migrated, or deployed.");
+}
+
+function printHelp() {
+  console.log(`Beachcar deployed Worker verifier
+
+Usage:
+  bun scripts/verify-cloudflare-deploy.mjs --url <https-url> [options]
+
+Options:
+  --strict                  Strictly require all public/core checks to pass. Missing optional tokens are reported as skipped.
+  --require-clerk           Require Clerk-backed OAuth and signed-in API checks; fails if BEACHCAR_CLERK_TOKEN is absent.
+  --require-publish         Require the admin source-cache check; fails if PUBLISH_TOKEN is absent.
+  --require-mcp             Require authenticated MCP tools/list; fails if BEACHCAR_MCP_TOKEN is absent.
+  --require-authenticated   Require all Clerk, publishing, and MCP token-gated checks.
+  --json                    Print the verification report as JSON.
+
+Token values should be supplied through the environment, not command arguments or shell history.
+`);
 }
 
 function absoluteUrl(path) {

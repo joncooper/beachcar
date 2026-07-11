@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const strict = process.argv.includes("--strict");
+const allowRemoteSecrets = process.argv.includes("--allow-remote-secrets");
 const env = {
   ...(await loadEnvFile(resolve(".dev.vars"))),
   ...(await loadEnvFile(resolve(".publish.env"))),
@@ -11,29 +12,22 @@ const env = {
 };
 const checks = [];
 
-check("PUBLISH_TOKEN is available", hasRealValue("PUBLISH_TOKEN"), "Set PUBLISH_TOKEN in .deploy.env or export it before configuring the Worker secret.");
-check("PUBLISH_TOKEN looks strong enough", value("PUBLISH_TOKEN").length >= 24, "Use a random token at least 24 characters long.");
+checkWorkerSecret("PUBLISH_TOKEN", () => value("PUBLISH_TOKEN").length >= 24, "Use a random token at least 24 characters long.");
 check("VITE_CLERK_PUBLISHABLE_KEY is available", hasRealValue("VITE_CLERK_PUBLISHABLE_KEY"), "Set VITE_CLERK_PUBLISHABLE_KEY for production client builds.");
 check(
   "VITE_CLERK_PUBLISHABLE_KEY has a Clerk publishable-key shape",
   hasRealValue("VITE_CLERK_PUBLISHABLE_KEY") && /^pk_(test|live)_/.test(value("VITE_CLERK_PUBLISHABLE_KEY")),
   "Expected a Clerk key beginning with pk_test_ or pk_live_.",
 );
-check("CLERK_SECRET_KEY is available", hasRealValue("CLERK_SECRET_KEY"), "Set CLERK_SECRET_KEY before configuring the Worker secret.");
-check(
-  "CLERK_SECRET_KEY has a Clerk secret-key shape",
-  hasRealValue("CLERK_SECRET_KEY") && /^sk_(test|live)_/.test(value("CLERK_SECRET_KEY")),
-  "Expected a Clerk key beginning with sk_test_ or sk_live_.",
-);
-check("CLERK_JWT_ISSUER is available", hasRealValue("CLERK_JWT_ISSUER"), "Set CLERK_JWT_ISSUER before configuring the Worker secret.");
-check("CLERK_JWT_ISSUER is an HTTPS URL", hasRealValue("CLERK_JWT_ISSUER") && isHttpsUrl(value("CLERK_JWT_ISSUER")), "Use the Clerk issuer URL, usually https://<instance>.clerk.accounts.dev.");
+checkWorkerSecret("CLERK_SECRET_KEY", () => /^sk_(test|live)_/.test(value("CLERK_SECRET_KEY")), "Expected a Clerk key beginning with sk_test_ or sk_live_.");
+checkWorkerSecret("CLERK_JWT_ISSUER", () => isHttpsUrl(value("CLERK_JWT_ISSUER")), "Use the Clerk issuer URL, usually https://<instance>.clerk.accounts.dev.");
 
-const gatewayToken = hasRealValue("BEACHCAR_AI_GATEWAY_TOKEN") || hasRealValue("CLOUDFLARE_API_TOKEN");
+const gatewayToken = hasRealValue("BEACHCAR_AI_GATEWAY_TOKEN");
 const gatewayTarget = hasRealValue("BEACHCAR_AI_GATEWAY_BASE_URL") || (hasRealValue("CLOUDFLARE_ACCOUNT_ID") && hasRealValue("BEACHCAR_AI_GATEWAY_ID"));
 if (!gatewayToken && !gatewayTarget) {
   warn("AI Gateway credentials are not configured", "First deploy can run deterministic scoring; configure AI Gateway before proving managed AI spend.");
 } else {
-  check("AI Gateway token is available", gatewayToken, "Set BEACHCAR_AI_GATEWAY_TOKEN or CLOUDFLARE_API_TOKEN.");
+  check("AI Gateway token is available", gatewayToken, "Set BEACHCAR_AI_GATEWAY_TOKEN. Reserve CLOUDFLARE_API_TOKEN for Wrangler authentication.");
   check("AI Gateway target is available", gatewayTarget, "Set BEACHCAR_AI_GATEWAY_BASE_URL or CLOUDFLARE_ACCOUNT_ID plus BEACHCAR_AI_GATEWAY_ID.");
 }
 
@@ -54,6 +48,19 @@ function check(label, ok, remediation) {
 
 function warn(label, remediation) {
   checks.push({ label, status: "warn", remediation });
+}
+
+function checkWorkerSecret(name, validate, invalidRemediation) {
+  if (!hasRealValue(name)) {
+    if (allowRemoteSecrets) {
+      warn(`${name} is not supplied locally`, `The guarded rollout must confirm that ${name} already exists remotely before migration.`);
+    } else {
+      check(`${name} is available`, false, `Set ${name} locally or use the guarded remote rollout to retain an existing remote secret.`);
+    }
+    return;
+  }
+  check(`${name} is available`, true, "");
+  check(`${name} has a valid shape`, validate(), invalidRemediation);
 }
 
 function value(name) {

@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { evaluateSourceQualitySchemaGate } from "./lib/cloudflare-rollout.ts";
 
 const args = process.argv.slice(2);
 const flags = new Set(args);
@@ -17,6 +18,7 @@ const dryRunDeploy = flags.has("--dry-run-deploy");
 const deploy = flags.has("--deploy");
 const yes = flags.has("--yes");
 const deployContainers = flags.has("--deploy-containers");
+const secretsFile = valueArg("--secrets-file") ? resolve(valueArg("--secrets-file")) : "";
 const runnerMode = normalizeRunnerMode(process.env.BEACHCAR_RUNNER_MODE);
 const ownerEmails = normalizeEmailList(valueArg("--owner-emails") || process.env.BEACHCAR_BOOTSTRAP_OWNER_EMAILS || process.env.BOOTSTRAP_OWNER_EMAILS || "");
 const remoteMutationRequested = applyResources || migrate || deploy;
@@ -33,6 +35,16 @@ if (deploy && !migrate) {
   fail("Deploy requires --migrate in the same invocation so remote D1 schema is checked immediately before upload.");
 }
 
+if (secretsFile && !deploy) {
+  fail("--secrets-file is only accepted with --deploy so secret changes are uploaded atomically with a Worker version.");
+}
+
+if (secretsFile) {
+  const metadata = await stat(secretsFile).catch(() => null);
+  if (!metadata?.isFile()) fail("--secrets-file must point to a readable regular file.");
+  if ((metadata.mode & 0o077) !== 0) fail("--secrets-file must not be readable or writable by group or other users (expected mode 0600).");
+}
+
 const wranglerPath = resolve("wrangler.jsonc");
 let wrangler = await readJsonc(wranglerPath);
 const d1Binding = wrangler?.d1_databases?.[0] || {};
@@ -41,7 +53,7 @@ const r2Name = stringValue(wrangler?.r2_buckets?.[0]?.bucket_name) || "beachcar-
 const workerName = stringValue(wrangler?.name) || "beachcar-watch";
 const configuredOwnerEmails = ownerEmails.length ? ownerEmails : configuredBootstrapOwnerEmails(wrangler);
 
-let check = await inspectCloudflare();
+let check = await inspectCloudflare({ strictAccount: remoteMutationRequested });
 let exactD1 = findD1(check, d1Name);
 const r2Exists = check.resources.r2Buckets.includes(r2Name);
 
@@ -61,7 +73,7 @@ if (!exactD1) {
   console.log(`D1 ${d1Name}: missing`);
   if (applyResources) {
     await runWrangler(["d1", "create", d1Name], { label: `Create D1 ${d1Name}` });
-    check = await inspectCloudflare();
+    check = await inspectCloudflare({ strictAccount: true });
     exactD1 = findD1(check, d1Name);
     if (!exactD1) fail(`D1 ${d1Name} was created but not found by read-back inspection.`);
   }
@@ -73,7 +85,7 @@ if (!r2Exists) {
   console.log(`R2 ${r2Name}: missing`);
   if (applyResources) {
     await runWrangler(["r2", "bucket", "create", r2Name], { label: `Create R2 ${r2Name}` });
-    check = await inspectCloudflare();
+    check = await inspectCloudflare({ strictAccount: true });
     if (!check.resources.r2Buckets.includes(r2Name)) fail(`R2 ${r2Name} was created but not found by read-back inspection.`);
   }
 } else {
@@ -103,14 +115,15 @@ if (writeConfig) {
   }
 }
 
-if (migrate) {
-  if (!exactD1) fail(`Cannot apply migrations until D1 ${d1Name} exists.`);
-  await runWrangler(["d1", "migrations", "apply", d1Name, "--remote"], { label: `Apply remote D1 migrations to ${d1Name}` });
-}
-
 if (dryRunDeploy) {
   const args = deployCommandArgs(["--dry-run"]);
   await runWrangler(args, { label: "Dry-run Worker deploy" });
+}
+
+if (migrate) {
+  if (!exactD1) fail(`Cannot apply migrations until D1 ${d1Name} exists.`);
+  await runWrangler(["d1", "migrations", "apply", d1Name, "--remote"], { label: `Apply remote D1 migrations to ${d1Name}` });
+  await verifySourceQualityD1Schema();
 }
 
 if (deploy) {
@@ -120,8 +133,10 @@ if (deploy) {
 
 await printNextSteps({ exactD1, r2Exists: check.resources.r2Buckets.includes(r2Name) });
 
-async function inspectCloudflare() {
-  const result = await run(["bun", "scripts/check-cloudflare-resources.mjs", "--json"], { label: "Inspect Cloudflare resources", quiet: true });
+async function inspectCloudflare(options = {}) {
+  const command = ["bun", "scripts/check-cloudflare-resources.mjs", "--json"];
+  if (options.strictAccount) command.push("--strict-account");
+  const result = await run(command, { label: "Inspect Cloudflare resources", quiet: true });
   return JSON.parse(result.stdout);
 }
 
@@ -140,7 +155,7 @@ async function printNextSteps(state) {
   if (!configuredOwnerEmails.length) {
     console.log(`- Set owner emails in config: bun scripts/bootstrap-cloudflare-rollout.mjs --write-config --owner-emails "owner@example.com"`);
   }
-  console.log("- Add required Worker secrets with Wrangler: PUBLISH_TOKEN, CLERK_SECRET_KEY, CLERK_JWT_ISSUER.");
+  console.log("- Keep required Worker secrets set remotely, or pass a protected --secrets-file during deploy.");
   console.log("- Then run: bun scripts/bootstrap-cloudflare-rollout.mjs --yes --migrate --dry-run-deploy");
   console.log("- Actual deploy is explicit: bun scripts/bootstrap-cloudflare-rollout.mjs --yes --migrate --dry-run-deploy --deploy");
   console.log("No deploy is performed unless --deploy is present.");
@@ -150,8 +165,39 @@ async function runWrangler(commandArgs, options = {}) {
   return run(["bunx", "wrangler", ...commandArgs], options);
 }
 
+async function verifySourceQualityD1Schema() {
+  const columnsSql = `SELECT COUNT(*) AS found_columns FROM pragma_table_info('source_items') WHERE name IN ('bid_num','location','location_city','location_region','location_country','ends_at','no_reserve','last_detail_at','detail_status','detail_error','is_live','dossier_json')`;
+  const indexesSql = `SELECT COUNT(*) AS found_indexes FROM sqlite_master WHERE type = 'index' AND name IN ('idx_source_items_source_live_ends','idx_source_items_source_bid','idx_source_items_source_location')`;
+  const [columns, indexes, quickCheck] = await Promise.all([
+    runWrangler(["d1", "execute", d1Name, "--remote", "--json", "--command", columnsSql], {
+      label: "Verify Source Quality v1 D1 columns",
+      quiet: true,
+    }),
+    runWrangler(["d1", "execute", d1Name, "--remote", "--json", "--command", indexesSql], {
+      label: "Verify Source Quality v1 D1 indexes",
+      quiet: true,
+    }),
+    runWrangler(["d1", "execute", d1Name, "--remote", "--json", "--command", "PRAGMA quick_check"], {
+      label: "Run remote D1 quick_check",
+      quiet: true,
+    }),
+  ]);
+  const gate = evaluateSourceQualitySchemaGate({
+    columns: columns.stdout,
+    indexes: indexes.stdout,
+    quickCheck: quickCheck.stdout,
+  });
+  if (!gate.ok) {
+    throw new Error(
+      `Post-migration D1 gate failed: expected 12 Source Quality columns, 3 indexes, and quick_check=ok; found ${gate.columnCount} columns, ${gate.indexCount} indexes, quick_check=${gate.quickCheck || "unreadable"}. The Worker was not deployed.`,
+    );
+  }
+  console.log("\nD1 post-migration gate passed: 12 Source Quality columns, 3 indexes, quick_check=ok.");
+}
+
 function deployCommandArgs(extraArgs = []) {
   const args = ["deploy", ...extraArgs];
+  if (secretsFile) args.push("--secrets-file", secretsFile);
   if (shouldSkipContainerRollout()) {
     args.push("--containers-rollout", "none");
   }
@@ -273,6 +319,7 @@ Options:
   --migrate                  Apply D1 migrations remotely.
   --dry-run-deploy           Run wrangler deploy --dry-run.
   --deploy                   Deploy the Worker. Requires --dry-run-deploy in the same run.
+  --secrets-file <path>      Protected 0600 JSON/.env file passed to wrangler deploy; requires --deploy.
   --deploy-containers        Also build/update the Cloudflare Container image. By default this is skipped unless BEACHCAR_RUNNER_MODE=codex.
   --yes                      Required for --apply-resources, --migrate, or --deploy.
 

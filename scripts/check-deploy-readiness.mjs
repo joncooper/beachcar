@@ -75,12 +75,12 @@ checkSecretHint("PUBLISH_TOKEN", "Needed for admin import, invite admin console,
 checkSecretHint("CLERK_SECRET_KEY", "Needed for production Clerk token verification.");
 checkSecretHint("CLERK_JWT_ISSUER", "Needed for production Clerk token verification.");
 
-const hasGatewayToken = hasEnv("BEACHCAR_AI_GATEWAY_TOKEN") || hasEnv("CLOUDFLARE_API_TOKEN");
+const hasGatewayToken = hasEnv("BEACHCAR_AI_GATEWAY_TOKEN");
 const hasGatewayTarget = hasEnv("BEACHCAR_AI_GATEWAY_BASE_URL") || (hasEnv("CLOUDFLARE_ACCOUNT_ID") && hasEnv("BEACHCAR_AI_GATEWAY_ID"));
 check(
   "AI Gateway credentials are available for remote scoring rehearsal",
   hasGatewayToken && hasGatewayTarget,
-  "Configure BEACHCAR_AI_GATEWAY_TOKEN/CLOUDFLARE_API_TOKEN plus BEACHCAR_AI_GATEWAY_BASE_URL or CLOUDFLARE_ACCOUNT_ID+BEACHCAR_AI_GATEWAY_ID before remote AI budget validation.",
+  "Configure BEACHCAR_AI_GATEWAY_TOKEN plus BEACHCAR_AI_GATEWAY_BASE_URL or CLOUDFLARE_ACCOUNT_ID+BEACHCAR_AI_GATEWAY_ID before remote AI budget validation. Reserve CLOUDFLARE_API_TOKEN for Wrangler authentication.",
   "recommended-before-friends",
 );
 

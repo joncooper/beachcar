@@ -146,7 +146,7 @@ bun run deploy:env:check
 bun run deploy:remote -- --dry-run
 ```
 
-After explicit approval, the guarded rollout command runs migrations, deploys, sets Worker secrets from `.deploy.env`, and verifies the deployed Worker:
+After explicit approval, the guarded rollout command verifies the production account, captures private Worker/D1 recovery artifacts, validates and applies the expected migration, deploys code plus any locally supplied secret changes as one Worker version, and verifies the deployed Worker. Existing remote secrets omitted locally are preserved:
 
 ```bash
 bun run deploy:remote -- --execute --yes
@@ -158,16 +158,15 @@ While `BEACHCAR_RUNNER_MODE=deterministic`, the rollout skips Cloudflare Contain
 bun run deploy:remote -- --execute --yes --deploy-containers
 ```
 
-Manual fallback:
+Manual fallback should follow the same safety order: capture the current Worker version plus a D1 Time Travel bookmark/export, dry-run the bundle, apply and verify the migration, then deploy code and any rotated secrets together with `wrangler deploy --secrets-file`. Do not run a post-deploy `secret bulk` release.
+
+After the public/admin deployment checks pass, use the stored single-use Clerk ticket once to prove the real managed pilot path:
 
 ```bash
-bunx wrangler secret put PUBLISH_TOKEN
-bunx wrangler secret put CLERK_SECRET_KEY
-bunx wrangler secret put CLERK_JWT_ISSUER
-bun run db:migrate:remote
-bun run cloudflare:bootstrap -- --dry-run-deploy
-bun run cloudflare:bootstrap -- --yes --migrate --dry-run-deploy --deploy
+bun run cloudflare:verify-managed -- --execute --yes
 ```
+
+The verifier keeps the short-lived Clerk JWT in memory, queues one production Workflow run, follows the exact Agent/run ids, and checks enabled-source diagnostics, shortlist publication, Beachcar image-cache hits, and budget status. Do not use it as an auth-only rehearsal because the sign-in ticket may be consumed.
 
 `CLERK_JWT_ISSUER` is your Clerk issuer URL, usually like `https://your-instance.clerk.accounts.dev`.
 `bun run deploy:env:check` hides secret values and reports only missing or malformed deployment inputs. Use `-- --strict` to make missing required values fail.

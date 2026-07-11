@@ -35,6 +35,9 @@ function buildPlan(check, wranglerConfig) {
   const similarD1 = check.resources.d1.find((db) => normalizeName(db?.name) === normalizeName(configuredD1Name)) || null;
   const r2Exists = check.resources.r2Buckets.includes(configuredR2Name);
   const workerExists = checkStatus(check, "Configured Worker exists remotely") === "ok";
+  const accountReady =
+    checkStatus(check, "Wrangler selected account matches expected production account") === "ok" &&
+    checkStatus(check, "Authenticated credentials can access expected production account") === "ok";
   const ownerEmails = configuredBootstrapOwnerEmails(wranglerConfig);
   const ownerEmailReady = ownerEmails.length > 0 && ownerEmails.every((email) => !isExampleEmail(email));
 
@@ -43,9 +46,11 @@ function buildPlan(check, wranglerConfig) {
   steps.push({
     title: "Confirm target account",
     kind: "read-only",
-    status: check.accountId ? "ready" : "blocked",
-    commands: ["bunx wrangler whoami"],
-    detail: check.accountId ? `Wrangler is logged into account ${check.accountId}.` : "Wrangler account id was not detected.",
+    status: accountReady ? "ready" : "blocked",
+    commands: ["bun scripts/check-cloudflare-resources.mjs --strict"],
+    detail: accountReady
+      ? `Wrangler selected expected production account ${check.expectedAccountId}.`
+      : `Selected account ${check.accountId || "(unknown)"} has not been proven to match and access expected account ${check.expectedAccountId || "(missing)"}.`,
   });
 
   if (exactD1) {
@@ -69,14 +74,6 @@ function buildPlan(check, wranglerConfig) {
   }
 
   steps.push({
-    title: "Apply D1 migrations remotely",
-    kind: "mutating",
-    status: exactD1 ? "ready" : "after-d1-created",
-    commands: [`bunx wrangler d1 migrations apply ${configuredD1Name} --remote`],
-    detail: "Run only after wrangler.jsonc contains the real production D1 database_id.",
-  });
-
-  steps.push({
     title: "Confirm R2 image bucket",
     kind: r2Exists ? "read-only" : "mutating",
     status: r2Exists ? "ready" : "required",
@@ -98,49 +95,34 @@ function buildPlan(check, wranglerConfig) {
     title: "Dry-run the production bundle",
     kind: "read-only",
     status: "ready",
-    commands: ["bunx wrangler deploy --dry-run"],
-    detail: "Validates Worker assets, bindings, and Container image without deploying.",
+    commands: ["bun run deploy:remote -- --dry-run"],
+    detail: "Validates the deployment environment, Worker assets, bindings, and deterministic container-skip path without mutating Cloudflare.",
   });
 
   steps.push({
-    title: workerExists ? "Deploy an updated Worker version" : "Deploy the Worker for the first time",
+    title: "Prepare optional atomic Worker secret changes",
+    kind: "file-edit",
+    status: workerExists ? "ready" : "required",
+    commands: ["# Put only new or rotated Worker secret values in the ignored .deploy.env; leave existing remote values empty."],
+    detail: workerExists
+      ? "The guarded rollout accepts existing required remote secret names. Any supplied local values are included with the Worker deployment; omitted secrets are preserved."
+      : "A first deploy needs local values for every required Worker secret because no remote values exist yet.",
+  });
+
+  steps.push({
+    title: workerExists ? "Run guarded migration and single-version deployment" : "Run guarded first deployment",
     kind: "mutating",
     status: exactD1 ? "ready-after-dry-run" : "after-d1-created",
-    commands: ["bunx wrangler deploy"],
-    detail: workerExists
-      ? `Worker ${workerName} already exists; deploy creates a new version.`
-      : `Worker ${workerName} is not deployed yet; secrets cannot be inspected until after this first deploy.`,
-  });
-
-  steps.push({
-    title: "Set required Worker secrets",
-    kind: "mutating",
-    status: workerExists ? "ready" : "after-first-deploy",
-    commands: [
-      "bunx wrangler secret put PUBLISH_TOKEN",
-      "bunx wrangler secret put CLERK_SECRET_KEY",
-      "bunx wrangler secret put CLERK_JWT_ISSUER",
-    ],
-    detail: "Use Wrangler's interactive prompt or file-based secret input. Do not echo secret values into shell history.",
-  });
-
-  steps.push({
-    title: "Set optional AI Gateway secrets for remote scoring",
-    kind: "mutating",
-    status: "before-ai-gateway-rehearsal",
-    commands: [
-      "bunx wrangler secret put BEACHCAR_AI_GATEWAY_TOKEN",
-      "# Also configure BEACHCAR_AI_GATEWAY_BASE_URL or CLOUDFLARE_ACCOUNT_ID + BEACHCAR_AI_GATEWAY_ID in the environment/secrets model you choose.",
-    ],
-    detail: "Not needed for deterministic first deploy, but required before proving real remote Gateway budgets and scoring.",
+    commands: ["bun run deploy:remote -- --execute --yes"],
+    detail: `Captures private Worker/D1 recovery artifacts, accepts only migration 0011 (or none), validates the applied schema, and deploys ${workerName} once with any supplied secret changes.`,
   });
 
   steps.push({
     title: "Run post-deploy verification",
     kind: "read-only",
-    status: "after-deploy-and-secrets",
+    status: "after-deploy",
     commands: [
-      `BEACHCAR_DEPLOY_URL=https://${workerName}.<your-subdomain>.workers.dev bun run cloudflare:verify`,
+      `BEACHCAR_DEPLOY_URL=https://${workerName}.<your-subdomain>.workers.dev bun run cloudflare:verify -- --strict`,
       "bun scripts/check-cloudflare-resources.mjs --strict",
       `curl -fsS https://${workerName}.<your-subdomain>.workers.dev/.well-known/oauth-protected-resource/mcp`,
       `curl -sS -D - -o /tmp/beachcar-mcp-unauth.json -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":"verify","method":"tools/list"}' https://${workerName}.<your-subdomain>.workers.dev/mcp`,
@@ -154,7 +136,7 @@ function buildPlan(check, wranglerConfig) {
     accountId: check.accountId,
     workerName,
     recommendation: exactD1
-      ? `Use configured D1 ${configuredD1Name} (${exactD1.uuid}) and apply pending migrations before deploy.`
+      ? `Use configured D1 ${configuredD1Name} (${exactD1.uuid}) through the guarded rollout, which gates pending migration 0011 and verifies the schema before deploy.`
       : `Create a fresh D1 database named ${configuredD1Name} unless you intentionally decide to inspect and reuse a legacy similarly named database.`,
     currentFindings: check.checks.filter((entry) => entry.status !== "ok"),
     steps,

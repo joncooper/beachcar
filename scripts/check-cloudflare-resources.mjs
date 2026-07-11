@@ -1,13 +1,22 @@
 #!/usr/bin/env bun
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import {
+  accountIdsFromWhoami,
+  evaluateCloudflareAccountGate,
+} from "./lib/cloudflare-rollout.ts";
 
+const args = process.argv.slice(2);
 const strict = process.argv.includes("--strict");
+const strictAccount = process.argv.includes("--strict-account");
 const jsonOutput = process.argv.includes("--json");
+const localSecretNames = new Set(flagValues("--local-secret"));
 const report = {
   generatedAt: new Date().toISOString(),
   workerName: null,
   accountId: null,
+  expectedAccountId: null,
+  authenticatedAccountIds: [],
   checks: [],
   resources: {
     d1: [],
@@ -23,10 +32,48 @@ report.workerName = stringValue(wrangler?.name);
 addCheck("wrangler.jsonc is readable", !!wrangler, "wrangler.jsonc loaded.", "Run this from the Beachcar repo root.");
 addCheck("Worker name is configured", !!report.workerName, report.workerName || null, "Set name in wrangler.jsonc.");
 
-const whoami = await runWrangler(["whoami"]);
-report.accountId = accountIdFromWhoami(whoami.stdout);
-addCheck("Wrangler is logged in", whoami.ok, report.accountId ? `Account ${report.accountId}.` : "Wrangler returned user settings.", "Run bunx wrangler login before remote resource inspection.");
-if (report.accountId) addCheck("Cloudflare account id detected", true, report.accountId);
+const whoami = await runWrangler(["whoami", "--json"]);
+const whoamiValue = parseJson(whoami.stdout, null);
+report.authenticatedAccountIds = accountIdsFromWhoami(whoamiValue);
+const accountGate = evaluateCloudflareAccountGate({
+  configAccountId: stringValue(wrangler?.account_id),
+  env: process.env,
+  authenticatedAccountIds: report.authenticatedAccountIds,
+});
+report.accountId = accountGate.selectedAccountId || null;
+report.expectedAccountId = accountGate.expectedAccountId || null;
+addCheck(
+  "Wrangler is logged in",
+  whoami.ok && whoamiValue?.loggedIn === true,
+  `${report.authenticatedAccountIds.length} authenticated account(s) available.`,
+  "Run bunx wrangler login or provide an account-scoped API token before remote resource inspection.",
+  "todo",
+  "account",
+);
+addCheck(
+  "Expected production Cloudflare account is configured",
+  accountGate.expectedConfigured,
+  accountGate.expectedAccountId,
+  "Set account_id in wrangler.jsonc or BEACHCAR_EXPECTED_CLOUDFLARE_ACCOUNT_ID to the production account id.",
+  "todo",
+  "account",
+);
+addCheck(
+  "Wrangler selected account matches expected production account",
+  accountGate.selectedMatchesExpected,
+  accountGate.selectedAccountId,
+  `Selected account ${accountGate.selectedAccountId || "(unknown)"} does not match expected account ${accountGate.expectedAccountId || "(missing)"}. Remove a conflicting CLOUDFLARE_ACCOUNT_ID or authenticate for the production account.`,
+  "todo",
+  "account",
+);
+addCheck(
+  "Authenticated credentials can access expected production account",
+  accountGate.credentialsCanAccessExpected,
+  accountGate.expectedAccountId,
+  `The authenticated identity cannot access expected account ${accountGate.expectedAccountId || "(missing)"}. Authenticate with a production account member or an account-scoped API token.`,
+  "todo",
+  "account",
+);
 
 const configuredD1 = wrangler?.d1_databases?.[0] || {};
 const configuredD1Name = stringValue(configuredD1.database_name);
@@ -84,7 +131,14 @@ if (report.workerName) {
     const recommendedSecrets = ["BEACHCAR_AI_GATEWAY_TOKEN"];
     addCheck("Remote Worker secrets are readable", true, `${report.resources.workerSecrets.length} secret name(s) returned.`);
     for (const name of requiredSecrets) {
-      addCheck(`Required remote secret ${name} is set`, report.resources.workerSecrets.includes(name), name, `Set ${name} with wrangler secret put ${name}.`);
+      const isRemote = report.resources.workerSecrets.includes(name);
+      const isLocalDeployInput = localSecretNames.has(name);
+      addCheck(
+        `Required Worker secret ${name} is available`,
+        isRemote || isLocalDeployInput,
+        isRemote ? `${name} is already set remotely.` : `${name} will be supplied atomically with this deploy.`,
+        `Keep the existing remote ${name} secret or supply it locally for the atomic deploy.`,
+      );
     }
     for (const name of recommendedSecrets) {
       addCheck(`Recommended remote secret ${name} is set`, report.resources.workerSecrets.includes(name), name, `Set ${name} before remote AI Gateway scoring rehearsal.`, "warn");
@@ -104,7 +158,8 @@ if (jsonOutput) {
 }
 
 const failures = report.checks.filter((check) => check.status === "todo");
-if (strict && failures.length) process.exit(1);
+const accountFailures = failures.filter((check) => check.category === "account");
+if ((strict && failures.length) || (strictAccount && accountFailures.length)) process.exit(1);
 
 async function runWrangler(args) {
   const proc = Bun.spawn(["bunx", "wrangler", ...args], {
@@ -116,8 +171,8 @@ async function runWrangler(args) {
   return { ok: exitCode === 0, exitCode, stdout, stderr, command: `bunx wrangler ${args.join(" ")}` };
 }
 
-function addCheck(label, ok, okDetail, failDetail = "", severity = "todo") {
-  report.checks.push({ label, status: ok ? "ok" : severity, detail: ok ? okDetail : failDetail });
+function addCheck(label, ok, okDetail, failDetail = "", severity = "todo", category = "resource") {
+  report.checks.push({ label, status: ok ? "ok" : severity, detail: ok ? okDetail : failDetail, category });
 }
 
 async function readJsonc(path) {
@@ -166,11 +221,6 @@ function parseJson(text, fallback) {
   }
 }
 
-function accountIdFromWhoami(text) {
-  const match = text.match(/\b[a-f0-9]{32}\b/i);
-  return match ? match[0] : null;
-}
-
 function r2BucketNamesFromText(text) {
   return Array.from(text.matchAll(/^name:\s+(.+)$/gm), (match) => match[1].trim()).filter(Boolean);
 }
@@ -199,11 +249,20 @@ function summarizeFailure(result) {
   return (result.stderr || result.stdout || `exit code ${result.exitCode}`).replace(/\u001b\[[0-9;]*m/g, "").trim().split(/\r?\n/).filter(Boolean).slice(0, 3).join(" ");
 }
 
+function flagValues(name) {
+  const values = [];
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] === name && args[index + 1]) values.push(args[index + 1]);
+  }
+  return values;
+}
+
 function printReport(value) {
   console.log("Beachcar Cloudflare resource check (read-only)");
   console.log(`Generated: ${value.generatedAt}`);
   console.log(`Worker: ${value.workerName || "(missing)"}`);
-  if (value.accountId) console.log(`Account: ${value.accountId}`);
+  if (value.expectedAccountId) console.log(`Expected account: ${value.expectedAccountId}`);
+  if (value.accountId) console.log(`Selected account: ${value.accountId}`);
   console.log("");
   for (const check of value.checks) {
     const marker = check.status === "ok" ? "OK" : check.status === "warn" ? "WARN" : "TODO";

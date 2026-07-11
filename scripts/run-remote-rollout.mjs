@@ -1,8 +1,15 @@
 #!/usr/bin/env bun
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { chmod, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { resolve } from "node:path";
+import {
+  collectWorkerSecrets,
+  isSafeSourceQualityMigrationSet,
+  missingRequiredWorkerSecrets,
+  pendingD1MigrationFiles,
+  verificationRequirementArgs,
+} from "./lib/cloudflare-rollout.ts";
 
 const args = process.argv.slice(2);
 const flags = new Set(args);
@@ -25,20 +32,32 @@ if (execute && dryRunOnly) {
   fail("Use either --execute or --dry-run, not both.");
 }
 
+const devEnv = await loadEnvFile(resolve(".dev.vars"));
+const publishEnv = await loadEnvFile(resolve(".publish.env"));
+const deployFileEnv = await loadEnvFile(resolve(".deploy.env"));
 const env = {
-  ...(await loadEnvFile(resolve(".dev.vars"))),
-  ...(await loadEnvFile(resolve(".publish.env"))),
-  ...(await loadEnvFile(resolve(".deploy.env"))),
+  ...devEnv,
+  ...publishEnv,
+  ...deployFileEnv,
   ...process.env,
 };
+const deploySecretEnv = {
+  ...deployFileEnv,
+  ...process.env,
+};
+const wrangler = await readJsonc(resolve("wrangler.jsonc"));
+const workerName = stringValue(wrangler?.name) || "beachcar-watch";
+const d1Name = stringValue(wrangler?.d1_databases?.[0]?.database_name) || "beach-car-watch";
 
 if (!execute && !dryRunOnly) {
   printPlan();
   process.exit(0);
 }
 
+let protectedSecretsFile = "";
+
 try {
-  await run(["bun", "scripts/validate-deploy-env.mjs", "--strict"], { env, label: "Validate deploy environment" });
+  await run(["bun", "scripts/validate-deploy-env.mjs", "--strict", "--allow-remote-secrets"], { env, label: "Validate deploy environment" });
   await run(["bun", "scripts/build-client.mjs"], { env, label: "Build production client assets" });
   await run(["bun", "scripts/bootstrap-cloudflare-rollout.mjs", "--dry-run-deploy", ...containerDeployArgs()], {
     env,
@@ -50,65 +69,193 @@ try {
     process.exit(0);
   }
 
-  const deployResult = await run(["bun", "scripts/bootstrap-cloudflare-rollout.mjs", "--yes", "--migrate", "--dry-run-deploy", "--deploy", ...containerDeployArgs()], {
-    env,
-    label: "Apply migrations and deploy Worker",
-  });
+  const localSecrets = collectWorkerSecrets(deploySecretEnv);
+  const localSecretNames = Object.keys(localSecrets);
+  const resourceReport = await inspectCloudflareForRollout(localSecretNames);
+  const remoteSecretNames = Array.isArray(resourceReport.resources?.workerSecrets) ? resourceReport.resources.workerSecrets : [];
+  const missingSecrets = missingRequiredWorkerSecrets(remoteSecretNames, localSecretNames);
+  if (missingSecrets.length) {
+    throw new Error(`Required Worker secret names are unavailable locally and remotely: ${missingSecrets.join(", ")}.`);
+  }
 
-  await setWorkerSecrets(env);
+  const artifactDirectory = await captureRolloutSafetyArtifacts();
+  protectedSecretsFile = await writeProtectedSecretsFile(artifactDirectory, localSecrets);
+
+  const deployCommand = [
+    "bun",
+    "scripts/bootstrap-cloudflare-rollout.mjs",
+    "--yes",
+    "--migrate",
+    "--dry-run-deploy",
+    "--deploy",
+    ...containerDeployArgs(),
+  ];
+  if (protectedSecretsFile) deployCommand.push("--secrets-file", protectedSecretsFile);
+
+  const deployResult = await run(deployCommand, {
+    env,
+    label: protectedSecretsFile
+      ? `Apply migrations and deploy Worker with ${localSecretNames.length} supplied secret value(s) in one version`
+      : "Apply migrations and deploy Worker while preserving existing remote secrets",
+  });
+  await removeProtectedSecretsFile();
 
   const deployedUrl = value("BEACHCAR_DEPLOY_URL") || deployedUrlFromOutput(`${deployResult.stdout}\n${deployResult.stderr}`);
   if (!skipVerify && deployedUrl) {
-    await run(["bun", "scripts/verify-cloudflare-deploy.mjs", "--url", deployedUrl], {
+    const verificationArgs = [
+      "bun",
+      "scripts/verify-cloudflare-deploy.mjs",
+      "--url",
+      deployedUrl,
+      "--strict",
+      ...verificationRequirementArgs(env),
+    ];
+    await run(verificationArgs, {
       env: { ...env, BEACHCAR_DEPLOY_URL: deployedUrl },
-      label: "Verify deployed Worker surface",
+      label: "Strictly verify the public Worker surface and supplied authenticated gates",
     });
   } else if (!skipVerify) {
-    console.log("\nRemote deploy completed, but no deployed URL was found. Set BEACHCAR_DEPLOY_URL and run bun run cloudflare:verify.");
+    throw new Error("Remote deploy completed, but no deployed URL was found for strict verification. Set BEACHCAR_DEPLOY_URL or use --skip-verify explicitly.");
   }
 
-  await run(["bun", "scripts/check-cloudflare-resources.mjs"], { env, label: "Inspect remote Cloudflare resources" });
+  await run(["bun", "scripts/check-cloudflare-resources.mjs", "--strict"], { env, label: "Strictly verify remote Cloudflare resources" });
 
   console.log("\nRemote rollout command completed.");
 } catch (error) {
   console.error(`\n${error instanceof Error ? error.message : String(error)}`);
-  process.exit(1);
+  process.exitCode = 1;
+} finally {
+  await removeProtectedSecretsFile();
 }
 
-async function setWorkerSecrets(sourceEnv) {
-  const secrets = {};
-  for (const name of [
-    "PUBLISH_TOKEN",
-    "CLERK_SECRET_KEY",
-    "CLERK_JWT_ISSUER",
-    "BEACHCAR_AI_GATEWAY_TOKEN",
-    "BEACHCAR_AI_GATEWAY_BASE_URL",
-    "BEACHCAR_AI_GATEWAY_ID",
-    "CLOUDFLARE_ACCOUNT_ID",
-    "BEACHCAR_AI_GATEWAY_MODEL",
-    "BEACHCAR_AI_ESTIMATED_MICROS_PER_1K_TOKENS",
-    "BEACHCAR_RUNNER_MODE",
-    "BEACHCAR_CODEX_MODEL",
-    "OPENAI_API_KEY",
-  ]) {
-    if (hasRealValue(name)) secrets[name] = sourceEnv[name];
-  }
-
-  const dir = await mkdtemp(join(tmpdir(), "beachcar-secrets-"));
-  const file = join(dir, "worker-secrets.json");
+async function inspectCloudflareForRollout(localSecretNames) {
+  const command = ["bun", "scripts/check-cloudflare-resources.mjs", "--json", "--strict"];
+  for (const name of localSecretNames) command.push("--local-secret", name);
+  const result = await run(command, {
+    env,
+    label: "Confirm the production account, resources, and required Worker secret names",
+    quiet: true,
+  });
   try {
-    await writeFile(file, `${JSON.stringify(secrets, null, 2)}\n`, { mode: 0o600 });
-    await run(["bunx", "wrangler", "secret", "bulk", file], {
-      env: sourceEnv,
-      label: `Set ${Object.keys(secrets).length} Worker secret(s)`,
-    });
-  } finally {
-    await rm(dir, { recursive: true, force: true });
+    return JSON.parse(result.stdout);
+  } catch {
+    throw new Error("Cloudflare resource inspection did not return valid JSON; rollout stopped before backup or migration.");
   }
+}
+
+async function captureRolloutSafetyArtifacts() {
+  const previousUmask = process.umask(0o077);
+  let directory = "";
+  try {
+    directory = await mkdtemp(join(tmpdir(), "beachcar-rollout-"));
+    await chmod(directory, 0o700);
+
+    const captures = [
+      {
+        file: "deployments-before.json",
+        command: ["bunx", "wrangler", "deployments", "list", "--name", workerName, "--json"],
+        label: "Capture current Worker deployments",
+      },
+      {
+        file: "versions-before.json",
+        command: ["bunx", "wrangler", "versions", "list", "--name", workerName, "--json"],
+        label: "Capture current Worker versions",
+      },
+      {
+        file: "d1-time-travel-before.json",
+        command: ["bunx", "wrangler", "d1", "time-travel", "info", d1Name, "--json"],
+        label: "Capture D1 Time Travel bookmark",
+      },
+    ];
+
+    for (const capture of captures) {
+      const result = await run(capture.command, { env, label: capture.label, quiet: true });
+      if (!result.stdout.trim()) throw new Error(`${capture.label} returned no output.`);
+      await writePrivateFile(join(directory, capture.file), `${result.stdout.trim()}\n`);
+    }
+
+    const migrationsResult = await run(
+      ["bunx", "wrangler", "d1", "migrations", "list", d1Name, "--remote"],
+      { env, label: "Capture and validate pending D1 migrations", quiet: true },
+    );
+    await writePrivateFile(join(directory, "d1-migrations-before.txt"), `${migrationsResult.stdout.trim()}\n`);
+    assertExpectedPendingMigrations(migrationsResult.stdout);
+
+    const exportPath = join(directory, "d1-before.sql");
+    await run(
+      ["bunx", "wrangler", "d1", "export", d1Name, "--remote", "--skip-confirmation", "--output", exportPath],
+      { env, label: "Export full D1 schema and data", quiet: true },
+    );
+    await chmod(exportPath, 0o600);
+    const exportMetadata = await stat(exportPath);
+    if (!exportMetadata.isFile() || exportMetadata.size === 0) throw new Error("D1 export did not create a non-empty backup file.");
+    const exportDigest = createHash("sha256").update(new Uint8Array(await Bun.file(exportPath).arrayBuffer())).digest("hex");
+    await writePrivateFile(join(directory, "d1-before.sql.sha256"), `${exportDigest}  d1-before.sql\n`);
+
+    await writePrivateFile(
+      join(directory, "manifest.json"),
+      `${JSON.stringify(
+        {
+          createdAt: new Date().toISOString(),
+          workerName,
+          d1Name,
+          files: captures
+            .map((capture) => capture.file)
+            .concat("d1-migrations-before.txt", "d1-before.sql", "d1-before.sql.sha256"),
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    console.log(`\nPre-migration recovery artifacts saved in ${directory}`);
+    console.log("Directory mode: 0700; artifact modes: 0600. Preserve this directory until rollout verification is complete.");
+    return directory;
+  } catch (error) {
+    if (directory) console.error(`Pre-migration artifact capture stopped; inspect the private partial directory at ${directory}.`);
+    throw error;
+  } finally {
+    process.umask(previousUmask);
+  }
+}
+
+async function writeProtectedSecretsFile(directory, secrets) {
+  const names = Object.keys(secrets);
+  if (!names.length) return "";
+  const file = join(directory, "worker-secrets.json");
+  try {
+    await writePrivateFile(file, `${JSON.stringify(secrets, null, 2)}\n`);
+    console.log(`Prepared ${names.length} locally supplied Worker secret value(s) for the atomic deploy; values remain hidden.`);
+    return file;
+  } catch (error) {
+    await rm(file, { force: true });
+    throw error;
+  }
+}
+
+function assertExpectedPendingMigrations(output) {
+  if (isSafeSourceQualityMigrationSet(output)) return;
+  const pending = pendingD1MigrationFiles(output);
+  const detail = pending.length ? pending.join(", ") : "unrecognized migration-list output";
+  throw new Error(
+    `Remote migration gate expected no pending migration or exactly 0011_source_cache_listing_fields.sql; found ${detail}.`,
+  );
+}
+
+async function writePrivateFile(path, contents) {
+  await writeFile(path, contents, { mode: 0o600 });
+  await chmod(path, 0o600);
+}
+
+async function removeProtectedSecretsFile() {
+  if (!protectedSecretsFile) return;
+  const file = protectedSecretsFile;
+  protectedSecretsFile = "";
+  await rm(file, { force: true });
 }
 
 async function run(command, options = {}) {
-  console.log(`\n==> ${options.label || command.join(" ")}`);
+  if (!options.quiet) console.log(`\n==> ${options.label || command.join(" ")}`);
   const proc = Bun.spawn(command, {
     cwd: process.cwd(),
     env: {
@@ -120,8 +267,8 @@ async function run(command, options = {}) {
     stderr: "pipe",
   });
   const [stdout, stderr, exitCode] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
-  if (stdout.trim()) console.log(stdout.trim());
-  if (stderr.trim()) console.error(stderr.trim());
+  if (!options.quiet && stdout.trim()) console.log(stdout.trim());
+  if (!options.quiet && stderr.trim()) console.error(stderr.trim());
   if (exitCode !== 0) {
     throw new Error(`${options.label || command.join(" ")} failed with exit code ${exitCode}.`);
   }
@@ -147,17 +294,50 @@ async function loadEnvFile(path) {
   }
 }
 
+async function readJsonc(path) {
+  const text = await Bun.file(path).text();
+  return JSON.parse(stripJsonComments(text));
+}
+
+function stripJsonComments(text) {
+  let output = "";
+  let inString = false;
+  let quote = "";
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+    if (inString) {
+      output += char;
+      if (char === "\\" && next) {
+        output += next;
+        index += 1;
+      } else if (char === quote) {
+        inString = false;
+      }
+    } else if (char === '"' || char === "'") {
+      inString = true;
+      quote = char;
+      output += char;
+    } else if (char === "/" && next === "/") {
+      while (index < text.length && text[index] !== "\n") index += 1;
+      output += "\n";
+    } else if (char === "/" && next === "*") {
+      index += 2;
+      while (index < text.length && !(text[index] === "*" && text[index + 1] === "/")) index += 1;
+      index += 1;
+    } else {
+      output += char;
+    }
+  }
+  return output;
+}
+
 function value(name) {
   return String(env[name] || "").trim();
 }
 
-function hasRealValue(name) {
-  const current = value(name);
-  return current !== "" && !isPlaceholder(current);
-}
-
-function isPlaceholder(input) {
-  return /\.\.\.|<[^>]+>|your-|example|reuse-dev-token|generate-a-long-random-token/i.test(input);
+function stringValue(input) {
+  return typeof input === "string" ? input.trim() : "";
 }
 
 function deployedUrlFromOutput(output) {
@@ -187,10 +367,10 @@ Execution sequence:
   1. Validate .deploy.env without printing secrets.
   2. Build production client assets with VITE_CLERK_PUBLISHABLE_KEY.
   3. Run Wrangler deploy dry-run.
-  4. Apply remote D1 migrations.
-  5. Deploy Worker beachcar-watch, skipping the Container image rollout unless BEACHCAR_RUNNER_MODE=codex or --deploy-containers is set.
-  6. Set Worker secrets via a temporary wrangler secret bulk JSON file.
-  7. Verify the deployed Worker and inspect Cloudflare resources.
+  4. Strictly confirm the configured production account, resources, and required remote/local secret names.
+  5. Capture Worker deployments/versions, a D1 Time Travel bookmark, pending migrations, and a full D1 export under a private /tmp/beachcar-rollout-* directory.
+  6. Dry-run again, apply remote D1 migrations, and deploy Worker beachcar-watch once. Any locally supplied secrets are included atomically with wrangler deploy --secrets-file; omitted remote secrets are preserved.
+  7. Strictly verify the public Worker surface, run authenticated gates for tokens supplied locally, and re-check Cloudflare resources.
 
 Use --skip-verify only if BEACHCAR_DEPLOY_URL is not known yet.
 `);

@@ -84,6 +84,7 @@ type AiSettingsInput = {
   dailyBudgetCents?: number | null;
 };
 const rawProviderKeyMessage = "Store provider keys in AI Gateway BYOK, then paste the gateway alias here.";
+const missingGatewayAliasMessage = "Add an AI Gateway alias, or keep Beachcar managed.";
 type SourceSettingsInput = Array<{ source: string; enabled: boolean; settings?: Record<string, unknown> }>;
 type NotificationChannel = "email" | "none";
 type NotificationSettingsState = {
@@ -114,12 +115,35 @@ type SourceCheckView = {
   url?: string;
   candidateCount: number;
   message?: string;
+  selectorHits?: Record<string, number>;
+  detailAttempts?: {
+    attempted: number;
+    enriched: number;
+    blocked: number;
+    failed: number;
+    empty: number;
+    blockedUrls?: string[];
+    failedUrls?: string[];
+  };
+  blockedUrls?: string[];
+  cache?: {
+    status?: string;
+    usableCount?: number;
+    searchedTerms?: string[];
+    latestIngestionAt?: string | null;
+    refreshError?: string | null;
+  };
 };
 type RunnerTaskSummaryView = {
   id: string;
   source: string;
   kind: string;
   status: string;
+  mergeStatus?: string;
+  normalizedCandidateCount?: number;
+  importedCount?: number;
+  rejectedCount?: number;
+  rejectionReasons?: Array<{ reason: string; count: number }>;
 };
 type AiScoringView = {
   status: string;
@@ -195,6 +219,17 @@ const sourceOptions = [
     searchPlaceholder: "Small 4x4, convertible, beach-town oddballs...",
   },
   {
+    source: "hemmings",
+    label: "Hemmings",
+    enabledByDefault: false,
+    defaultMaxDistanceMiles: "750",
+    defaultMaxBudget: "",
+    supportsNoReserve: false,
+    supportsBrowserRunner: true,
+    defaultBrowserRunner: true,
+    searchPlaceholder: "Thing, Type 2, Samurai, CJ, Moke...",
+  },
+  {
     source: "marketplace",
     label: "Marketplace",
     enabledByDefault: false,
@@ -248,6 +283,39 @@ function isHiddenAction(action?: FeedbackAction | null): boolean {
 function normalizeCount(value: unknown): string {
   if (value === undefined || value === null || value === "") return "check";
   return String(value);
+}
+
+function hasKnownCount(value: unknown): boolean {
+  return value !== undefined && value !== null && value !== "" && !/^check\b/i.test(String(value));
+}
+
+function isGenericCurrentTake(value: string | undefined): boolean {
+  return /^(source-discovery candidate|c&b candidate|manual source-check fallback)/i.test(value || "");
+}
+
+function listingPrimerText(listing: AuctionListing): string {
+  if (!isGenericCurrentTake(listing.currentTake)) return shortText(listing.currentTake);
+  return shortText(listing.dossier?.summary || listing.why);
+}
+
+function listingScanMeta(listing: AuctionListing): string {
+  return isGenericCurrentTake(listing.currentTake) ? listing.section : shortText(listing.currentTake, listing.section);
+}
+
+function estimatedFeeTotal(listing: AuctionListing): number | null {
+  const match = (listing.total || listing.bid || "").match(/\$([\d,]+)/);
+  if (!match) return null;
+  const total = Number(match[1].replace(/,/g, ""));
+  return Number.isFinite(total) ? total : null;
+}
+
+function budgetPressure(listing: AuctionListing): { label: string; className: string } | null {
+  const total = estimatedFeeTotal(listing);
+  if (!total) return null;
+  if (total > 32000) return { label: "over cap", className: "is-over" };
+  if (total >= 30000) return { label: "stretch", className: "is-stretch" };
+  if (total >= 28000) return { label: "near cap", className: "is-near" };
+  return null;
 }
 
 function isEndingSoon(listing: AuctionListing): boolean {
@@ -338,6 +406,10 @@ function sourceCheckViews(value: unknown): SourceCheckView[] {
       url: stringValue(record.url),
       candidateCount: numberValue(record.candidateCount, 0),
       message: stringValue(record.message),
+      selectorHits: recordObjectNumberMap(record.selectorHits),
+      detailAttempts: sourceDetailAttemptsView(record.detailAttempts),
+      blockedUrls: stringArrayValue(record.blockedUrls),
+      cache: sourceCacheDiagnosticView(record.cache),
     };
   });
 }
@@ -351,7 +423,48 @@ function runnerTaskSummaryViews(value: unknown): RunnerTaskSummaryView[] {
       source: stringValue(record.source) || "source",
       kind: stringValue(record.kind) || "source_discovery",
       status: stringValue(record.status) || "queued",
+      mergeStatus: stringValue(record.mergeStatus),
+      normalizedCandidateCount: optionalNumberValue(record.normalizedCandidateCount),
+      importedCount: optionalNumberValue(record.importedCount),
+      rejectedCount: optionalNumberValue(record.rejectedCount),
+      rejectionReasons: rejectionReasonViews(record.rejectionReasons),
     };
+  });
+}
+
+function sourceDetailAttemptsView(value: unknown): SourceCheckView["detailAttempts"] {
+  const record = normalizeRecord(value);
+  const attempted = optionalNumberValue(record.attempted);
+  if (attempted === undefined) return undefined;
+  return {
+    attempted,
+    enriched: numberValue(record.enriched, 0),
+    blocked: numberValue(record.blocked, 0),
+    failed: numberValue(record.failed, 0),
+    empty: numberValue(record.empty, 0),
+    blockedUrls: stringArrayValue(record.blockedUrls),
+    failedUrls: stringArrayValue(record.failedUrls),
+  };
+}
+
+function sourceCacheDiagnosticView(value: unknown): SourceCheckView["cache"] {
+  const record = normalizeRecord(value);
+  const status = stringValue(record.status);
+  if (!status) return undefined;
+  return {
+    status,
+    usableCount: optionalNumberValue(record.usableCount),
+    searchedTerms: stringArrayValue(record.searchedTerms),
+    latestIngestionAt: nullableStringValue(record.latestIngestionAt),
+    refreshError: nullableStringValue(record.refreshError),
+  };
+}
+
+function rejectionReasonViews(value: unknown): Array<{ reason: string; count: number }> {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => {
+    const record = normalizeRecord(item);
+    return { reason: stringValue(record.reason) || "unknown", count: numberValue(record.count, 0) };
   });
 }
 
@@ -467,6 +580,23 @@ function numberValue(value: unknown, fallback: number): number {
     if (Number.isFinite(parsed)) return parsed;
   }
   return fallback;
+}
+
+function optionalNumberValue(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function recordObjectNumberMap(value: unknown): Record<string, number> | undefined {
+  const record = normalizeRecord(value);
+  const entries = Object.entries(record)
+    .map(([key, raw]) => [key, optionalNumberValue(raw)] as const)
+    .filter((entry): entry is readonly [string, number] => entry[1] !== undefined);
+  return entries.length ? Object.fromEntries(entries) : undefined;
 }
 
 function nullableNumberValue(value: unknown): number | null {
@@ -1429,7 +1559,7 @@ function AuthenticatedApp(props: { clerkPublishableKey: string }) {
                       <MapPin size={15} aria-hidden="true" />
                       <span>{locationText(selectedListing)}</span>
                     </p>
-                    <p>{selectedListing.currentTake || selectedListing.why}</p>
+                    <p>{listingPrimerText(selectedListing)}</p>
                   </div>
                   {selectedFeedback ? <span className={`feedback-dot ${actionClasses[selectedFeedback.action]}`}>{actionLabels[selectedFeedback.action]}</span> : null}
                 </div>
@@ -1635,6 +1765,7 @@ function RunDetailSheet(props: {
                 <div>
                   <strong>{check.label ? `${check.site} · ${check.label}` : check.site}</strong>
                   <small>{check.message || `${check.candidateCount} candidate(s)`}</small>
+                  {sourceCheckDiagnosticText(check) ? <small className="source-diagnostic-line">{sourceCheckDiagnosticText(check)}</small> : null}
                 </div>
                 <em>{check.candidateCount}</em>
               </article>
@@ -1680,7 +1811,8 @@ function RunDetailSheet(props: {
                 <span className={`source-status-dot ${sourceStatusClass(task.status)}`}>{task.status}</span>
                 <div>
                   <strong>{task.source}</strong>
-                  <small>{task.kind} · {shortId(task.id)}</small>
+                  <small>{runnerTaskDetailText(task)}</small>
+                  {runnerTaskDiagnosticText(task) ? <small className="source-diagnostic-line">{runnerTaskDiagnosticText(task)}</small> : null}
                 </div>
               </article>
             ))}
@@ -1711,6 +1843,57 @@ function RunDetailSheet(props: {
       </section>
     </div>
   );
+}
+
+function sourceCheckDiagnosticText(check: SourceCheckView): string {
+  const parts: string[] = [];
+  if (check.selectorHits) {
+    parts.push(`Selectors: ${numberMapText(check.selectorHits, 3)}`);
+  }
+  if (check.detailAttempts) {
+    const detail = check.detailAttempts;
+    const tail = [
+      detail.blocked ? `${detail.blocked} blocked` : "",
+      detail.failed ? `${detail.failed} failed` : "",
+      detail.empty ? `${detail.empty} empty` : "",
+    ].filter(Boolean);
+    parts.push(`Detail: ${detail.enriched}/${detail.attempted} enriched${tail.length ? `, ${tail.join(", ")}` : ""}`);
+  }
+  if (check.cache) {
+    const tail = [
+      check.cache.usableCount !== undefined ? `${check.cache.usableCount} usable` : "",
+      check.cache.latestIngestionAt ? `latest ${shortDateTime(check.cache.latestIngestionAt)}` : "",
+      check.cache.refreshError ? "refresh failed" : "",
+    ].filter(Boolean);
+    parts.push(`Cache: ${[check.cache.status, ...tail].filter(Boolean).join(", ")}`);
+  }
+  if (check.blockedUrls?.length) {
+    parts.push(`${check.blockedUrls.length} blocked URL${check.blockedUrls.length === 1 ? "" : "s"}`);
+  }
+  return parts.join(" · ");
+}
+
+function runnerTaskDetailText(task: RunnerTaskSummaryView): string {
+  const imported = task.importedCount !== undefined ? ` · ${task.importedCount} imported` : "";
+  const rejected = task.rejectedCount ? ` · ${task.rejectedCount} rejected` : "";
+  const merge = task.mergeStatus ? ` · ${task.mergeStatus}` : "";
+  return `${task.kind} · ${shortId(task.id)}${merge}${imported}${rejected}`;
+}
+
+function runnerTaskDiagnosticText(task: RunnerTaskSummaryView): string {
+  const parts: string[] = [];
+  if (task.normalizedCandidateCount !== undefined) parts.push(`${task.normalizedCandidateCount} normalized`);
+  if (task.rejectionReasons?.length) {
+    parts.push(`Rejects: ${task.rejectionReasons.map((item) => `${item.reason} ${item.count}`).join(", ")}`);
+  }
+  return parts.join(" · ");
+}
+
+function numberMapText(value: Record<string, number>, limit: number): string {
+  return Object.entries(value)
+    .slice(0, limit)
+    .map(([key, count]) => `${key} ${count}`)
+    .join(", ");
 }
 
 function FilterSheet(props: {
@@ -1821,6 +2004,10 @@ function SettingsSheet(props: {
           onSubmit={(event) => {
             event.preventDefault();
             const nextGatewayKeyRef = aiMode === "byok" ? gatewayKeyRef.trim() : "";
+            if (aiMode === "byok" && !nextGatewayKeyRef) {
+              setLocalError(missingGatewayAliasMessage);
+              return;
+            }
             if (nextGatewayKeyRef && looksLikeRawProviderKey(nextGatewayKeyRef)) {
               setLocalError(rawProviderKeyMessage);
               return;
@@ -1886,7 +2073,7 @@ function SettingsSheet(props: {
             <span>Extra avoids</span>
             <textarea value={avoidNotes} onChange={(event) => setAvoidNotes(event.target.value)} />
           </label>
-          <AiSettingsFields
+          <ResearchServiceFields
             dailyBudget={dailyAiBudget}
             gatewayKeyRef={gatewayKeyRef}
             mode={aiMode}
@@ -1905,7 +2092,17 @@ function SettingsSheet(props: {
           />
           <NotificationSettingsFields value={notifications} onChange={setNotifications} />
           <SourceSettingsFields preferences={sourcePreferences} setPreferences={setSourcePreferences} />
-          <AutomationSettingsPanel demoStatus={props.automationStatus} />
+          <details className="advanced-settings automation-disclosure setup-span">
+            <summary>
+              <span>
+                <strong>Advanced: connect your own agent</strong>
+                <small>Optional. Beachcar's managed daily research works without a token or external agent.</small>
+              </span>
+            </summary>
+            <div className="advanced-settings-body">
+              <AutomationSettingsPanel demoStatus={props.automationStatus} />
+            </div>
+          </details>
           {localError || props.error ? <p className="auth-error setup-span">{localError || props.error}</p> : null}
           <button className="source-link setup-span" disabled={props.isPending} type="submit">
             {props.isPending ? "Saving..." : "Save preferences"}
@@ -2085,11 +2282,14 @@ function AutomationSettingsPanel(props: { demoStatus?: AutomationStatus }) {
   const activeConnectionCount = activeTokens.length + activeOAuthTokens.length;
 
   return (
-    <section className="automation-settings setup-span" aria-label="Connect automation">
+    <section className="automation-settings" aria-label="External agent connection">
       <div className="setup-section-title">
-        <span>Connect automation</span>
+        <span>External agent connection</span>
         <small>{activeConnectionCount ? `${activeConnectionCount} active` : "none active"}</small>
       </div>
+      <p className="automation-note">
+        For technical users who want their own MCP-capable agent to research and publish runs. This is not needed for Beachcar's managed service.
+      </p>
       <div className="automation-endpoint">
         <Bot size={18} aria-hidden="true" />
         <span>{status?.mcpEndpoint || "Loading MCP endpoint..."}</span>
@@ -2216,6 +2416,7 @@ function ListView(props: {
         {props.listings.map((listing, index) => {
           const key = listingKey(listing);
           const feedback = props.feedbackByKey.get(key);
+          const pressure = budgetPressure(listing);
           return (
             <button
               className={index === props.selectedIndex ? "scan-row is-active" : "scan-row"}
@@ -2235,12 +2436,36 @@ function ListView(props: {
                 <small>
                   <MapPin size={13} aria-hidden="true" /> {listing.location || "Location check"}
                 </small>
-                <small>{listing.currentTake || listing.section}</small>
+                <small>{listingScanMeta(listing)}</small>
                 <em>{listing.fair || "Fair value check"}</em>
               </span>
               <span className="scan-price">
                 <strong>{listing.total}</strong>
                 <small className={isEndingSoon(listing) ? "is-urgent" : ""}>{compactTime(listing.timeLeft || listing.ends)}</small>
+                {hasKnownCount(listing.bids) || hasKnownCount(listing.bidders) || hasKnownCount(listing.comments) ? (
+                  <span className="scan-activity" aria-label="Auction activity">
+                    {hasKnownCount(listing.bids) ? (
+                      <span>
+                        <Gavel size={13} aria-hidden="true" /> {normalizeCount(listing.bids)}
+                      </span>
+                    ) : null}
+                    {hasKnownCount(listing.bidders) ? (
+                      <span>
+                        <Users size={13} aria-hidden="true" /> {normalizeCount(listing.bidders)}
+                      </span>
+                    ) : null}
+                    {hasKnownCount(listing.comments) ? (
+                      <span>
+                        <MessageCircle size={13} aria-hidden="true" /> {normalizeCount(listing.comments)}
+                      </span>
+                    ) : null}
+                  </span>
+                ) : null}
+                {pressure ? (
+                  <span className={`budget-chip ${pressure.className}`}>
+                    <BadgeDollarSign size={13} aria-hidden="true" /> {pressure.label}
+                  </span>
+                ) : null}
                 <Star className={feedback?.action === "star" ? "is-lit" : ""} size={21} aria-hidden="true" />
               </span>
             </button>
@@ -2380,14 +2605,21 @@ function OnboardingGate(props: {
   return (
     <main className="shell is-loading">
       <section className="setup-card is-wide">
-        <p className="eyebrow">Initial preferences</p>
-        <h1>Beach cars and runabouts</h1>
-        <p className="setup-muted">{props.email}</p>
+        <p className="eyebrow">Set up your daily scout</p>
+        <h1>What should Beachcar look for?</h1>
+        <p className="setup-muted">
+          Tell us what fits. Beachcar will research your enabled sources and publish a private daily shortlist for {props.email}. No agent, token, or
+          provider key is required.
+        </p>
         <form
           className="setup-form setup-grid"
           onSubmit={(event) => {
             event.preventDefault();
             const nextGatewayKeyRef = aiMode === "byok" ? gatewayKeyRef.trim() : "";
+            if (aiMode === "byok" && !nextGatewayKeyRef) {
+              setLocalError(missingGatewayAliasMessage);
+              return;
+            }
             if (nextGatewayKeyRef && looksLikeRawProviderKey(nextGatewayKeyRef)) {
               setLocalError(rawProviderKeyMessage);
               return;
@@ -2452,7 +2684,7 @@ function OnboardingGate(props: {
             <span>Extra avoids</span>
             <textarea value={avoidNotes} onChange={(event) => setAvoidNotes(event.target.value)} />
           </label>
-          <AiSettingsFields
+          <ResearchServiceFields
             dailyBudget={dailyAiBudget}
             gatewayKeyRef={gatewayKeyRef}
             mode={aiMode}
@@ -2538,7 +2770,7 @@ function CalibrationOptionGrid(props: {
   );
 }
 
-function AiSettingsFields(props: {
+function ResearchServiceFields(props: {
   mode: UserAiSettings["mode"];
   dailyBudget: string;
   monthlyBudget: string;
@@ -2549,12 +2781,28 @@ function AiSettingsFields(props: {
   setMonthlyBudget: (value: string) => void;
   setGatewayKeyRef: (value: string) => void;
 }) {
+  const isManaged = props.mode === "managed";
+  const [advancedOpen, setAdvancedOpen] = useState(props.mode === "byok");
   return (
-    <section className="ai-settings setup-span">
+    <section className="research-service setup-span">
       <div className="setup-section-title">
-        <span>AI</span>
-        <small>{props.usage?.budgetExceeded ? "Budget reached" : props.mode === "managed" ? "Managed" : "BYOK"}</small>
+        <span>Daily research</span>
+        <small>{props.usage?.budgetExceeded ? "Budget reached" : isManaged ? "Managed by Beachcar" : "Advanced provider"}</small>
       </div>
+      <div className="managed-service-card">
+        <span className="managed-service-icon" aria-hidden="true">
+          <ShieldCheck size={19} />
+        </span>
+        <span>
+          <strong>{isManaged ? "Your daily shortlist is handled for you" : props.gatewayKeyRef.trim() ? "Your provider alias is active" : "Add your provider alias"}</strong>
+          <small>
+            {isManaged
+              ? "Beachcar checks the sources you enable, applies your taste and feedback, and publishes the best finds. Just review the shortlist and teach it what you like."
+              : "Beachcar runs the same daily research flow using the AI Gateway alias you configured."}
+          </small>
+        </span>
+      </div>
+      {isManaged ? <p className="managed-service-note">No provider key, automation token, or external agent setup is needed.</p> : null}
       {props.usage ? (
         <div className="ai-usage-strip">
           <span>
@@ -2569,45 +2817,61 @@ function AiSettingsFields(props: {
           </span>
         </div>
       ) : null}
-      <div className="segmented-control" aria-label="AI mode">
-        <button
-          aria-pressed={props.mode === "managed"}
-          className={props.mode === "managed" ? "is-active" : ""}
-          type="button"
-          onClick={() => props.setMode("managed")}
-        >
-          Managed
-        </button>
-        <button
-          aria-pressed={props.mode === "byok"}
-          className={props.mode === "byok" ? "is-active" : ""}
-          type="button"
-          onClick={() => props.setMode("byok")}
-        >
-          BYOK
-        </button>
-      </div>
-      <div className="ai-budget-grid">
-        <label>
-          <span>Daily cap</span>
-          <input inputMode="decimal" value={props.dailyBudget} onChange={(event) => props.setDailyBudget(event.target.value)} />
-        </label>
-        <label>
-          <span>Monthly cap</span>
-          <input inputMode="decimal" value={props.monthlyBudget} onChange={(event) => props.setMonthlyBudget(event.target.value)} />
-        </label>
-      </div>
-      {props.mode === "byok" ? (
-        <label>
-          <span>AI Gateway alias</span>
-          <input
-            autoComplete="off"
-            placeholder="cf-aig-byok-friend-openai"
-            value={props.gatewayKeyRef}
-            onChange={(event) => props.setGatewayKeyRef(event.target.value)}
-          />
-        </label>
-      ) : null}
+      <details className="advanced-settings" open={advancedOpen} onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}>
+        <summary>
+          <span>
+            <strong>Advanced: cost controls and AI provider</strong>
+            <small>Optional. Keep Beachcar managed unless you already use an AI Gateway provider alias.</small>
+          </span>
+        </summary>
+        <div className="advanced-settings-body">
+          <div className="segmented-control" aria-label="Daily research provider">
+            <button
+              aria-pressed={props.mode === "managed"}
+              className={props.mode === "managed" ? "is-active" : ""}
+              type="button"
+              onClick={() => props.setMode("managed")}
+            >
+              Beachcar managed
+            </button>
+            <button
+              aria-pressed={props.mode === "byok"}
+              className={props.mode === "byok" ? "is-active" : ""}
+              type="button"
+              onClick={() => props.setMode("byok")}
+            >
+              Gateway alias
+            </button>
+          </div>
+          <p className="advanced-settings-note">
+            {isManaged
+              ? "Recommended. Beachcar operates the research service within the limits below."
+              : "Optional BYOK path for advanced users. Beachcar stores only the gateway alias, never a raw provider key."}
+          </p>
+          <div className="ai-budget-grid">
+            <label>
+              <span>Daily research cap</span>
+              <input inputMode="decimal" value={props.dailyBudget} onChange={(event) => props.setDailyBudget(event.target.value)} />
+            </label>
+            <label>
+              <span>Monthly research cap</span>
+              <input inputMode="decimal" value={props.monthlyBudget} onChange={(event) => props.setMonthlyBudget(event.target.value)} />
+            </label>
+          </div>
+          {props.mode === "byok" ? (
+            <label>
+              <span>AI Gateway alias</span>
+              <input
+                autoComplete="off"
+                placeholder="cf-aig-byok-friend-openai"
+                value={props.gatewayKeyRef}
+                onChange={(event) => props.setGatewayKeyRef(event.target.value)}
+              />
+              <small className="field-help">Paste an AI Gateway alias only. Raw OpenAI or provider keys are rejected.</small>
+            </label>
+          ) : null}
+        </div>
+      </details>
     </section>
   );
 }

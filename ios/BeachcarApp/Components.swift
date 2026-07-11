@@ -691,9 +691,11 @@ struct UndoBar: View {
     HStack {
       Text(label)
         .font(.subheadline.weight(.bold))
+        .accessibilityIdentifier("shade-undo-message")
       Spacer()
       Button(undoLabel, action: undo)
         .font(.subheadline.weight(.black))
+        .accessibilityIdentifier("shade-undo-button")
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 12)

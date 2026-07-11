@@ -1,18 +1,18 @@
 # Beachcar Friends Platform Plan
 
-Date: 2026-06-25
+Original plan: 2026-06-25. Product decision updated: 2026-07-11.
 
-## Clarifying Questions
+## Product Decision
 
-1. Should friends all use the beach-car/runabout niche, or should each user be able to define a different collector niche?
-2. Do you want this to stay invite-only, or should the website eventually support open signup?
-3. Should friends bring their own OpenAI key, or would you rather front the model spend and cap each user through Cloudflare AI Gateway?
-4. Should the first friend release support authenticated sources like Cars & Bids, or start with public sources only?
-5. Should each user get an independent daily run on their own schedule/timezone, or should users share a common daily discovery pool with personalized ranking?
-6. Do you want web onboarding first and iOS as a read/review client, or should iOS also support full account setup in the first release?
-7. Which notifications matter first: email, web push, iOS push, SMS, or none?
+The friend beta is an invite-only **managed daily research service**, not a toolkit a friend must assemble.
 
-Assumptions below: invite-only beta, each friend has their own profile and runs, use the existing beach-car profile as the default template, start with web onboarding plus iOS review, and support both managed model spend and BYO OpenAI key.
+- Friends set taste, budget, region, sources, and notification preferences, then review a private shortlist in the PWA or iOS app.
+- Beachcar owns daily research, ranking, publication, image handling, and operational credentials.
+- Friends are not asked for an OpenAI key, AI Gateway alias, MCP token, OAuth connection, browser session, or external agent.
+- Hosted MCP, BYOK aliases, Container/Codex execution, and manual tokens remain supported under Advanced for operators and technical users.
+- The beach-car/runabout niche stays the beta default. General collector-niche support is a later product decision.
+
+The canonical primary workflow is the built-in Cloudflare Agent/Workflow path: a managed schedule or signed-in Run Now request starts the user's Agent; the Workflow loads user-scoped profile/feedback, researches enabled sources, publishes the shortlist, warms images, and records run status. The operator publisher in `automation/codex-daily-run.md` remains a quality reference and intervention fallback, not a second friend-facing setup model.
 
 ## First End-to-End Beta Slice
 
@@ -41,7 +41,7 @@ Acceptance criteria for the first slice:
 
 ## Current State
 
-The repo now has the first local friend-beta slice implemented:
+The repo has the first friend-beta slice implemented, and its public shell is deployed at `https://beachcar-watch.jon-cooper.workers.dev`:
 
 - Cloudflare Worker serving a React PWA and JSON API.
 - D1 for invited users, profiles, source settings, AI settings, usage events, Agent runs, runner tasks, user-scoped runs, listings, feedback, preference events, and image metadata.
@@ -50,11 +50,11 @@ The repo now has the first local friend-beta slice implemented:
 - SwiftUI iOS app using ClerkKit and the same Worker API, with invite/onboarding gates, per-user latest-run cache, image prefetching, and run-status UI.
 - Cloudflare Agents SDK Durable Object plus Workflow binding for per-user run requests and schedule state.
 - Cloudflare Container runner scaffold and runner-task queue for Codex SDK/browser-heavy follow-up work.
-- Hosted remote MCP preview at `/mcp`, with revocable scoped automation tokens, OAuth protected-resource metadata discovery, local-first authorization-code + PKCE endpoints, user-visible OAuth connection revocation, user-visible automation events, and a downloadable friend skill for cloud agents.
+- Advanced hosted remote MCP at `/mcp`, with revocable scoped automation tokens, OAuth protected-resource metadata discovery, authorization-code + PKCE endpoints, user-visible connection revocation/events, and a downloadable skill for technical users.
 - Daily AI/publisher compatibility flow that imports normalized JSON and mirrors listing images.
-- PWA onboarding and Preferences include structured taste calibration plus freeform notes, with selected archetypes composed into the existing automation preference context.
+- PWA onboarding and Preferences present managed daily research in user language, include structured taste calibration plus freeform notes, and place BYOK/MCP controls under Advanced.
 
-The remaining gaps before real friend use are deployment and remote-account validation: deployed D1 migrations, deployed Container runner, MCP OAuth with a real deployed Clerk session and cloud MCP client, real AI Gateway budget/BYOK policy, remote image transform behavior, and live screenshots/UI tests in an environment where browser and CoreSimulator automation are available.
+The last confirmed production baseline has migrations `0001`-`0010` applied and passes public app-shell, MCP/OAuth metadata, auth-bypass rejection, and admin source-cache checks. The immediate friend-pilot gates are rolling out Source Quality v1/migration `0011`, proving a signed-in managed run from source discovery through publication and both clients, checking remote image variants, and stabilizing the iOS UI-test gate. A deployed Container runner, real external MCP client, and BYOK policy are advanced-path gates, not blockers for friends using the managed default.
 
 ## Recent Cloudflare/OpenAI Releases To Use
 
@@ -68,7 +68,7 @@ The remaining gaps before real friend use are deployment and remote-account vali
 - Cloudflare Images binding can resize/transcode/manipulate images from R2, fetch responses, or raw bytes, but transformations are not automatically cached, so the Worker must add cache behavior. Source: [Optimize with Workers](https://developers.cloudflare.com/images/optimization/binding/).
 - Cloudflare's June 22 Images-binding post says the binding was rearchitected for a more direct local connection between Workers and Images, and the post specifically calls out larger-image truncation failure modes that were fixed. That makes remote validation of our listing-image variants worth keeping on the pre-friend checklist. Source: [How we found a bug in the hyper HTTP library](https://blog.cloudflare.com/hyper-bug/).
 - Cloudflare Containers can run a full Linux-like runtime and are controlled by Workers. This is the likely home for Codex SDK/CLI or heavier browser/scraper jobs that do not fit pure Workers. Source: [Cloudflare Containers](https://developers.cloudflare.com/containers/).
-- Cloudflare Temporary Accounts let agents run temporary deploys for live previews, but this project should not use that path until you explicitly want remote previews. For this build, use local Wrangler/Vite only. Source: [Temporary Cloudflare Accounts for AI agents](https://blog.cloudflare.com/temporary-accounts/).
+- Cloudflare Temporary Accounts can still be useful for isolated preview environments, but they are separate from the already deployed beta Worker. Source: [Temporary Cloudflare Accounts for AI agents](https://blog.cloudflare.com/temporary-accounts/).
 - OpenAI documents the Codex SDK as a server-side Node/Python interface for controlling Codex programmatically; the TypeScript library requires Node.js 18+. Source: [OpenAI Codex SDK](https://developers.openai.com/codex/sdk).
 - Cloudflare documents routing OpenAI Codex through AI Gateway via custom provider config, useful for spend tracking when Codex itself is used. Source: [AI Gateway OpenAI Codex integration](https://developers.cloudflare.com/ai-gateway/integrations/coding-agents/openai-codex/).
 
@@ -97,10 +97,10 @@ The remaining gaps before real friend use are deployment and remote-account vali
    - Start with public-source toggles.
    - Add authenticated-source connection later only if we have a clean credential/session model.
 
-5. **Onboarding: AI & Budget**
-   - Managed mode: app uses your Cloudflare AI Gateway with per-user budget.
-   - BYO mode: user provides OpenAI key, key is stored through AI Gateway BYOK/Secrets Store, D1 stores only a reference.
-   - Test key, set daily run budget, set fallback behavior.
+5. **Onboarding: Daily Research**
+   - Explain in user language that Beachcar researches enabled sources and publishes a private daily shortlist.
+   - Managed service is selected by default and requires no key, token, or external agent.
+   - Keep cost caps, AI Gateway aliases, and BYOK behind an optional Advanced disclosure.
 
 6. **Today**
    - Existing deck/list experience.
@@ -127,7 +127,7 @@ The remaining gaps before real friend use are deployment and remote-account vali
 
 - Keep the deck/list/detail review as the core mobile experience.
 - Add onboarding-required state when `/api/me` reports no completed profile.
-- Add profile/settings view for budget, location, schedule, source toggles, and AI mode summary.
+- Add profile/settings view for budget, location, schedule, source toggles, and managed-research status; keep provider controls advanced.
 - Remove hardcoded `allowedEmail`; the server decides authorization and onboarding state.
 - Add account switch/sign-out handling suitable for multiple Clerk users.
 - Add run-status UI so users know whether today's run is still processing.
@@ -143,6 +143,7 @@ flowchart LR
   Worker --> D1["D1: users, profiles, runs, feedback"]
   Worker --> R2["R2: original + variant images"]
   Worker --> Images["Cloudflare Images binding"]
+  Schedule["Managed schedule / Run Now"] --> Agent
   Worker --> Agent["Per-user Cloudflare Agent"]
   Agent --> Workflow["Cloudflare Workflow: daily run"]
   Workflow --> Browser["Browser Run / source fetchers"]
@@ -150,15 +151,17 @@ flowchart LR
   Gateway --> OpenAI["OpenAI or Workers AI"]
   Workflow --> Container["Cloudflare Container: Codex SDK / heavy scraper"]
   Container --> Worker
+  Fallback["Operator research fallback"] -. intervention .-> Worker
 ```
 
-Recommended first production architecture:
+Recommended production architecture behind the managed service boundary:
 
 - **Worker API** remains the primary product API and static asset host.
 - **D1** becomes multi-tenant relational state.
 - **R2 + Images binding** becomes a derivative image pipeline instead of only original mirroring.
 - **Per-user Agent Durable Object** owns user-specific state, schedule, current run status, and WebSocket/SSE progress.
-- **Workflow** owns durable daily run execution, retries, and partial progress.
+- **Workflow** is the canonical managed execution path and owns durable daily research, retries, feedback-aware ranking, source diagnostics, and publication.
+- **Operator publisher** remains a quality reference and intervention fallback through the user-scoped API.
 - **AI Gateway** centralizes all model calls, spend attribution, caching/rate limits, and optional BYOK.
 - **Container runner** is used only where needed: Codex SDK, Playwright-heavy browsing, shell tooling, or anything requiring a full Node/Linux environment.
 
@@ -192,8 +195,8 @@ Keep `listings` and source image records global by URL/listing key to dedupe acr
 
 Preferred order:
 
-1. **Managed spend beta**: do not ask friends for OpenAI keys. Use your Cloudflare AI Gateway, tag requests with `user_id`, enforce per-user budgets, and show spend in admin.
-2. **BYO key beta**: accept key once, test it, store through AI Gateway BYOK/Secrets Store, store only `gateway_key_ref` in D1, support rotate/delete, never expose the value back to clients.
+1. **Managed service**: do not ask friends for OpenAI keys. The operator owns provider configuration, tags requests with `user_id`, enforces per-user budgets, and shows spend in admin.
+2. **Advanced BYOK**: if deliberately enabled for a technical user, accept an AI Gateway alias only, store only `gateway_key_ref` in D1, support rotate/delete, and never expose provider credentials to clients.
 3. **Avoid**: encrypting raw user OpenAI keys into D1 unless there is no viable Gateway/BYOK route. It increases breach blast radius and operational burden.
 
 For Codex specifically, use a Container runner with either:
@@ -214,21 +217,17 @@ Do not run Codex SDK directly in the browser or expose model keys to clients.
 - Log model usage with `user_id`, run id, provider, model, estimated tokens/cost, and gateway status, but never prompts that contain private keys or source credentials.
 - Keep the app private by default: invite-required signup, rate limits on auth-sensitive endpoints, and no indexable public listing pages.
 
-## Daily Agent Flow
+## Canonical Managed Daily Flow
 
-1. User completes onboarding.
-2. Worker creates/updates the user's Agent instance.
-3. Agent schedules the next daily run based on profile timezone and schedule.
-4. Schedule fires and starts a Workflow.
-5. Workflow loads profile, source settings, feedback export, and prior preference events.
-6. Workflow discovers candidates:
-   - public fetch/scrape in Worker where possible,
-   - Browser Run or Container for rendered/authenticated sources,
-   - source-specific throttling and compliance rules.
-7. Workflow scores candidates with AI Gateway/OpenAI/Workers AI.
-8. Workflow normalizes output to the existing `AuctionListing` shape plus discovery metadata.
-9. Workflow imports run rows, starts image mirroring/variant generation, and marks run as published.
-10. Agent broadcasts progress to web/mobile and optionally sends notifications.
+1. Friend completes onboarding; managed research is already selected.
+2. The managed schedule or a signed-in Run Now request starts that user's Agent and Workflow.
+3. The Workflow loads that user's profile, source settings, feedback, and prior preference events.
+4. It discovers candidates with public fetches and compliant source-specific browser/runner tooling where needed.
+5. It evaluates fit, applies feedback, estimates value, and normalizes the shortlist to `AuctionListing` plus source diagnostics.
+6. It publishes the user-scoped run, starts image mirroring/variant generation, and records completion status.
+7. Beachcar shows the private shortlist in the PWA/iOS app; the friend reviews and leaves feedback for the next managed run.
+
+The operator publisher is available when a source needs intervention or the managed result needs a quality comparison. External MCP is a separate advanced path for a technical user who intentionally operates their own researcher; neither is part of normal friend setup.
 
 ## API Contract For The Beta Slice
 
@@ -343,7 +342,7 @@ Client behavior:
 - Done locally: build invite acceptance and onboarding screens.
 - Done locally: add structured taste calibration with editable "show more" archetypes, "avoid" deal-breakers, and freeform notes.
 - Done locally: add profile editor and source settings.
-- Done locally: add AI mode selection, managed/BYOK references, and daily/monthly caps.
+- Done locally: make managed daily research the default; keep BYOK references and daily/monthly caps under Advanced.
 - Done locally: add admin invite dashboard.
 
 ### Phase 3: Agent MVP
@@ -394,6 +393,6 @@ Client behavior:
 
 ## Recommendation
 
-Build this as an invite-only, multi-tenant Cloudflare app with Clerk left in place for the first beta because iOS already depends on ClerkKit. Add Cloudflare Agents/Workflows for per-user scheduling and run orchestration, AI Gateway for all model calls and cost controls, R2 plus Images binding for variants, and Containers only for Codex SDK or browser-heavy jobs.
+Ship the invite-only pilot as a service: the friend describes what they want, Beachcar's Agent/Workflow delivers a trustworthy daily shortlist, and feedback makes tomorrow better. Keep the operator automation as a quality reference and intervention fallback. Keep Clerk, D1, R2/image variants, and user-scoped run contracts as the stable product platform.
 
-For the first friend release, do not require OpenAI keys. Use managed AI Gateway with low per-user daily/monthly limits, prove the onboarding and per-user run loop, then add BYOK once the product shape is stable.
+Do not require or foreground OpenAI keys, MCP, OAuth, Containers, or cloud agents. Use operator-managed budgets for the pilot. Expose BYOK and self-operated agent connections only under Advanced, after the managed loop is dependable.

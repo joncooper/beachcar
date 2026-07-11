@@ -1,18 +1,20 @@
-# Beachcar Remote MCP Friend Automation
+# Beachcar Advanced Remote MCP Automation
 
 Date: 2026-06-25
 
 ## Goal
 
-Let a friend configure Beachcar in the website, create a scoped automation credential, give that credential plus a downloadable skill to a cloud agent of their choice, and have that agent gather listings, publish a user-scoped run, record AI usage, and verify the app without running any local MCP server.
+Provide an advanced integration for an operator or technical user who intentionally wants their own cloud agent to gather listings, publish a user-scoped run, record AI usage, and verify the result without running a local MCP server.
 
-This is a preview implementation. It now supports both revocable manually issued bearer tokens and a local-first OAuth authorization-code + PKCE flow for hosted MCP clients. Production still needs remote Clerk-session validation with a real MCP client after deployment, but the token scopes, event model, and tool contracts are shared.
+This is **not the default friend workflow**. Normal onboarding selects Beachcar-managed daily research and requires no MCP client, token, OAuth connection, downloadable skill, provider key, or external agent. See the canonical workflow in `README.md` and `docs/friends-platform-plan.md`.
+
+The integration supports revocable manually issued bearer tokens and OAuth authorization-code + PKCE for hosted MCP clients. The hosted metadata surface is deployed, while a real remote Clerk session plus external MCP client still needs end-to-end validation. That advanced-path validation does not block friends who use managed research.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  Friend["Friend in Beachcar PWA"] --> Settings["Preferences: Connect Automation"]
+  User["Technical user or operator"] --> Settings["Preferences: Advanced agent connection"]
   Settings --> Token["Scoped automation token shown once"]
   Settings --> Skill["Download Beachcar skill"]
   Agent["Codex / Claude / cloud agent"] --> MCP["Worker /mcp JSON-RPC"]
@@ -99,7 +101,7 @@ No raw provider/model key is accepted by this system. AI cost attribution is rec
 
 ## App Screen
 
-Preferences now includes **Connect automation**:
+Preferences includes the collapsed **Advanced: connect your own agent** section. It explicitly says that the managed daily service already works without this connection. When opened, it:
 
 - Shows the absolute `/mcp` endpoint.
 - Creates a token for a friend cloud agent.
@@ -112,7 +114,7 @@ Preferences now includes **Connect automation**:
 
 ## Skill
 
-The canonical repo skill lives at:
+The canonical skill for this advanced path lives at:
 
 - `.agents/skills/beachcar-daily-run/SKILL.md`
 
@@ -144,9 +146,9 @@ Bring a Trailer RSS ingestion is persisted in D1:
 - Admins can inspect and refresh the cache through `/api/admin/source-cache/status` and `/api/admin/source-cache/ingest`.
 - The admin console surfaces that same status with freshness, item counts, latest ingestion result, and a manual BaT RSS ingest control.
 
-## OAuth Follow-Up
+## Advanced-Path Follow-Up
 
-Local authorization-code + PKCE is implemented and verified through `bun run cloudflare:verify`. Remaining work before broader use:
+Authorization-code + PKCE is implemented and locally verified through `bun run cloudflare:verify`; the deployed metadata and unauthenticated challenge are also verified. Remaining work before offering self-operated agents more broadly:
 
 1. Validate the OAuth flow on a deployed Worker with a real Clerk bearer session and at least one real MCP client.
 2. Decide whether refresh tokens are useful; the first implementation intentionally issues short-lived access tokens only.

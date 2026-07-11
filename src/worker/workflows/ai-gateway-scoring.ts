@@ -44,6 +44,9 @@ export function createAiGatewayCandidateScorer(
   env: Env,
   input: { userId: string; agentRunId: string; mode: "managed" | "byok" | null; gatewayKeyRef?: string | null },
 ): CandidateAiScorer | null {
+  // Never fall back to the operator credential for a legacy/inconsistent BYOK
+  // row that has no Gateway alias. Heuristic scoring remains available.
+  if (input.mode === "byok" && !input.gatewayKeyRef?.trim()) return null;
   const config = scorerConfigFromEnv(env);
   if (!config) return null;
 
@@ -243,12 +246,33 @@ function buildGatewayRequest(model: string, input: CandidateAiScoringInput): Rec
             tasteNotes: input.context.tasteNotes,
             avoidNotes: input.context.avoidNotes,
             feedbackCount: input.context.feedbackCount,
+            feedbackSteering: boundedFeedbackSteering(input.context.feedbackSteering),
           },
           run: input.params,
           candidates: input.candidates.slice(0, 8).map(candidateForPrompt),
         }),
       },
     ],
+  };
+}
+
+function boundedFeedbackSteering(steering: CandidateAiScoringInput["context"]["feedbackSteering"]): Record<string, unknown> | null {
+  if (!steering) return null;
+  return {
+    prioritizeSimilarTo: steering.prioritizeSimilarTo.slice(0, 12).map((entry) => ({
+      title: truncate(entry.title, 120),
+      tags: entry.tags.slice(0, 12),
+    })),
+    suppressExactUrls: steering.suppressExactUrls.slice(0, 40),
+    avoidSimilarTo: steering.avoidSimilarTo.slice(0, 12).map((entry) => ({
+      title: truncate(entry.title, 120),
+      tags: entry.tags.slice(0, 12),
+    })),
+    notes: steering.notes.slice(0, 10).map((entry) => ({
+      title: entry.title ? truncate(entry.title, 120) : undefined,
+      note: truncate(entry.note, 240),
+      tags: entry.tags.slice(0, 12),
+    })),
   };
 }
 

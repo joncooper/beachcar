@@ -1,7 +1,6 @@
 import { getAgentByName } from "agents";
 import { getContainer } from "@cloudflare/containers";
-import type { UserProfile } from "../shared/types";
-import type { AuctionListing, ImportPayload } from "../shared/types";
+import type { ImportPayload, UserProfile } from "../shared/types";
 import { AuthError, isBootstrapOwnerId, primaryBootstrapOwnerId, requirePublisher, requireUser } from "./auth";
 import {
   acceptInvite,
@@ -37,8 +36,8 @@ import {
   listOAuthAccessTokens,
   markAgentRunFailed,
   markAgentRunPublished,
-  mergeListingsIntoRun,
-  publishedRunIdForAgentRun,
+  mergeCompletedRunnerTask,
+  missingByokAliasError,
   listAutomationTokens,
   recordAiUsageEvent,
   recordAutomationEvent,
@@ -141,7 +140,15 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url:
       profile?: unknown;
       completeOnboarding?: unknown;
     }>(request);
-    const profile = await upsertProfile(env.DB, authUser.id, body);
+    let profile: UserProfile;
+    try {
+      profile = await upsertProfile(env.DB, authUser.id, body);
+    } catch (error) {
+      if (isProfileScheduleValidationError(error)) {
+        return errorResponse(error instanceof Error ? error.message : "Invalid profile schedule", 400);
+      }
+      throw error;
+    }
     await syncUserAgentSchedule(env, authUser.id, profile);
     return jsonResponse(await getUserPayload(env.DB, authUser.id));
   }
@@ -255,6 +262,10 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url:
     const body = await readJson<{ confirmEmail?: unknown }>(request);
     const confirmEmail = typeof body.confirmEmail === "string" ? body.confirmEmail.trim().toLowerCase() : "";
     if (confirmEmail !== authUser.email.toLowerCase()) return errorResponse("Email confirmation does not match this account", 400);
+    const agent = await getBeachcarAgent(env, authUser.id);
+    // Cancellation is part of deletion correctness: if it fails, leave account
+    // data intact and return an explicit error so the user can safely retry.
+    await agent.syncSchedule({ userId: authUser.id, enabled: false });
     return jsonResponse(await deleteAccountData(env.DB, authUser.id));
   }
 
@@ -277,6 +288,7 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url:
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (message.includes("AI budget exceeded")) return errorResponse(message, 402);
+      if (message === missingByokAliasError) return errorResponse(message, 400);
       throw error;
     }
   }
@@ -373,8 +385,8 @@ async function handleAdmin(request: Request, env: Env, ctx: ExecutionContext, ur
       };
     }>(request);
     const task = await completeRunnerTask(env.DB, decodeURIComponent(runnerTaskCompleteMatch[1]), body);
-    const mergedImages = await mergeRunnerResultIntoRun(env, task, normalizeRecord(body.result));
-    if (mergedImages.length) ctx.waitUntil(prewarmImportedImages(env, mergedImages));
+    const merge = await mergeCompletedRunnerTask(env.DB, task);
+    if (merge.images.length) ctx.waitUntil(prewarmImportedImages(env, merge.images));
     if (body.aiUsage) {
       await recordAiUsageEvent(env.DB, {
         ...body.aiUsage,
@@ -383,7 +395,7 @@ async function handleAdmin(request: Request, env: Env, ctx: ExecutionContext, ur
         operation: body.aiUsage.operation || `runner_task:${task.kind}`,
       });
     }
-    return jsonResponse({ task });
+    return jsonResponse({ task, merge });
   }
 
   const runnerTaskFailMatch = url.pathname.match(/^\/api\/admin\/runner-tasks\/([^/]+)\/fail$/);
@@ -449,7 +461,17 @@ async function handleAdmin(request: Request, env: Env, ctx: ExecutionContext, ur
     const agentRun = await getAgentRunById(env.DB, agentRunId);
     if (!agentRun) return errorResponse("Agent run not found", 404);
     const payload = await readJson<ImportPayload>(request);
-    const result = await importRun(env.DB, payload, agentRun.userId);
+    const result = await importRun(
+      env.DB,
+      {
+        ...payload,
+        sourceSummary: {
+          ...(payload.sourceSummary || {}),
+          agentRunId: payload.sourceSummary?.agentRunId || agentRun.id,
+        },
+      },
+      agentRun.userId,
+    );
     ctx.waitUntil(prewarmImportedImages(env, result.images));
     const updated = await markAgentRunPublished(env.DB, {
       runId: agentRun.id,
@@ -526,6 +548,16 @@ function requireActiveUser(user: { status: string }): void {
   }
 }
 
+function isProfileScheduleValidationError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.startsWith("Invalid profile timezone:") ||
+    message.startsWith("Daily schedule must use") ||
+    message.startsWith("Daily schedule has an invalid") ||
+    message.startsWith("Could not calculate the next daily run")
+  );
+}
+
 function adminScope(url: URL, env: Env, userId?: string): UserScope {
   const requestedUserId = url.searchParams.get("userId") || userId || "";
   if (requestedUserId.trim()) {
@@ -549,36 +581,6 @@ function automationEndpoints(request: Request): { mcpEndpoint: string; bundleEnd
     bundleEndpoint: new URL("/api/automation/bundle", url.origin).toString(),
     protectedResourceMetadataEndpoint: mcpProtectedResourceMetadataEndpoint(request),
   };
-}
-
-/**
- * Merges a completed runner task's listings into the user's already-published
- * run so iOS/PWA pick up the runner's dossier/detail. Inert today — the
- * deterministic scaffold returns no candidates. Returns image rows to prewarm.
- */
-async function mergeRunnerResultIntoRun(
-  env: Env,
-  task: { agentRunId?: string | null },
-  result: Record<string, unknown>,
-): Promise<Array<{ listingKey: string; imageKey: string; sourceUrl: string; r2Key: string }>> {
-  const candidates = Array.isArray(result.normalizedCandidates) ? result.normalizedCandidates : [];
-  if (!candidates.length || !task.agentRunId) return [];
-  const runId = await publishedRunIdForAgentRun(env.DB, task.agentRunId);
-  // Workflow may not have published yet; future work: reconcile on publish.
-  if (!runId) return [];
-  const listings = candidates.filter(isRecord).map(runnerCandidateToListing);
-  if (!listings.length) return [];
-  const merged = await mergeListingsIntoRun(env.DB, runId, listings);
-  return merged.images;
-}
-
-// TODO(runner): the deterministic scaffold emits no candidates. When
-// BEACHCAR_RUNNER_MODE=codex produces real output, map its candidate shape to a
-// Partial<AuctionListing> here (reusing the dossier assembly from
-// listingFromCandidate). Candidates are expected to be listing-shaped, so
-// normalizeListing() inside mergeListingsIntoRun coerces them safely today.
-function runnerCandidateToListing(candidate: Record<string, unknown>): Partial<AuctionListing> {
-  return candidate as Partial<AuctionListing>;
 }
 
 async function runRunnerTaskInContainer(env: Env, taskId: string): Promise<unknown> {
@@ -619,8 +621,8 @@ async function runRunnerTaskInContainer(env: Env, taskId: string): Promise<unkno
 
   const result = normalizeRecord(runnerResponse.result || runnerResponse);
   const completed = await completeRunnerTask(env.DB, task.id, { runnerId, result });
-  const mergedImages = await mergeRunnerResultIntoRun(env, completed, result);
-  if (mergedImages.length) await prewarmImportedImages(env, mergedImages);
+  const merge = await mergeCompletedRunnerTask(env.DB, completed);
+  if (merge.images.length) await prewarmImportedImages(env, merge.images);
   if (isRecord(runnerResponse.aiUsage)) {
     await recordAiUsageEvent(env.DB, {
       ...runnerResponse.aiUsage,
@@ -629,7 +631,7 @@ async function runRunnerTaskInContainer(env: Env, taskId: string): Promise<unkno
       operation: runnerResponse.aiUsage.operation || `runner_task:${task.kind}`,
     });
   }
-  return { task: completed, runnerResponse: result };
+  return { task: completed, runnerResponse: result, merge };
 }
 
 async function readContainerResponse(response: Response): Promise<Record<string, unknown>> {
@@ -664,7 +666,7 @@ async function getBeachcarAgent(env: Env, userId: string): Promise<DurableObject
 async function syncUserAgentSchedule(env: Env, userId: string, profile: UserProfile): Promise<void> {
   if (!profile.onboardingCompletedAt) return;
   const agent = await getBeachcarAgent(env, userId);
-  await agent.syncSchedule({ userId, scheduleCron: profile.scheduleCron, enabled: true });
+  await agent.syncSchedule({ userId, scheduleCron: profile.scheduleCron, timezone: profile.timezone, enabled: true });
 }
 
 async function agentRunContext(env: Env, agentRun: Awaited<ReturnType<typeof getAgentRunById>>): Promise<unknown> {

@@ -50,7 +50,8 @@ extension AuctionListing {
 
   /// Current bid parsed to an integer dollar amount, if possible.
   var bidNumber: Int? {
-    Self.parseDollars(bid)
+    if let bidCents, bidCents >= 0 { return bidCents / 100 }
+    return Self.parseDollars(bid)
   }
 
   /// Parsed (low, high) fair-value hammer range from the `fair` string.

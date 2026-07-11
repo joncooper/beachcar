@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 const args = process.argv.slice(2);
@@ -10,11 +11,19 @@ const root = process.cwd();
 const jsRunner = process.env.BEACHCAR_JS_RUNNER || "bun";
 const port = valueArg("--port") || process.env.PREFLIGHT_WORKER_PORT || "8787";
 const workerUrl = `http://127.0.0.1:${port}`;
-const runSmoke = flags.has("--smoke") || flags.has("--full");
+const fresh = flags.has("--fresh");
+const runSmoke = flags.has("--smoke") || flags.has("--full") || fresh;
 const runIos = flags.has("--ios") || flags.has("--full");
 const useExistingWorker = flags.has("--use-existing-worker");
+if (fresh && useExistingWorker) throw new Error("--fresh cannot be combined with --use-existing-worker.");
+const configuredPersistTo = valueArg("--persist-to");
+let persistTo = configuredPersistTo || "";
+let ownsPersistTo = false;
+const workerEnvFileArgs = (await fileExists(resolve(".publish.env"))) ? ["--env-file", ".publish.env"] : [];
 const fileEnv = {};
 await loadEnvFile(resolve(".dev.vars"), fileEnv);
+await loadEnvFile(resolve(".env.local"), fileEnv);
+await loadWranglerVars(resolve("wrangler.jsonc"), fileEnv);
 await loadEnvFile(resolve(".publish.env"), fileEnv);
 const inheritedEnv = { ...process.env, ...fileEnv };
 const buildEnv = {
@@ -26,6 +35,7 @@ await runScript("Typecheck", "typecheck");
 await runScript("Unit tests", "test");
 await runScript("Container runner syntax", "container-runner:check");
 await run("Runner task simulator syntax", "node", ["--check", "scripts/run-runner-task-local.mjs"]);
+await run("Hemmings scraper syntax", "node", ["--check", "scripts/scrape-hemmings.mjs"]);
 await run("Cloudflare verifier syntax", "node", ["--check", "scripts/verify-cloudflare-deploy.mjs"]);
 await run("Remote rollout syntax", "node", ["--check", "scripts/run-remote-rollout.mjs"]);
 await run("Service worker syntax", "node", ["--check", "public/sw.js"]);
@@ -46,7 +56,15 @@ async function runWorkerSmoke() {
   let worker = null;
   try {
     if (!useExistingWorker) {
-      worker = spawn(jsRunner, ["run", "worker:dev", "--", "--local", "--ip", "127.0.0.1", "--port", port], {
+      if (fresh && !persistTo) {
+        persistTo = await mkdtemp(join(tmpdir(), "beachcar-preflight-"));
+        ownsPersistTo = true;
+      }
+      if (persistTo) {
+        await run("Fresh local D1 migrations", jsRunner, ["scripts/apply-d1-migrations.mjs", "--local", "--persist-to", persistTo]);
+      }
+      const persistenceArgs = persistTo ? ["--persist-to", persistTo] : [];
+      worker = spawn(jsRunner, ["run", "worker:dev", "--", "--local", "--ip", "127.0.0.1", "--port", port, ...persistenceArgs, ...workerEnvFileArgs], {
         cwd: root,
         env: {
           ...inheritedEnv,
@@ -74,6 +92,7 @@ async function runWorkerSmoke() {
     });
   } finally {
     if (worker) await stopWorker(worker);
+    if (ownsPersistTo) await rm(persistTo, { recursive: true, force: true });
   }
 }
 
@@ -155,6 +174,15 @@ function valueArg(name) {
   return args[index + 1] || null;
 }
 
+async function fileExists(path) {
+  try {
+    await readFile(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function loadEnvFile(path, target) {
   try {
     const contents = await readFile(path, "utf8");
@@ -170,4 +198,50 @@ async function loadEnvFile(path, target) {
   } catch {
     // Optional local env files are allowed to be absent.
   }
+}
+
+async function loadWranglerVars(path, target) {
+  try {
+    const contents = await readFile(path, "utf8");
+    const config = JSON.parse(stripJsonComments(contents));
+    const vars = config?.vars && typeof config.vars === "object" ? config.vars : {};
+    for (const [key, value] of Object.entries(vars)) {
+      if (typeof value === "string" && key && !process.env[key] && !target[key]) target[key] = value;
+    }
+  } catch {
+    // Wrangler config is validated elsewhere in preflight; ignore here for env fallback loading.
+  }
+}
+
+function stripJsonComments(text) {
+  let output = "";
+  let inString = false;
+  let quote = "";
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+    if (inString) {
+      output += char;
+      if (char === "\\" && next) {
+        output += next;
+        index += 1;
+      } else if (char === quote) {
+        inString = false;
+      }
+    } else if (char === '"' || char === "'") {
+      inString = true;
+      quote = char;
+      output += char;
+    } else if (char === "/" && next === "/") {
+      while (index < text.length && text[index] !== "\n") index += 1;
+      output += "\n";
+    } else if (char === "/" && next === "*") {
+      index += 2;
+      while (index < text.length && !(text[index] === "*" && text[index + 1] === "/")) index += 1;
+      index += 1;
+    } else {
+      output += char;
+    }
+  }
+  return output;
 }

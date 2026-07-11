@@ -7,6 +7,7 @@ final class BeachcarStore: ObservableObject {
   @Published private(set) var agentRun: AgentRunRecord?
   @Published private(set) var feedbackByKey: [String: FeedbackRecord] = [:]
   @Published private(set) var pendingPreferenceNotes: [PendingPreferenceNote] = []
+  @Published private(set) var isUsingCachedRun = false
   @Published private(set) var isLoading = false
   @Published var errorMessage: String?
   @Published var lastUndo: UndoState?
@@ -22,14 +23,19 @@ final class BeachcarStore: ObservableObject {
     initialRun: RunPayload? = nil,
     initialAgentRun: AgentRunRecord? = nil,
     initialFeedback: [String: FeedbackRecord] = [:],
-    offlineMode: Bool = false
+    offlineMode: Bool = false,
+    initialPendingPreferenceNotes: [PendingPreferenceNote]? = nil,
+    initialErrorMessage: String? = nil,
+    initialUsingCachedRun: Bool = false
   ) {
     self.api = api
     self.run = initialRun
     self.agentRun = initialAgentRun
     self.feedbackByKey = initialFeedback
     self.offlineMode = offlineMode
-    self.pendingPreferenceNotes = Self.loadPendingPreferenceNotes()
+    self.pendingPreferenceNotes = initialPendingPreferenceNotes ?? Self.loadPendingPreferenceNotes()
+    self.errorMessage = initialErrorMessage
+    self.isUsingCachedRun = initialUsingCachedRun
   }
 
   var generatedLabel: String {
@@ -72,12 +78,14 @@ final class BeachcarStore: ObservableObject {
     defer { isLoading = false }
     if run == nil, let cached = Self.loadCachedRun(cacheScope: cacheScope) {
       apply(payload: cached)
+      isUsingCachedRun = true
       startImagePrefetch(for: cached)
     }
     do {
       let token = try await tokenProvider()
       let payload = try await api.latestRun(authToken: token)
       apply(payload: payload)
+      isUsingCachedRun = false
       agentRun = try? await api.latestAgentRun(authToken: token)
       Self.persistCachedRun(payload, cacheScope: cacheScope)
       startImagePrefetch(for: payload)
@@ -86,10 +94,10 @@ final class BeachcarStore: ObservableObject {
     } catch {
       if run == nil, let cached = Self.loadCachedRun(cacheScope: cacheScope) {
         apply(payload: cached)
+        isUsingCachedRun = true
         startImagePrefetch(for: cached)
-      } else {
-        errorMessage = error.localizedDescription
       }
+      errorMessage = error.localizedDescription
     }
   }
 
@@ -147,6 +155,7 @@ final class BeachcarStore: ObservableObject {
       } else {
         feedbackByKey.removeValue(forKey: listing.key)
       }
+      clearUndo(ifListingKey: listing.key)
       errorMessage = error.localizedDescription
     }
   }
@@ -179,6 +188,7 @@ final class BeachcarStore: ObservableObject {
         feedbackByKey.removeValue(forKey: undo.listingKey)
       }
     } catch {
+      lastUndo = undo
       errorMessage = error.localizedDescription
     }
   }
@@ -323,6 +333,44 @@ struct UndoState {
 
 extension BeachcarStore {
   static func uiTesting() -> BeachcarStore {
-    BeachcarStore(initialRun: .uiTestingFixture, initialAgentRun: .uiTestingPublished, offlineMode: true)
+    let args = ProcessInfo.processInfo.arguments
+    let scenario: String? = args.firstIndex(of: "--ui-testing-scenario").flatMap { index in
+      let valueIndex = args.index(after: index)
+      return args.indices.contains(valueIndex) ? args[valueIndex] : nil
+    }
+
+    if scenario == "status" {
+      let queued = PendingPreferenceNote(
+        id: "ui-test-queued-note",
+        listingKey: "ui-test-samurai",
+        listingTitle: "1988 Suzuki Samurai Convertible 5-Speed",
+        note: "Prefer examples closer to home.",
+        tags: ["family"],
+        createdAt: "2026-06-23T12:03:00.000Z"
+      )
+      return BeachcarStore(
+        initialRun: .uiTestingFixture,
+        initialAgentRun: .uiTestingPublished,
+        offlineMode: true,
+        initialPendingPreferenceNotes: [queued],
+        initialErrorMessage: "Could not refresh; check your connection.",
+        initialUsingCachedRun: true
+      )
+    }
+
+    if scenario == "empty-error" {
+      return BeachcarStore(
+        offlineMode: true,
+        initialPendingPreferenceNotes: [],
+        initialErrorMessage: "Could not load today's run."
+      )
+    }
+
+    return BeachcarStore(
+      initialRun: .uiTestingFixture,
+      initialAgentRun: .uiTestingPublished,
+      offlineMode: true,
+      initialPendingPreferenceNotes: []
+    )
   }
 }

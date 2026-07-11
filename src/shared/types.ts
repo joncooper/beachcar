@@ -1,5 +1,6 @@
 export type Lane = "family" | "solo" | "curiosity";
 export type FeedbackAction = "like" | "star" | "hide" | "avoid";
+export type LocationStatus = "ok" | "missing";
 
 /**
  * Rich per-car detail for the native dossier view. Every field is optional and
@@ -48,8 +49,18 @@ export interface AuctionListing {
   url: string;
   bid: string;
   total: string;
+  /** Display-ready location when the source provided one. */
   location?: string;
+  /** Raw source location before display cleanup, useful for diagnostics. */
+  locationRaw?: string;
+  locationCity?: string;
+  locationRegion?: string;
+  locationCountry?: string;
+  distanceMiles?: number;
+  locationStatus?: LocationStatus;
+  missingData?: string[];
   bidNum?: number;
+  bidCents?: number;
   endsAt?: string;
   ends?: string;
   timeLeft?: string;
@@ -101,7 +112,7 @@ export interface RunPayload {
   id: string | null;
   generatedAt: string | null;
   reportMarkdown?: string | null;
-  sourceSummary?: unknown;
+  sourceSummary?: RunSourceSummary | null;
   listings: AuctionListing[];
   feedback: FeedbackRecord[];
 }
@@ -124,9 +135,106 @@ export interface ImportPayload {
   userId?: string;
   generatedAt?: string;
   reportMarkdown?: string;
-  sourceSummary?: unknown;
+  sourceSummary?: RunSourceSummary | null;
   listings?: AuctionListing[];
   items?: AuctionListing[];
+}
+
+export type RunSourceStatus = "ok" | "blocked" | "failed" | "skipped" | "fallback";
+
+export interface RunSourceDetailAttempts {
+  attempted: number;
+  enriched: number;
+  blocked: number;
+  failed: number;
+  empty: number;
+  blockedUrls?: string[];
+  failedUrls?: string[];
+}
+
+export interface RunSourceCacheDiagnostic {
+  status?: string;
+  usableCount?: number;
+  searchedTerms?: string[];
+  latestIngestionAt?: string | null;
+  refreshError?: string | null;
+}
+
+export interface RunSourceCheck {
+  source: string;
+  site: string;
+  status: RunSourceStatus;
+  label?: string;
+  url?: string;
+  candidateCount: number;
+  checkedAt?: string;
+  message?: string;
+  selectorHits?: Record<string, number>;
+  detailAttempts?: RunSourceDetailAttempts;
+  blockedUrls?: string[];
+  cache?: RunSourceCacheDiagnostic;
+}
+
+export interface RunnerRejectionSummary {
+  reason: string;
+  count: number;
+}
+
+export interface RunRunnerTaskSummary {
+  id: string;
+  source: string;
+  kind: string;
+  status: string;
+  mergeStatus?: "empty" | "pending_run" | "merged";
+  resultStatus?: "ok" | "empty" | "blocked" | "failed";
+  normalizedCandidateCount?: number;
+  importedCount?: number;
+  patchedCount?: number;
+  insertedCount?: number;
+  rejectedCount?: number;
+  rejectionReasons?: RunnerRejectionSummary[];
+}
+
+export interface RunSourceSummary {
+  /**
+   * Producers may attach JSON-safe provenance fields. Declared fields below
+   * retain their concrete types and are normalized at HTTP/D1 boundaries.
+   */
+  [key: string]: unknown;
+  publisher?: string;
+  agentRunId?: string;
+  workflowInstanceId?: string;
+  source?: string;
+  reason?: string | null;
+  userId?: string;
+  enabledSources?: string[];
+  sourceSettings?: Array<{
+    source: string;
+    enabled: boolean;
+    settings: Record<string, string | number | boolean | null>;
+  }>;
+  previousRunId?: string | null;
+  profile?: Record<string, string | number | boolean | null>;
+  checkedSources?: RunSourceCheck[];
+  blockedSources?: RunSourceCheck[];
+  runnerTasks?: RunRunnerTaskSummary[];
+  rawCandidateCount?: number;
+  feedbackCount?: number;
+  fallbackUsed?: boolean;
+  automationTokenId?: string | null;
+  oauthAccessTokenId?: string | null;
+  oauthClientId?: string | null;
+  automationTokenLabel?: string;
+  publishedAt?: string;
+  aiScoring?: {
+    status: string;
+    provider?: string | null;
+    model?: string | null;
+    totalTokens?: number | null;
+    costMicros?: number;
+    message?: string;
+  } | null;
+  sourceCacheUpdates?: Array<{ source: string; status: string; candidateCount: number; newItemCount?: number; error?: string }>;
 }
 
 export interface FeedbackExport {

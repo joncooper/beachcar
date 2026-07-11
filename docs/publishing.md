@@ -1,6 +1,8 @@
-# Publishing Contract
+# Operator Fallback Publishing Contract
 
-The daily AI automation publishes one JSON object to `POST /api/admin/import` with the `X-Publish-Token` header.
+Beachcar's primary friend workflow publishes through the per-user Agent and Workflow. When an operator research job must intervene or provide a quality comparison, it publishes one JSON object to `POST /api/admin/users/:userId/runs/import` with the `X-Publish-Token` header. The target user id must be selected explicitly for multi-user operation.
+
+`POST /api/admin/import` remains a legacy bootstrap-owner compatibility route. `scripts/publish-daily-run.mjs` uses the user-scoped route when `BEACHCAR_USER_ID` is set and warns before falling back to the legacy route.
 
 ## Request
 
@@ -65,10 +67,10 @@ The server assigns stable listing and image keys, stores the run in D1, and queu
 
 ## Admin Endpoints
 
-- `GET /api/admin/feedback/export`: returns steering memory for the next AI run.
-- `POST /api/admin/import`: imports the normalized daily run.
+- `GET /api/admin/users/:userId/feedback/export`: returns one user's steering memory for an operator fallback run.
+- `POST /api/admin/users/:userId/runs/import`: imports one user's normalized daily run.
+- `GET /api/admin/feedback/export` and `POST /api/admin/import`: legacy bootstrap-owner compatibility routes.
 - `PUT /api/admin/images/:listingKey/:imageKey`: stores already-fetched image bytes in R2.
 - `POST /api/admin/mirror-image`: asks the Worker to fetch and mirror a single image URL.
 
 All admin endpoints require `X-Publish-Token: <secret>`.
-

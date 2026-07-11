@@ -5,6 +5,7 @@ dist/
 .home/
 .tmp/
 .cab-profile/
+.hemmings-profile/
 .dev.vars
 .env
 .env.local

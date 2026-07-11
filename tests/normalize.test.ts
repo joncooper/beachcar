@@ -42,6 +42,71 @@ describe("listing normalization", () => {
     expect(r2KeyFor("abc")).toBe("listing-images/abc.bin");
   });
 
+  it("normalizes structured location metadata from a display location", () => {
+    const listing = normalizeListing({
+      title: "1974 VW Thing",
+      location: "Charleston, South Carolina",
+      missingData: ["price", "location"],
+    });
+
+    expect(listing).toMatchObject({
+      location: "Charleston, South Carolina",
+      locationRaw: "Charleston, South Carolina",
+      locationCity: "Charleston",
+      locationRegion: "South Carolina",
+      locationStatus: "ok",
+      missingData: ["price"],
+    });
+  });
+
+  it("preserves explicit bid cents and derives them from bid dollars when needed", () => {
+    expect(
+      normalizeListing({
+        title: "1974 VW Thing",
+        bid: "$8,295",
+        bidNum: 8295,
+        bidCents: 829550,
+      }),
+    ).toMatchObject({ bidNum: 8295, bidCents: 829550 });
+
+    expect(
+      normalizeListing({
+        title: "1988 Suzuki Samurai",
+        bid: "$7,800",
+        bidNum: 7800,
+      }),
+    ).toMatchObject({ bidNum: 7800, bidCents: 780000 });
+  });
+
+  it("normalizes US city/state/ZIP source locations", () => {
+    const listing = normalizeListing({
+      site: "Cars & Bids",
+      title: "1999 Suzuki Jimny 4x4",
+      url: "https://carsandbids.com/auctions/9l056Wwm/1999-suzuki-jimny-4x4",
+      location: "Ceres, CA 95307",
+    });
+
+    expect(listing).toMatchObject({
+      location: "Ceres, CA 95307",
+      locationRaw: "Ceres, CA 95307",
+      locationCity: "Ceres",
+      locationRegion: "CA",
+      locationCountry: "US",
+      locationStatus: "ok",
+    });
+  });
+
+  it("marks location missing when no displayable source location exists", () => {
+    const listing = normalizeListing({
+      title: "1974 VW Thing",
+      location: "check listing",
+    });
+
+    expect(listing.location).toBeUndefined();
+    expect(listing.locationStatus).toBe("missing");
+    expect(listing.missingData).toEqual(["location"]);
+  });
+
   it("keeps Cars & Bids galleries from mixing media roots", () => {
     const listing = normalizeListing({
       site: "Cars & Bids",

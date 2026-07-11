@@ -5,6 +5,7 @@ import SwiftUI
 struct ShadeFeed: View {
   @ObservedObject var controller: ShadeController
   let cars: [AuctionListing]
+  let sourceSummary: RunSourceSummary?
   let api: AuctionAPI
   let geo: FeedGeometry
 
@@ -25,7 +26,7 @@ struct ShadeFeed: View {
     // container's natural size is exactly one screen (no oversized-VStack centering).
     ZStack {
       ForEach(Array(cars.enumerated()), id: \.element.id) { index, car in
-        CarPanel(controller: controller, car: car, index: index, api: api, geo: geo)
+        CarPanel(controller: controller, car: car, sourceSummary: sourceSummary, index: index, api: api, geo: geo)
           .frame(width: geo.width, height: geo.height)
           .offset(y: panelOffset(index))
       }
@@ -41,6 +42,7 @@ struct ShadeFeed: View {
 private struct CarPanel: View {
   @ObservedObject var controller: ShadeController
   let car: AuctionListing
+  let sourceSummary: RunSourceSummary?
   let index: Int
   let api: AuctionAPI
   let geo: FeedGeometry
@@ -50,7 +52,7 @@ private struct CarPanel: View {
       Color.clear.frame(height: geo.photoTop)          // status bar + chrome (drawn above)
       PhotoStrip(controller: controller, car: car, index: index, api: api, geo: geo)
         .frame(width: geo.width, height: geo.photoHeight)
-      InfoSheet(car: car)
+      InfoSheet(car: car, sourceHealth: sourceSummary?.health(for: car))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
     .frame(width: geo.width, height: geo.height)
@@ -87,14 +89,16 @@ private struct PhotoStrip: View {
       BC.imageBg
 
       // Ambient blurred copy behind the sharp photo for a colored glow.
-      image(at: photoIdx)
-        .scaledToFill()
-        .frame(width: geo.width * 1.32, height: geo.photoHeight * 1.32)
-        .blur(radius: 32)
-        .saturation(1.45)
-        .brightness(-0.12)
-        .opacity(0.62)
-        .allowsHitTesting(false)
+      if !images.isEmpty {
+        image(at: photoIdx)
+          .scaledToFill()
+          .frame(width: geo.width * 1.32, height: geo.photoHeight * 1.32)
+          .blur(radius: 32)
+          .saturation(1.45)
+          .brightness(-0.12)
+          .opacity(0.62)
+          .allowsHitTesting(false)
+      }
 
       // Sharp horizontal strip.
       HStack(spacing: 0) {
@@ -119,6 +123,23 @@ private struct PhotoStrip: View {
           .frame(height: 48)
       }
       .allowsHitTesting(false)
+
+      if images.isEmpty {
+        VStack(spacing: 8) {
+          Image(systemName: "photo.badge.exclamationmark")
+            .font(.system(size: 27, weight: .semibold))
+          Text("No listing image")
+            .font(.archivo(13, .bold))
+        }
+        .foregroundStyle(BC.muted)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("No listing image for \(car.title)")
+        .accessibilityIdentifier("shade-no-image-\(car.id)")
+        .allowsHitTesting(false)
+      }
 
       // Pagination dots.
       if count > 1 {
@@ -167,6 +188,7 @@ private struct PhotoStrip: View {
 
 private struct InfoSheet: View {
   let car: AuctionListing
+  let sourceHealth: SourceHealthState?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -178,6 +200,9 @@ private struct InfoSheet: View {
         } else {
           TagPill(text: car.lane.label, fg: BC.sub, bg: BC.faint)
         }
+        if let sourceHealth {
+          SourceHealthBadge(state: sourceHealth, compact: true)
+        }
         Spacer(minLength: 6)
         Label {
           Text(car.displayLocationLabel)
@@ -186,8 +211,9 @@ private struct InfoSheet: View {
         }
         .labelStyle(.titleAndIcon)
         .font(.mono(11))
-        .foregroundStyle(BC.muted)
+        .foregroundStyle(car.hasMissingLocation ? BC.danger : BC.muted)
         .lineLimit(1)
+        .accessibilityIdentifier("shade-location-\(car.hasMissingLocation ? "missing" : "known")-\(car.id)")
       }
 
       Text(car.title)

@@ -1,5 +1,5 @@
 import { looksLikeRawProviderKey } from "../shared/ai-keys";
-import { imageKeyFor, inferTags, listingKeyFor, normalizeAction, normalizeListing, r2KeyFor } from "../shared/normalize";
+import { imageKeyFor, inferTags, listingKeyFor, normalizeAction, normalizeDossier, normalizeListing, normalizeLocationMetadata, r2KeyFor } from "../shared/normalize";
 import type {
   AccountDeletionResult,
   AccountExport,
@@ -18,6 +18,8 @@ import type {
   OAuthAccessTokenRecord,
   PreferenceEvent,
   RunPayload,
+  RunRunnerTaskSummary,
+  RunSourceSummary,
   RunnerTaskRecord,
   SourceSetting,
   UserAiSettings,
@@ -25,7 +27,17 @@ import type {
   UserProfile,
 } from "../shared/types";
 import type { AuthUser } from "./auth";
-import type { SourceCandidate } from "./workflows/source-discovery";
+import { nextDailyRunAt, normalizeTimezone } from "./daily-schedule";
+import {
+  analyzeRunnerResult,
+  auctionListingFromUnknown,
+  mergeRunSourceSummaries,
+  normalizeRunSourceSummary,
+  summarizeRunnerRejections,
+  type RunnerCandidateRejection,
+  type RunnerResultStatus,
+} from "./runner-results";
+import type { SourceCandidate } from "./sources/types";
 
 export interface UserScope {
   userId: string;
@@ -298,6 +310,18 @@ interface SourceItemRow {
   image_urls_json: string;
   payload_json: string;
   published_at: string | null;
+  bid_num?: number | null;
+  location?: string | null;
+  location_city?: string | null;
+  location_region?: string | null;
+  location_country?: string | null;
+  ends_at?: string | null;
+  no_reserve?: number | null;
+  last_detail_at?: string | null;
+  detail_status?: string | null;
+  detail_error?: string | null;
+  is_live?: number | null;
+  dossier_json?: string | null;
   first_seen_at: string;
   last_seen_at: string;
 }
@@ -319,6 +343,24 @@ export interface ImportResult {
   listingCount: number;
   imageCount: number;
   images: Array<{ listingKey: string; imageKey: string; sourceUrl: string; r2Key: string }>;
+  runnerMerges: RunnerMergeResult[];
+}
+
+export interface RunnerMergeResult {
+  taskId: string;
+  source: string;
+  runId: string | null;
+  status: "empty" | "pending_run" | "merged";
+  resultStatus: RunnerResultStatus;
+  candidateCount: number;
+  normalizedCandidateCount: number;
+  importedCount: number;
+  patched: number;
+  inserted: number;
+  rejectedCount: number;
+  rejections: RunnerCandidateRejection[];
+  alreadyMerged: boolean;
+  images: Array<{ listingKey: string; imageKey: string; sourceUrl: string; r2Key: string }>;
 }
 
 export interface AuthenticatedAutomationToken {
@@ -335,6 +377,7 @@ export interface AuthenticatedAutomationToken {
 }
 
 export const defaultAutomationScopes: AutomationScope[] = ["setup:read", "sources:read", "runs:publish", "usage:write", "events:read"];
+export const missingByokAliasError = "BYOK mode requires an AI Gateway key alias";
 
 export interface SourceCacheUpsertResult {
   source: string;
@@ -579,7 +622,7 @@ export async function getUserPayload(db: D1Database, userId: string): Promise<Us
     capabilities: {
       canUseManagedAi: true,
       canUseByok: true,
-      canRunNow: user.status === "active" && !aiUsage.budgetExceeded,
+      canRunNow: user.status === "active" && !aiUsage.budgetExceeded && hasRunnableAiSettings(aiSettings),
     },
   };
 }
@@ -605,6 +648,17 @@ export async function upsertProfile(
   const profileJson = normalizeJsonObject(input.profile, existing?.profile || {});
   const onboardingCompletedAt =
     input.completeOnboarding === true ? existing?.onboardingCompletedAt || now : existing?.onboardingCompletedAt || null;
+  const timezone = normalizeTimezone(stringOrDefault(input.timezone, existing?.timezone || "America/New_York"));
+  const scheduleWasProvided = input.scheduleCron !== undefined;
+  const scheduleCron = scheduleWasProvided
+    ? typeof input.scheduleCron === "string" && input.scheduleCron.trim()
+      ? input.scheduleCron.trim()
+      : ""
+    : existing?.scheduleCron || "0 8 * * *";
+  // New profiles and explicit schedule changes must use the supported daily
+  // syntax. Omitted legacy cron values are preserved until the user changes
+  // them, allowing the Agent to retain its legacy UTC compatibility path.
+  if (scheduleWasProvided || !existing) nextDailyRunAt(scheduleCron, timezone, new Date(now));
 
   const next = {
     displayName: stringOrNull(input.displayName, existing?.displayName ?? null),
@@ -613,8 +667,8 @@ export async function upsertProfile(
     budgetMax: numberOrNull(input.budgetMax, existing?.budgetMax ?? null),
     stretchBudget: numberOrNull(input.stretchBudget, existing?.stretchBudget ?? null),
     homeRegion: stringOrNull(input.homeRegion, existing?.homeRegion ?? null),
-    timezone: stringOrDefault(input.timezone, existing?.timezone || "America/New_York"),
-    scheduleCron: stringOrDefault(input.scheduleCron, existing?.scheduleCron || "0 8 * * *"),
+    timezone,
+    scheduleCron,
     profileJson,
     onboardingCompletedAt,
   };
@@ -674,6 +728,9 @@ export async function upsertAiSettings(
   const mode: UserAiSettings["mode"] =
     input.mode === "byok" || input.mode === "managed" ? input.mode : existing?.mode || "managed";
   const gatewayKeyRef = mode === "byok" ? stringOrNull(input.gatewayKeyRef, existing?.gatewayKeyRef ?? null) : null;
+  if (mode === "byok" && !gatewayKeyRef) {
+    throw new Error(missingByokAliasError);
+  }
   if (gatewayKeyRef && looksLikeRawProviderKey(gatewayKeyRef)) {
     throw new Error("Store provider keys in AI Gateway BYOK, then save the gateway key reference here");
   }
@@ -740,9 +797,15 @@ export async function getAiUsageSummary(db: D1Database, userId: string, now = ne
 }
 
 export async function assertAiBudgetAvailable(db: D1Database, userId: string): Promise<void> {
+  const settings = await getAiSettings(db, userId);
+  if (!hasRunnableAiSettings(settings)) throw new Error(missingByokAliasError);
   const summary = await getAiUsageSummary(db, userId);
   if (!summary.budgetExceeded) return;
   throw new Error("AI budget exceeded for this user");
+}
+
+function hasRunnableAiSettings(settings: UserAiSettings | null): boolean {
+  return settings?.mode !== "byok" || Boolean(settings.gatewayKeyRef?.trim());
 }
 
 export async function recordAiUsageEvent(
@@ -1208,15 +1271,20 @@ export async function upsertSourceCache(
 
   for (const candidate of input.candidates) {
     if (!candidate.url || !candidate.title) continue;
+    const location = normalizeLocationMetadata(candidate);
+    const dossier = normalizeDossier(candidate.dossier);
     const existing = await db.prepare("SELECT id FROM source_items WHERE item_url = ?").bind(candidate.url).first<{ id: string }>();
     if (!existing) newItemCount += 1;
     const id = existing?.id || `source-item-${source}-${(await sha256Hex(candidate.url)).slice(0, 20)}`;
     await db
       .prepare(
         `INSERT INTO source_items (
-           id, source, site, source_url, item_url, title, summary, image_urls_json, payload_json, published_at, first_seen_at, last_seen_at
+           id, source, site, source_url, item_url, title, summary, image_urls_json, payload_json, published_at,
+           bid_num, location, location_city, location_region, location_country, ends_at, no_reserve,
+           last_detail_at, detail_status, detail_error, is_live, dossier_json,
+           first_seen_at, last_seen_at
          )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(item_url) DO UPDATE SET
            source = excluded.source,
            site = excluded.site,
@@ -1226,6 +1294,21 @@ export async function upsertSourceCache(
            image_urls_json = excluded.image_urls_json,
            payload_json = excluded.payload_json,
            published_at = COALESCE(excluded.published_at, source_items.published_at),
+           bid_num = COALESCE(excluded.bid_num, source_items.bid_num),
+           location = COALESCE(excluded.location, source_items.location),
+           location_city = COALESCE(excluded.location_city, source_items.location_city),
+           location_region = COALESCE(excluded.location_region, source_items.location_region),
+           location_country = COALESCE(excluded.location_country, source_items.location_country),
+           ends_at = COALESCE(excluded.ends_at, source_items.ends_at),
+           no_reserve = COALESCE(excluded.no_reserve, source_items.no_reserve),
+           last_detail_at = COALESCE(excluded.last_detail_at, source_items.last_detail_at),
+           detail_status = COALESCE(excluded.detail_status, source_items.detail_status),
+           detail_error = COALESCE(excluded.detail_error, source_items.detail_error),
+           is_live = COALESCE(excluded.is_live, source_items.is_live),
+           dossier_json = CASE
+             WHEN excluded.dossier_json != '{}' THEN excluded.dossier_json
+             ELSE source_items.dossier_json
+           END,
            last_seen_at = excluded.last_seen_at`,
       )
       .bind(
@@ -1237,8 +1320,20 @@ export async function upsertSourceCache(
         candidate.title,
         candidate.summary || null,
         JSON.stringify(candidate.imageUrls || []),
-        JSON.stringify(candidate),
+        JSON.stringify({ ...candidate, ...location, ...(dossier ? { dossier } : {}) }),
         candidate.publishedAt || null,
+        integerOrNull(candidate.bidNum),
+        location.location || null,
+        location.locationCity || null,
+        location.locationRegion || null,
+        location.locationCountry || null,
+        candidate.endsAt || null,
+        boolToIntOrNull(candidate.noReserve),
+        stringOrNull(candidate.lastDetailAt, null),
+        stringOrNull(candidate.detailStatus, null),
+        stringOrNull(candidate.detailError, null),
+        boolToIntOrNull(candidate.isLive ?? inferLiveSourceItem(candidate)),
+        JSON.stringify(dossier || {}),
         finishedAt,
         finishedAt,
       )
@@ -1324,7 +1419,11 @@ export async function searchSourceCache(
       `SELECT *
        FROM source_items
        WHERE source = ?
-       ORDER BY COALESCE(published_at, last_seen_at) DESC, last_seen_at DESC
+       ORDER BY COALESCE(is_live, 0) DESC,
+         CASE WHEN ends_at IS NULL THEN 1 ELSE 0 END,
+         ends_at ASC,
+         COALESCE(published_at, last_seen_at) DESC,
+         last_seen_at DESC
        LIMIT 300`,
     )
     .bind(source)
@@ -1496,7 +1595,10 @@ export async function importRun(db: D1Database, payload: ImportPayload | Auction
   const generatedAt = Array.isArray(payload) ? new Date().toISOString() : payload.generatedAt || new Date().toISOString();
   const requestedRunId = Array.isArray(payload) ? "" : typeof payload.runId === "string" ? payload.runId.trim() : "";
   const runId = requestedRunId || `run-${generatedAt.replace(/[^0-9a-z]/gi, "-").toLowerCase()}-${crypto.randomUUID().slice(0, 8)}`;
-  const sourceSummary = Array.isArray(payload) ? null : payload.sourceSummary ?? null;
+  const existingRun = await db.prepare("SELECT source_summary_json FROM runs WHERE id = ?").bind(runId).first<{ source_summary_json: string | null }>();
+  const existingSourceSummary = parseRunSourceSummaryJson(existingRun?.source_summary_json || null);
+  const incomingSourceSummary = Array.isArray(payload) ? null : normalizeRunSourceSummary(payload.sourceSummary);
+  const sourceSummary = mergeRunSourceSummaries(existingSourceSummary, incomingSourceSummary);
   const reportMarkdown = Array.isArray(payload) ? null : payload.reportMarkdown ?? null;
   const importedImages: ImportResult["images"] = [];
 
@@ -1568,7 +1670,23 @@ export async function importRun(db: D1Database, payload: ImportPayload | Auction
     }
   }
 
-  return { runId, listingCount: rawListings.length, imageCount: importedImages.length, images: importedImages };
+  const runnerMerges =
+    runUserId && sourceSummary?.agentRunId
+      ? await reconcileCompletedRunnerTasksForRun(db, {
+          runId,
+          userId: runUserId,
+          agentRunId: sourceSummary.agentRunId,
+        })
+      : [];
+  for (const merge of runnerMerges) importedImages.push(...merge.images);
+
+  return {
+    runId,
+    listingCount: rawListings.length + runnerMerges.reduce((count, merge) => count + merge.inserted, 0),
+    imageCount: importedImages.length,
+    images: importedImages,
+    runnerMerges,
+  };
 }
 
 export interface MergeListingsResult {
@@ -1675,6 +1793,240 @@ export async function mergeListingsIntoRun(
   return { runId, patched, inserted, images };
 }
 
+export async function updateRunRunnerTaskSummary(
+  db: D1Database,
+  runId: string,
+  runnerTask: RunRunnerTaskSummary,
+): Promise<void> {
+  const row = await db.prepare("SELECT source_summary_json FROM runs WHERE id = ?").bind(runId).first<{ source_summary_json: string | null }>();
+  if (!row) throw new Error(`Cannot update source summary for unknown run ${runId}`);
+
+  const sourceSummary = parseRunSourceSummaryJson(row.source_summary_json) || {};
+  const runnerTasks = [...(sourceSummary.runnerTasks || [])];
+  const existingIndex = runnerTasks.findIndex((task) => task.id === runnerTask.id);
+  const nextTask = existingIndex >= 0 ? { ...runnerTasks[existingIndex], ...runnerTask } : runnerTask;
+  if (existingIndex >= 0) {
+    // Update only this array slot inside SQLite so simultaneous runner
+    // completions cannot overwrite another task's diagnostics.
+    await db
+      .prepare(
+        `UPDATE runs
+         SET source_summary_json = json_set(
+           CASE WHEN source_summary_json IS NOT NULL AND json_valid(source_summary_json) THEN source_summary_json ELSE '{}' END,
+           ?,
+           json(?)
+         )
+         WHERE id = ?`,
+      )
+      .bind(`$.runnerTasks[${existingIndex}]`, JSON.stringify(nextTask), runId)
+      .run();
+    return;
+  }
+
+  // The Workflow normally seeds every task before publication. Keep an atomic
+  // append fallback for older runs or operator-created runner tasks.
+  await db
+    .prepare(
+      `UPDATE runs
+       SET source_summary_json = json_set(
+         CASE WHEN source_summary_json IS NOT NULL AND json_valid(source_summary_json) THEN source_summary_json ELSE '{}' END,
+         '$.runnerTasks',
+         CASE
+           WHEN json_type(CASE WHEN source_summary_json IS NOT NULL AND json_valid(source_summary_json) THEN source_summary_json ELSE '{}' END, '$.runnerTasks') = 'array'
+             THEN json(json_extract(source_summary_json, '$.runnerTasks'))
+           ELSE json('[]')
+         END
+       )
+       WHERE id = ?`,
+    )
+    .bind(runId)
+    .run();
+  await db
+    .prepare("UPDATE runs SET source_summary_json = json_insert(source_summary_json, '$.runnerTasks[#]', json(?)) WHERE id = ?")
+    .bind(JSON.stringify(nextTask), runId)
+    .run();
+}
+
+export async function mergeCompletedRunnerTask(
+  db: D1Database,
+  task: RunnerTaskRecord,
+): Promise<RunnerMergeResult> {
+  const analysis = analyzeRunnerResult(task.result);
+  if (!task.agentRunId) return runnerMergeWithoutRun(task, analysis, "empty");
+  const runId = await publishedRunIdForAgentRun(db, task.agentRunId);
+  if (!runId) return runnerMergeWithoutRun(task, analysis, analysis.candidateCount ? "pending_run" : "empty");
+  return mergeCompletedRunnerTaskIntoRun(db, runId, task, analysis);
+}
+
+export async function reconcileCompletedRunnerTasksForRun(
+  db: D1Database,
+  input: { runId: string; userId: string; agentRunId: string },
+): Promise<RunnerMergeResult[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT * FROM runner_tasks
+       WHERE agent_run_id = ? AND user_id = ? AND status = 'completed'
+       ORDER BY COALESCE(finished_at, updated_at) ASC, created_at ASC`,
+    )
+    .bind(input.agentRunId, input.userId)
+    .all<RunnerTaskRow>();
+
+  // Each merge updates the same source-summary JSON, so keep this sequential to
+  // avoid one task overwriting another task's diagnostics.
+  const merges: RunnerMergeResult[] = [];
+  for (const row of results) {
+    merges.push(await mergeCompletedRunnerTaskIntoRun(db, input.runId, runnerTaskFromRow(row)));
+  }
+  return merges;
+}
+
+async function mergeCompletedRunnerTaskIntoRun(
+  db: D1Database,
+  runId: string,
+  task: RunnerTaskRecord,
+  providedAnalysis = analyzeRunnerResult(task.result),
+): Promise<RunnerMergeResult> {
+  const run = await db.prepare("SELECT user_id FROM runs WHERE id = ?").bind(runId).first<{ user_id: string | null }>();
+  if (!run) throw new Error(`Cannot merge runner task into unknown run ${runId}`);
+  if (run.user_id !== task.userId) throw new Error(`Runner task ${task.id} does not belong to run ${runId}`);
+
+  const existingSummary = await runnerTaskSummaryForRun(db, runId, task.id);
+  if (existingSummary?.mergeStatus === "merged" || existingSummary?.mergeStatus === "empty") {
+    return {
+      taskId: task.id,
+      source: task.source,
+      runId,
+      status: existingSummary.mergeStatus,
+      resultStatus: existingSummary.resultStatus || providedAnalysis.resultStatus,
+      candidateCount: providedAnalysis.candidateCount,
+      normalizedCandidateCount: existingSummary.normalizedCandidateCount ?? providedAnalysis.listings.length,
+      importedCount: existingSummary.importedCount || 0,
+      patched: existingSummary.patchedCount || 0,
+      inserted: 0,
+      rejectedCount: existingSummary.rejectedCount ?? providedAnalysis.rejections.length,
+      rejections: providedAnalysis.rejections,
+      alreadyMerged: true,
+      images: [],
+    };
+  }
+
+  if (!providedAnalysis.listings.length) {
+    const summary = runnerTaskMergeSummary(task, providedAnalysis, {
+      mergeStatus: "empty",
+      patched: 0,
+      inserted: 0,
+    });
+    await updateRunRunnerTaskSummary(db, runId, summary);
+    return {
+      taskId: task.id,
+      source: task.source,
+      runId,
+      status: "empty",
+      resultStatus: providedAnalysis.resultStatus,
+      candidateCount: providedAnalysis.candidateCount,
+      normalizedCandidateCount: 0,
+      importedCount: 0,
+      patched: 0,
+      inserted: 0,
+      rejectedCount: providedAnalysis.rejections.length,
+      rejections: providedAnalysis.rejections,
+      alreadyMerged: false,
+      images: [],
+    };
+  }
+
+  const merged = await mergeListingsIntoRun(db, runId, providedAnalysis.listings);
+  await updateRunRunnerTaskSummary(
+    db,
+    runId,
+    runnerTaskMergeSummary(task, providedAnalysis, {
+      mergeStatus: "merged",
+      patched: merged.patched,
+      inserted: merged.inserted,
+    }),
+  );
+  return {
+    taskId: task.id,
+    source: task.source,
+    runId,
+    status: "merged",
+    resultStatus: providedAnalysis.resultStatus,
+    candidateCount: providedAnalysis.candidateCount,
+    normalizedCandidateCount: providedAnalysis.listings.length,
+    importedCount: merged.patched + merged.inserted,
+    patched: merged.patched,
+    inserted: merged.inserted,
+    rejectedCount: providedAnalysis.rejections.length,
+    rejections: providedAnalysis.rejections,
+    alreadyMerged: false,
+    images: merged.images,
+  };
+}
+
+function runnerTaskMergeSummary(
+  task: RunnerTaskRecord,
+  analysis: ReturnType<typeof analyzeRunnerResult>,
+  merge: { mergeStatus: "empty" | "merged"; patched: number; inserted: number },
+): RunRunnerTaskSummary {
+  return {
+    id: task.id,
+    source: task.source,
+    kind: task.kind,
+    status: task.status,
+    mergeStatus: merge.mergeStatus,
+    resultStatus: analysis.resultStatus,
+    normalizedCandidateCount: analysis.listings.length,
+    importedCount: merge.patched + merge.inserted,
+    patchedCount: merge.patched,
+    insertedCount: merge.inserted,
+    rejectedCount: analysis.rejections.length,
+    rejectionReasons: summarizeRunnerRejections(analysis.rejections),
+  };
+}
+
+function runnerMergeWithoutRun(
+  task: RunnerTaskRecord,
+  analysis: ReturnType<typeof analyzeRunnerResult>,
+  status: "empty" | "pending_run",
+): RunnerMergeResult {
+  return {
+    taskId: task.id,
+    source: task.source,
+    runId: null,
+    status,
+    resultStatus: analysis.resultStatus,
+    candidateCount: analysis.candidateCount,
+    normalizedCandidateCount: analysis.listings.length,
+    importedCount: 0,
+    patched: 0,
+    inserted: 0,
+    rejectedCount: analysis.rejections.length,
+    rejections: analysis.rejections,
+    alreadyMerged: false,
+    images: [],
+  };
+}
+
+async function runnerTaskSummaryForRun(
+  db: D1Database,
+  runId: string,
+  taskId: string,
+): Promise<RunRunnerTaskSummary | null> {
+  const row = await db.prepare("SELECT source_summary_json FROM runs WHERE id = ?").bind(runId).first<{ source_summary_json: string | null }>();
+  const summary = parseRunSourceSummaryJson(row?.source_summary_json || null);
+  return summary?.runnerTasks?.find((task) => task.id === taskId) || null;
+}
+
+function parseRunSourceSummaryJson(value: string | null): RunSourceSummary | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return normalizeRunSourceSummary(parsed);
+  } catch {
+    return null;
+  }
+}
+
 async function resolveListingKey(db: D1Database, proposedListingKey: string, url: string): Promise<string> {
   const existing = await db
     .prepare(
@@ -1720,7 +2072,23 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 export async function publishedRunIdForAgentRun(db: D1Database, agentRunId: string): Promise<string | null> {
   const agentRun = await getAgentRunById(db, agentRunId);
   const published = agentRun?.progress?.publishedRunId;
-  return typeof published === "string" && published ? published : null;
+  if (typeof published === "string" && published) return published;
+  if (!agentRun) return null;
+
+  // importRun writes the run before markAgentRunPublished updates progress. This
+  // fallback closes that small race for runner completions during publication.
+  const run = await db
+    .prepare(
+      `SELECT id FROM runs
+       WHERE user_id = ?
+         AND status = 'published'
+         AND json_extract(source_summary_json, '$.agentRunId') = ?
+       ORDER BY generated_at DESC
+       LIMIT 1`,
+    )
+    .bind(agentRun.userId, agentRunId)
+    .first<{ id: string }>();
+  return run?.id || null;
 }
 
 export async function markImageCopied(
@@ -1935,7 +2303,7 @@ async function runPayloadFromRow(db: D1Database, scope: UserScope, run: RunRow):
     id: run.id,
     generatedAt: run.generated_at,
     reportMarkdown: run.report_markdown,
-    sourceSummary: run.source_summary_json ? JSON.parse(run.source_summary_json) : null,
+    sourceSummary: parseRunSourceSummaryJson(run.source_summary_json),
     listings,
     feedback,
   };
@@ -2045,6 +2413,8 @@ export async function createAgentRunRequest(
   db: D1Database,
   input: { userId: string; source: "manual" | "schedule"; reason?: unknown },
 ): Promise<AgentRunRecord> {
+  const user = await db.prepare("SELECT status FROM users WHERE id = ?").bind(input.userId).first<{ status: string }>();
+  if (user?.status !== "active") throw new Error("Active user required to create an agent run");
   await assertAiBudgetAvailable(db, input.userId);
   const now = new Date().toISOString();
   const id = `agent-run-${now.replace(/[^0-9a-z]/gi, "-").toLowerCase()}-${crypto.randomUUID().slice(0, 8)}`;
@@ -2276,14 +2646,10 @@ export async function upsertFeedback(
   const action = normalizeAction(input.action);
   if (!action) throw new Error("Feedback action must be like, star, hide, or avoid");
 
-  const listing = await db
-    .prepare("SELECT last_payload_json FROM listings WHERE listing_key = ?")
-    .bind(listingKey)
-    .first<{ last_payload_json: string }>();
+  const listing = await getScopedListingSnapshot(db, scope, listingKey);
   if (!listing) throw new Error("Unknown listing");
 
-  const parsed = JSON.parse(listing.last_payload_json) as AuctionListing;
-  const tags = Array.isArray(input.tags) ? input.tags.filter(Boolean).map(String) : inferTags(parsed);
+  const tags = Array.isArray(input.tags) ? input.tags.filter(Boolean).map(String) : inferTags(listing);
   const note = typeof input.note === "string" && input.note.trim() ? input.note.trim() : null;
   const updatedAt = new Date().toISOString();
 
@@ -2314,12 +2680,8 @@ export async function createPreferenceEvent(
   const listingKey = typeof input.listingKey === "string" && input.listingKey.trim() ? input.listingKey.trim() : null;
   let listing: AuctionListing | null = null;
   if (listingKey) {
-    const row = await db
-      .prepare("SELECT last_payload_json FROM listings WHERE listing_key = ?")
-      .bind(listingKey)
-      .first<{ last_payload_json: string }>();
-    if (!row) throw new Error("Unknown listing");
-    listing = JSON.parse(row.last_payload_json) as AuctionListing;
+    listing = await getScopedListingSnapshot(db, scope, listingKey);
+    if (!listing) throw new Error("Unknown listing");
   }
 
   const note = typeof input.note === "string" && input.note.trim() ? input.note.trim() : null;
@@ -2355,13 +2717,9 @@ export async function exportFeedback(db: D1Database, scope: UserScope): Promise<
   const feedback = await getFeedback(db, scope);
   const entries = [];
   for (const entry of feedback) {
-    const listingRow = await db
-      .prepare("SELECT last_payload_json FROM listings WHERE listing_key = ?")
-      .bind(entry.listingKey)
-      .first<{ last_payload_json: string }>();
     entries.push({
       ...entry,
-      listing: listingRow ? (JSON.parse(listingRow.last_payload_json) as AuctionListing) : null,
+      listing: await getScopedListingSnapshot(db, scope, entry.listingKey),
     });
   }
   const preferenceEvents = await getPreferenceEventsWithListings(db, scope);
@@ -2411,15 +2769,38 @@ async function getPreferenceEventsWithListings(db: D1Database, scope: UserScope)
   for (const row of results) {
     let listing: AuctionListing | null = null;
     if (row.listing_key) {
-      const listingRow = await db
-        .prepare("SELECT last_payload_json FROM listings WHERE listing_key = ?")
-        .bind(row.listing_key)
-        .first<{ last_payload_json: string }>();
-      listing = listingRow ? (JSON.parse(listingRow.last_payload_json) as AuctionListing) : null;
+      listing = await getScopedListingSnapshot(db, scope, row.listing_key);
     }
     events.push({ ...preferenceEventFromRow(row), listing });
   }
   return events;
+}
+
+async function getScopedListingSnapshot(
+  db: D1Database,
+  scope: UserScope,
+  listingKey: string,
+): Promise<AuctionListing | null> {
+  const scopeWhere = scope.includeLegacyData ? "(r.user_id = ? OR r.user_id IS NULL)" : "r.user_id = ?";
+  const userPriority = scope.includeLegacyData ? "CASE WHEN r.user_id = ? THEN 0 ELSE 1 END," : "";
+  const statement = db.prepare(
+    `SELECT rl.payload_json
+     FROM run_listings rl
+     INNER JOIN runs r ON r.id = rl.run_id
+     WHERE rl.listing_key = ? AND ${scopeWhere}
+     ORDER BY ${userPriority} r.generated_at DESC, r.created_at DESC
+     LIMIT 1`,
+  );
+  const row = scope.includeLegacyData
+    ? await statement.bind(listingKey, scope.userId, scope.userId).first<{ payload_json: string }>()
+    : await statement.bind(listingKey, scope.userId).first<{ payload_json: string }>();
+  if (!row) return null;
+  try {
+    const listing = auctionListingFromUnknown(JSON.parse(row.payload_json) as unknown);
+    return listing ? { ...listing, listingKey: listing.listingKey || listingKey } : null;
+  } catch {
+    return null;
+  }
 }
 
 async function getImagesByListing(db: D1Database, listingKeys: string[]): Promise<Map<string, ImageRow[]>> {
@@ -2438,7 +2819,7 @@ async function getImagesByListing(db: D1Database, listingKeys: string[]): Promis
   return map;
 }
 
-async function getProfile(db: D1Database, userId: string): Promise<UserProfile | null> {
+export async function getProfile(db: D1Database, userId: string): Promise<UserProfile | null> {
   const row = await db.prepare("SELECT * FROM profiles WHERE user_id = ?").bind(userId).first<ProfileRow>();
   return row ? profileFromRow(row) : null;
 }
@@ -2600,6 +2981,15 @@ function sourceIngestionRunFromRow(row: SourceIngestionRunRow): SourceIngestionR
 
 function sourceCandidateFromRow(row: SourceItemRow): SourceCandidate {
   const payload = parseObject(row.payload_json) as Partial<SourceCandidate>;
+  const location = normalizeLocationMetadata({
+    ...payload,
+    location: row.location || payload.location,
+    locationRaw: payload.locationRaw || row.location || undefined,
+    locationCity: row.location_city || payload.locationCity,
+    locationRegion: row.location_region || payload.locationRegion,
+    locationCountry: row.location_country || payload.locationCountry,
+  });
+  const dossier = normalizeDossier(parseObject(row.dossier_json || "")) || normalizeDossier(payload.dossier);
   return {
     source: row.source,
     site: row.site,
@@ -2607,20 +2997,54 @@ function sourceCandidateFromRow(row: SourceItemRow): SourceCandidate {
     title: row.title,
     url: row.item_url,
     bid: payload.bid || "Check listing",
-    bidNum: payload.bidNum,
+    bidNum: numberOrUndefined(row.bid_num) ?? payload.bidNum,
+    bidCents: payload.bidCents ?? centsFromDollars(numberOrUndefined(row.bid_num) ?? payload.bidNum),
     total: payload.total || "Check listing",
-    location: payload.location,
-    endsAt: payload.endsAt,
+    ...location,
+    endsAt: row.ends_at || payload.endsAt,
     timeLeft: payload.timeLeft,
     bids: payload.bids,
     bidders: payload.bidders,
     comments: payload.comments,
     imageUrls: parseStringArray(row.image_urls_json),
     summary: row.summary || payload.summary || "",
-    noReserve: payload.noReserve,
+    noReserve: boolFromInt(row.no_reserve) ?? payload.noReserve,
+    isLive: boolFromInt(row.is_live) ?? payload.isLive,
     sourceUrl: row.source_url,
     publishedAt: row.published_at || payload.publishedAt,
+    lastDetailAt: row.last_detail_at || payload.lastDetailAt,
+    detailStatus: row.detail_status || payload.detailStatus,
+    detailError: row.detail_error || payload.detailError,
+    ...(dossier ? { dossier } : {}),
   };
+}
+
+function inferLiveSourceItem(candidate: SourceCandidate): boolean | null {
+  if (!candidate.endsAt) return null;
+  const endsAt = new Date(candidate.endsAt).getTime();
+  if (!Number.isFinite(endsAt)) return null;
+  return endsAt > Date.now();
+}
+
+function boolToIntOrNull(value: unknown): number | null {
+  if (value === true) return 1;
+  if (value === false) return 0;
+  return null;
+}
+
+function boolFromInt(value: unknown): boolean | undefined {
+  if (value === 1 || value === true) return true;
+  if (value === 0 || value === false) return false;
+  return undefined;
+}
+
+function numberOrUndefined(value: unknown): number | undefined {
+  const parsed = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function centsFromDollars(value: number | undefined): number | undefined {
+  return Number.isFinite(value) && value !== undefined ? Math.round(value * 100) : undefined;
 }
 
 function runnerTaskFromRow(row: RunnerTaskRow): RunnerTaskRecord {

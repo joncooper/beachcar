@@ -22,7 +22,7 @@ import { jsonResponse } from "./http";
 import { prewarmImportedImages } from "./image-cache";
 import { mcpProtectedResourceMetadataEndpoint, mcpWwwAuthenticateHeader } from "./oauth-metadata";
 import { searchBringATrailerCache } from "./source-cache";
-import type { SourceCandidate } from "./workflows/source-discovery";
+import type { SourceCandidate } from "./sources/types";
 
 type JsonRpcId = string | number | null;
 
@@ -564,6 +564,13 @@ function publicCandidate(candidate: SourceCandidate): Record<string, unknown> {
     bid: candidate.bid,
     total: candidate.total,
     location: candidate.location,
+    locationRaw: candidate.locationRaw,
+    locationCity: candidate.locationCity,
+    locationRegion: candidate.locationRegion,
+    locationCountry: candidate.locationCountry,
+    distanceMiles: candidate.distanceMiles,
+    locationStatus: candidate.locationStatus,
+    missingData: candidate.missingData,
     timeLeft: candidate.timeLeft,
     bids: candidate.bids,
     bidders: candidate.bidders,
@@ -580,6 +587,7 @@ function candidateWarnings(listing: ReturnType<typeof normalizeListing>, index: 
   if (!listing.title || listing.title === "Untitled listing") warnings.push(`listings[${index}].title is missing`);
   if (!listing.why) warnings.push(`listings[${index}].why is empty`);
   if (!listing.concerns) warnings.push(`listings[${index}].concerns is empty`);
+  if (!listing.location) warnings.push(`listings[${index}].location is missing`);
   if (!listing.images.length) warnings.push(`listings[${index}].images is empty`);
   return warnings;
 }

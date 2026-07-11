@@ -405,6 +405,7 @@ private struct ProfileOnboardingView: View {
   @State private var avoidNotes: String
   @State private var bringATrailerEnabled: Bool
   @State private var carsAndBidsEnabled: Bool
+  @State private var hemmingsEnabled: Bool
   @State private var marketplaceEnabled: Bool
   @State private var maxDistanceMiles: String
   @State private var sourceBudget: String
@@ -426,6 +427,7 @@ private struct ProfileOnboardingView: View {
     _avoidNotes = State(initialValue: "Major rust, salvage titles, huge lifts, fragile projects, or over-budget icons.")
     _bringATrailerEnabled = State(initialValue: true)
     _carsAndBidsEnabled = State(initialValue: true)
+    _hemmingsEnabled = State(initialValue: false)
     _marketplaceEnabled = State(initialValue: false)
     _maxDistanceMiles = State(initialValue: "750")
     _sourceBudget = State(initialValue: "")
@@ -455,6 +457,7 @@ private struct ProfileOnboardingView: View {
           AccountPreferenceSection(title: "Sources") {
             Toggle("Bring a Trailer", isOn: $bringATrailerEnabled)
             Toggle("Cars & Bids", isOn: $carsAndBidsEnabled)
+            Toggle("Hemmings", isOn: $hemmingsEnabled)
             Toggle("Marketplace", isOn: $marketplaceEnabled)
             AccountField(title: "Max miles", text: $maxDistanceMiles, keyboard: .numberPad)
             AccountField(title: "Source cap", text: $sourceBudget, keyboard: .decimalPad)
@@ -519,6 +522,7 @@ private struct ProfileOnboardingView: View {
       sources: [
         sourceSetting(source: "bringatrailer", enabled: bringATrailerEnabled, noReserveOnly: noReserveOnly, browserRunner: false, maxDistanceMiles: maxDistanceValue),
         sourceSetting(source: "carsandbids", enabled: carsAndBidsEnabled, noReserveOnly: false, browserRunner: browserRunner, maxDistanceMiles: maxDistanceValue),
+        sourceSetting(source: "hemmings", enabled: hemmingsEnabled, noReserveOnly: false, browserRunner: browserRunner, maxDistanceMiles: maxDistanceValue),
         sourceSetting(source: "marketplace", enabled: marketplaceEnabled, noReserveOnly: false, browserRunner: browserRunner, maxDistanceMiles: maxDistanceValue ?? 150),
       ]
     )

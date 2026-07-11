@@ -11,15 +11,18 @@ import {
   markAgentRunFailed,
   markAgentRunPublished,
   markAgentRunRunning,
+  upsertSourceCache,
   type UserScope,
 } from "../db";
 import { prewarmImportedImages } from "../image-cache";
+import { searchBringATrailerCache } from "../source-cache";
 import { createAiGatewayCandidateScorer } from "./ai-gateway-scoring";
 import {
   discoverAndScoreCandidates,
   SOURCE_DISCOVERY_PUBLISHER,
   type DiscoveryContext,
   type DiscoverySourceSetting,
+  type SourceCandidate,
   type SourceDiscoveryCheck,
 } from "./source-discovery";
 
@@ -80,6 +83,7 @@ export class BeachcarRunWorkflow extends AgentWorkflow<BeachcarAgent, BeachcarRu
           enabledSources: (user.sourceSettings || []).filter((setting) => setting.enabled).map((setting) => setting.source),
           sourceSettings: discoverySourceSettings(user.sourceSettings || []),
           feedbackCount: feedback.counts.total,
+          feedbackSteering: feedback.steering,
           latestRunId: latestRun?.id || null,
         } satisfies DiscoveryContext;
       });
@@ -92,11 +96,20 @@ export class BeachcarRunWorkflow extends AgentWorkflow<BeachcarAgent, BeachcarRu
           mode: context.aiMode === "managed" || context.aiMode === "byok" ? context.aiMode : null,
           gatewayKeyRef: context.gatewayKeyRef,
         });
-        return discoverAndScoreCandidates(context, params, { aiScorer });
+        return discoverAndScoreCandidates(context, params, {
+          aiScorer,
+          sourceCache: {
+            searchBringATrailer: (input) => searchBringATrailerCache(this.env.DB, input),
+          },
+        });
       });
 
-      const runnerTasks = await step.do("queue blocked-source runner tasks", async () => {
-        return queueBlockedSourceRunnerTasks(this.env, params, context, draft.blockedSources);
+      const runnerTasks = await step.do("queue source runner tasks", async () => {
+        return queueSourceRunnerTasks(this.env, params, context, draft.checkedSources);
+      });
+
+      const sourceCacheUpdates = await step.do("refresh source cache from finalists", async () => {
+        return cacheFinalistSourceCandidates(this.env, draft.cacheableCandidates);
       });
       await this.reportProgress({
         stage: "discovery",
@@ -128,6 +141,7 @@ export class BeachcarRunWorkflow extends AgentWorkflow<BeachcarAgent, BeachcarRu
             fallbackUsed: draft.fallbackUsed,
             rawCandidateCount: draft.rawCandidateCount,
             aiScoring: draft.aiScoring,
+            sourceCacheUpdates,
             runnerTasks,
           },
           listings: draft.listings,
@@ -201,6 +215,38 @@ export class BeachcarRunWorkflow extends AgentWorkflow<BeachcarAgent, BeachcarRu
   }
 }
 
+async function cacheFinalistSourceCandidates(
+  env: Env,
+  candidates: SourceCandidate[],
+): Promise<Array<{ source: string; status: "ok" | "skipped" | "failed"; candidateCount: number; newItemCount?: number; error?: string }>> {
+  const bringATrailer = candidates.filter((candidate) => candidate.source === "bringatrailer");
+  if (!bringATrailer.length) return [{ source: "bringatrailer", status: "skipped", candidateCount: 0 }];
+  try {
+    const result = await upsertSourceCache(env.DB, {
+      source: "bringatrailer",
+      sourceUrl: "workflow-finalists",
+      candidates: bringATrailer,
+    });
+    return [
+      {
+        source: result.source,
+        status: "ok",
+        candidateCount: result.itemCount,
+        newItemCount: result.newItemCount,
+      },
+    ];
+  } catch (error) {
+    return [
+      {
+        source: "bringatrailer",
+        status: "failed",
+        candidateCount: bringATrailer.length,
+        error: error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240),
+      },
+    ];
+  }
+}
+
 function runIdForAgentRun(agentRunId: string): string {
   return `run-from-${agentRunId.replace(/[^0-9a-z-]/gi, "-").toLowerCase()}`;
 }
@@ -251,24 +297,27 @@ function stringProfileValue(profile: Record<string, unknown>, key: string, fallb
   return typeof value === "string" && value.trim() ? value : fallback;
 }
 
-async function queueBlockedSourceRunnerTasks(
+const BROWSER_RUNNER_SOURCES = new Set(["carsandbids", "hemmings", "marketplace"]);
+
+async function queueSourceRunnerTasks(
   env: Env,
   params: BeachcarRunWorkflowParams,
   context: DiscoveryContext,
-  blockedSources: SourceDiscoveryCheck[],
+  checkedSources: SourceDiscoveryCheck[],
 ): Promise<Array<{ id: string; source: string; kind: string; status: string }>> {
-  const taskable = blockedSources.filter((source) => source.status === "blocked");
+  const taskable = queueableRunnerSourceChecks(context, checkedSources);
   const tasks = [];
   for (const source of taskable) {
+    const sourceId = source.source.trim().toLowerCase();
     const task = await createRunnerTask(env.DB, {
       userId: params.userId,
       agentRunId: params.runId,
-      kind: source.source === "carsandbids" || source.source === "marketplace" ? "browser_source" : "source_discovery",
-      source: source.source,
-      priority: source.source === "carsandbids" ? 80 : 50,
+      kind: BROWSER_RUNNER_SOURCES.has(sourceId) ? "browser_source" : "source_discovery",
+      source: sourceId,
+      priority: sourcePriority(sourceId),
       input: {
         source,
-        sourceSettings: sourceSettingsForSource(context, source.source),
+        sourceSettings: sourceSettingsForSource(context, sourceId),
         profile: profileSummary(context),
         tasteNotes: context.tasteNotes,
         avoidNotes: context.avoidNotes,
@@ -285,4 +334,49 @@ async function queueBlockedSourceRunnerTasks(
     tasks.push({ id: task.id, source: task.source, kind: task.kind, status: task.status });
   }
   return tasks;
+}
+
+function queueableRunnerSourceChecks(context: DiscoveryContext, checkedSources: SourceDiscoveryCheck[]): SourceDiscoveryCheck[] {
+  const bySource = new Map<string, SourceDiscoveryCheck>();
+  for (const check of checkedSources) {
+    const source = check.source.trim().toLowerCase();
+    if (check.status !== "blocked" || bySource.has(source)) continue;
+    bySource.set(source, { ...check, source });
+  }
+
+  for (const setting of context.sourceSettings || []) {
+    const source = setting.source.trim().toLowerCase();
+    if (!setting.enabled || !BROWSER_RUNNER_SOURCES.has(source) || setting.settings.browserRunner !== true || bySource.has(source)) {
+      continue;
+    }
+    const existing = checkedSources.find((check) => check.source.trim().toLowerCase() === source);
+    bySource.set(source, {
+      ...(existing || {}),
+      source,
+      site: existing?.site || siteNameForSource(source),
+      status: "skipped",
+      label: existing?.label,
+      url: existing?.url,
+      candidateCount: existing?.candidateCount || 0,
+      checkedAt: existing?.checkedAt || new Date().toISOString(),
+      message: "Browser runner is enabled for this source, so a browser-source task was queued to supplement Worker fetch results.",
+      blockedUrls: existing?.blockedUrls,
+    });
+  }
+
+  return [...bySource.values()].sort((a, b) => sourcePriority(b.source) - sourcePriority(a.source));
+}
+
+function siteNameForSource(source: string): string {
+  if (source === "carsandbids") return "Cars & Bids";
+  if (source === "hemmings") return "Hemmings";
+  if (source === "marketplace") return "Marketplace-style sources";
+  if (source === "bringatrailer") return "Bring a Trailer";
+  return source;
+}
+
+function sourcePriority(source: string): number {
+  if (source === "carsandbids") return 80;
+  if (source === "hemmings") return 60;
+  return 50;
 }

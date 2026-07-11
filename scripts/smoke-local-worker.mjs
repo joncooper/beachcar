@@ -3,13 +3,15 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 await loadEnvFile(resolve(".dev.vars"));
+await loadEnvFile(resolve(".env.local"));
+await loadWranglerVars(resolve("wrangler.jsonc"));
 await loadEnvFile(resolve(".publish.env"));
 
 const baseUrl = (process.env.AUCTION_WATCH_URL || "http://127.0.0.1:8787").replace(/\/+$/, "");
 const publishToken = process.env.PUBLISH_TOKEN || "";
 const smokeEmail = firstEmail(process.env.SMOKE_TEST_EMAIL, process.env.BOOTSTRAP_OWNER_EMAILS, process.env.ALLOWED_EMAILS, process.env.ALLOWED_EMAIL, "you@example.com");
-const pollAttempts = numberFromEnv("SMOKE_WORKFLOW_POLLS", 60);
-const pollDelayMs = numberFromEnv("SMOKE_WORKFLOW_POLL_MS", 300);
+const pollAttempts = numberFromEnv("SMOKE_WORKFLOW_POLLS", 180);
+const pollDelayMs = numberFromEnv("SMOKE_WORKFLOW_POLL_MS", 500);
 
 if (!publishToken) {
   fail("Set PUBLISH_TOKEN in the environment, .dev.vars, or .publish.env before running the local Worker smoke test.");
@@ -35,7 +37,7 @@ const profilePayload = {
     tasteNotes: "workflow smoke likes simple beach-town cars",
     avoidNotes: "rust and salvage",
     lanes: ["family", "solo", "curiosity"],
-    sources: ["bringatrailer", "carsandbids"],
+    sources: ["bringatrailer", "carsandbids", "hemmings"],
     sourcePreferences: [
       {
         source: "bringatrailer",
@@ -46,6 +48,11 @@ const profilePayload = {
         source: "carsandbids",
         enabled: true,
         settings: { maxDistanceMiles: 750, maxBudgetCents: 3200000, noReserveOnly: false, browserRunner: true },
+      },
+      {
+        source: "hemmings",
+        enabled: true,
+        settings: { maxDistanceMiles: 750, maxBudgetCents: 3200000, noReserveOnly: false, browserRunner: true, maxSeedPages: 1 },
       },
     ],
     notifications: {
@@ -73,6 +80,11 @@ const ownerSources = await requestJson("/api/source-settings", {
         enabled: true,
         settings: { maxDistanceMiles: 750, maxBudgetCents: 3200000, noReserveOnly: false, browserRunner: true, searchNotes: "small 4x4" },
       },
+      {
+        source: "hemmings",
+        enabled: true,
+        settings: { maxDistanceMiles: 750, maxBudgetCents: 3200000, noReserveOnly: false, browserRunner: true, searchNotes: "Suzuki Samurai, VW Thing", maxSeedPages: 1 },
+      },
       { source: "marketplace", enabled: false, settings: { maxDistanceMiles: 150, browserRunner: true } },
     ],
   },
@@ -85,6 +97,10 @@ assert(
 assert(
   ownerSources.sourceSettings?.some((setting) => setting.source === "carsandbids" && setting.settings?.browserRunner === true),
   "Expected Cars & Bids browser-runner preference to round-trip.",
+);
+assert(
+  ownerSources.sourceSettings?.some((setting) => setting.source === "hemmings" && setting.enabled && setting.settings?.browserRunner === true),
+  "Expected Hemmings browser-runner preference to round-trip.",
 );
 
 const managed = await requestJson("/api/ai-settings", {
@@ -140,12 +156,17 @@ assert(
     latestRun.sourceSummary.runnerTasks.some((task) => task.source === "carsandbids" && task.status === "queued"),
   "Expected blocked Cars & Bids source to create a queued runner task.",
 );
-const nextRunnerTask = await requestJson("/api/admin/runner-tasks/next", { admin: true });
+assert(
+  Array.isArray(latestRun.sourceSummary?.runnerTasks) &&
+    latestRun.sourceSummary.runnerTasks.some((task) => task.source === "hemmings" && task.status === "queued"),
+  "Expected blocked Hemmings source to create a queued runner task.",
+);
+const nextRunnerTask = await requestJson(`/api/admin/runner-tasks/next?agentRunId=${encodeURIComponent(agentRun.id)}`, { admin: true });
 assert(nextRunnerTask.task?.source === "carsandbids", "Expected the next runner task to target Cars & Bids.");
 const claimedRunnerTask = await requestJson("/api/admin/runner-tasks/claim", {
   admin: true,
   method: "POST",
-  body: { runnerId: "local-smoke-container-runner" },
+  body: { agentRunId: agentRun.id, runnerId: "local-smoke-container-runner" },
 });
 assert(claimedRunnerTask.task?.status === "running", "Expected runner task claim to mark the task running.");
 assert(claimedRunnerTask.task?.agentRunId === agentRun.id, "Expected runner task to remain linked to the owner agent run.");
@@ -157,8 +178,31 @@ const completedRunnerTask = await requestJson(`/api/admin/runner-tasks/${encodeU
     runnerId: "local-smoke-container-runner",
     result: {
       runtime: "local-smoke",
-      status: "blocked_without_browser_session",
-      normalizedCandidates: [],
+      status: "ok",
+      normalizedCandidates: [
+        {
+          section: "Runner imports",
+          lane: "curiosity",
+          site: "Cars & Bids",
+          source: "carsandbids",
+          title: "1988 Suzuki Samurai 4x4 Local Runner Smoke",
+          url: `https://carsandbids.com/auctions/local-smoke-${claimedRunnerTask.task.id}`,
+          bid: "$8,800",
+          bidCents: 880000,
+          total: "$9,240 incl. buyer fee estimate",
+          location: "Portland, ME",
+          locationRaw: "Portland, ME",
+          locationCity: "Portland",
+          locationRegion: "ME",
+          locationCountry: "US",
+          locationStatus: "ok",
+          timeLeft: "runner smoke",
+          why: "Synthetic local runner candidate proving browser-source imports merge into published runs.",
+          concerns: "Synthetic smoke listing; do not treat as a real auction.",
+          missingData: [],
+          images: [],
+        },
+      ],
     },
     aiUsage: {
       provider: "local-simulator",
@@ -171,6 +215,95 @@ const completedRunnerTask = await requestJson(`/api/admin/runner-tasks/${encodeU
   },
 });
 assert(completedRunnerTask.task?.status === "completed", "Expected runner task completion to persist.");
+assert(completedRunnerTask.merge?.status === "merged", `Expected runner task result to merge into the published run; received ${completedRunnerTask.merge?.status || "(missing)"}.`);
+assert(completedRunnerTask.merge?.importedCount === 1, `Expected one runner candidate to import; received ${completedRunnerTask.merge?.importedCount ?? "(missing)"}.`);
+assert(completedRunnerTask.merge?.rejectedCount === 0, `Expected no runner candidate rejections; received ${completedRunnerTask.merge?.rejectedCount ?? "(missing)"}.`);
+const latestAfterRunnerMerge = await requestJson("/api/runs/latest");
+const runnerListing = latestAfterRunnerMerge.listings?.find((listing) => listing.url === `https://carsandbids.com/auctions/local-smoke-${claimedRunnerTask.task.id}`);
+assert(runnerListing, "Expected merged Cars & Bids runner candidate to appear in the latest run listings.");
+assert(runnerListing.location === "Portland, ME", `Expected runner candidate location to round-trip; received ${runnerListing.location || "(missing)"}.`);
+assert(runnerListing.locationCity === "Portland", `Expected runner candidate locationCity to round-trip; received ${runnerListing.locationCity || "(missing)"}.`);
+assert(runnerListing.locationRegion === "ME", `Expected runner candidate locationRegion to round-trip; received ${runnerListing.locationRegion || "(missing)"}.`);
+assert(runnerListing.locationStatus === "ok", `Expected runner candidate locationStatus ok; received ${runnerListing.locationStatus || "(missing)"}.`);
+assert(
+  latestAfterRunnerMerge.sourceSummary?.runnerTasks?.some(
+    (task) => task.id === claimedRunnerTask.task.id && task.mergeStatus === "merged" && task.importedCount === 1 && task.rejectedCount === 0,
+  ),
+  "Expected source summary runner task diagnostics to reflect the successful merge.",
+);
+
+const claimedHemmingsRunnerTask = await requestJson("/api/admin/runner-tasks/claim", {
+  admin: true,
+  method: "POST",
+  body: { agentRunId: agentRun.id, runnerId: "local-smoke-container-runner" },
+});
+assert(claimedHemmingsRunnerTask.task?.source === "hemmings", `Expected the second runner task to target Hemmings; received ${claimedHemmingsRunnerTask.task?.source || "(missing)"}.`);
+assert(claimedHemmingsRunnerTask.task?.status === "running", "Expected Hemmings runner task claim to mark the task running.");
+assert(claimedHemmingsRunnerTask.task?.input?.sourceSettings?.browserRunner === true, "Expected Hemmings runner task input to include source-specific settings.");
+const completedHemmingsRunnerTask = await requestJson(`/api/admin/runner-tasks/${encodeURIComponent(claimedHemmingsRunnerTask.task.id)}/complete`, {
+  admin: true,
+  method: "POST",
+  body: {
+    runnerId: "local-smoke-container-runner",
+    result: {
+      runtime: "local-smoke",
+      status: "ok",
+      normalizedCandidates: [
+        {
+          section: "Runner imports",
+          lane: "family",
+          site: "Hemmings",
+          source: "hemmings",
+          title: "1987 Suzuki Samurai JX 4x4 Local Runner Smoke",
+          url: `https://www.hemmings.com/classifieds/listing/local-smoke-${claimedHemmingsRunnerTask.task.id}`,
+          bid: "$12,500",
+          bidCents: 1250000,
+          total: "$12,500 asking",
+          location: "Charleston, SC",
+          locationRaw: "Charleston, SC",
+          locationCity: "Charleston",
+          locationRegion: "SC",
+          locationCountry: "US",
+          locationStatus: "ok",
+          timeLeft: "runner smoke",
+          why: "Synthetic local Hemmings runner candidate proving browser-source imports merge into published runs.",
+          concerns: "Synthetic smoke listing; do not treat as a real listing.",
+          missingData: [],
+          images: [],
+        },
+      ],
+    },
+    aiUsage: {
+      provider: "local-simulator",
+      model: "none",
+      operation: "runner_task:browser_source",
+      status: "cached",
+      costMicros: 0,
+      metadata: { smoke: true, source: "hemmings" },
+    },
+  },
+});
+assert(completedHemmingsRunnerTask.task?.status === "completed", "Expected Hemmings runner task completion to persist.");
+assert(completedHemmingsRunnerTask.merge?.status === "merged", `Expected Hemmings runner task result to merge into the published run; received ${completedHemmingsRunnerTask.merge?.status || "(missing)"}.`);
+assert(completedHemmingsRunnerTask.merge?.importedCount === 1, `Expected one Hemmings runner candidate to import; received ${completedHemmingsRunnerTask.merge?.importedCount ?? "(missing)"}.`);
+assert(completedHemmingsRunnerTask.merge?.rejectedCount === 0, `Expected no Hemmings runner candidate rejections; received ${completedHemmingsRunnerTask.merge?.rejectedCount ?? "(missing)"}.`);
+const latestAfterHemmingsRunnerMerge = await requestJson("/api/runs/latest");
+const hemmingsRunnerListing = latestAfterHemmingsRunnerMerge.listings?.find((listing) => listing.url === `https://www.hemmings.com/classifieds/listing/local-smoke-${claimedHemmingsRunnerTask.task.id}`);
+assert(hemmingsRunnerListing, "Expected merged Hemmings runner candidate to appear in the latest run listings.");
+assert(hemmingsRunnerListing.location === "Charleston, SC", `Expected Hemmings runner candidate location to round-trip; received ${hemmingsRunnerListing.location || "(missing)"}.`);
+assert(hemmingsRunnerListing.locationCity === "Charleston", `Expected Hemmings runner candidate locationCity to round-trip; received ${hemmingsRunnerListing.locationCity || "(missing)"}.`);
+assert(hemmingsRunnerListing.locationRegion === "SC", `Expected Hemmings runner candidate locationRegion to round-trip; received ${hemmingsRunnerListing.locationRegion || "(missing)"}.`);
+assert(hemmingsRunnerListing.locationStatus === "ok", `Expected Hemmings runner candidate locationStatus ok; received ${hemmingsRunnerListing.locationStatus || "(missing)"}.`);
+assert(
+  latestAfterHemmingsRunnerMerge.sourceSummary?.runnerTasks?.some(
+    (task) => task.id === claimedHemmingsRunnerTask.task.id && task.mergeStatus === "merged" && task.importedCount === 1 && task.rejectedCount === 0,
+  ),
+  "Expected source summary runner task diagnostics to reflect the successful Hemmings merge.",
+);
+assert(
+  latestAfterHemmingsRunnerMerge.listings.every((listing) => listing.location || listing.locationStatus === "missing" || listing.missingData?.includes("location")),
+  "Expected every latest-run listing to expose a location or explicit missing-location diagnostic.",
+);
 const firstDeckImage = latestRun.listings.find((listing) => Array.isArray(listing.images) && listing.images[0]?.startsWith("/api/images/"))?.images?.[0];
 assert(firstDeckImage, "Expected Workflow-published source listings to use local image variant URLs.");
 const warmedImage = await rawBinaryRequest(firstDeckImage);
@@ -645,6 +778,20 @@ async function loadEnvFile(path) {
   }
 }
 
+async function loadWranglerVars(path) {
+  const text = await readOptional(path);
+  if (!text) return;
+  try {
+    const config = JSON.parse(stripJsonComments(text));
+    const vars = config?.vars && typeof config.vars === "object" ? config.vars : {};
+    for (const [key, value] of Object.entries(vars)) {
+      if (typeof value === "string" && key && !process.env[key]) process.env[key] = value;
+    }
+  } catch {
+    // Smoke should fail on endpoint assertions, not on optional fallback env parsing.
+  }
+}
+
 async function readResponse(response) {
   const contentType = response.headers.get("content-type") || "";
   if (contentType.includes("application/json")) return response.json();
@@ -689,6 +836,39 @@ function unquote(value) {
     return value.slice(1, -1);
   }
   return value;
+}
+
+function stripJsonComments(text) {
+  let output = "";
+  let inString = false;
+  let quote = "";
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+    if (inString) {
+      output += char;
+      if (char === "\\" && next) {
+        output += next;
+        index += 1;
+      } else if (char === quote) {
+        inString = false;
+      }
+    } else if (char === '"' || char === "'") {
+      inString = true;
+      quote = char;
+      output += char;
+    } else if (char === "/" && next === "/") {
+      while (index < text.length && text[index] !== "\n") index += 1;
+      output += "\n";
+    } else if (char === "/" && next === "*") {
+      index += 2;
+      while (index < text.length && !(text[index] === "*" && text[index + 1] === "/")) index += 1;
+      index += 1;
+    } else {
+      output += char;
+    }
+  }
+  return output;
 }
 
 function formatBody(body) {

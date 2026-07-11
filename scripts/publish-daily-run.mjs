@@ -8,6 +8,7 @@ const dailyJson = resolve(process.env.DAILY_JSON || "examples/daily-run.sample.j
 const reportMarkdown = process.env.REPORT_MARKDOWN ? await readOptional(resolve(process.env.REPORT_MARKDOWN)) : null;
 const baseUrl = (process.env.AUCTION_WATCH_URL || "").replace(/\/+$/, "");
 const publishToken = process.env.PUBLISH_TOKEN || "";
+const userId = (process.env.BEACHCAR_USER_ID || "").trim();
 const accessClientId = process.env.CF_ACCESS_CLIENT_ID || "";
 const accessClientSecret = process.env.CF_ACCESS_CLIENT_SECRET || "";
 const imageWarmVariants = parseVariantList(process.env.IMAGE_WARM_VARIANTS || "deck,thumb");
@@ -28,14 +29,17 @@ const listings = Array.isArray(raw) ? raw : raw.listings || raw.items || [];
 if (!Array.isArray(listings) || listings.length === 0) {
   fail(`${basename(dailyJson)} does not contain any listings.`);
 }
+const rawSourceSummary =
+  raw && typeof raw.sourceSummary === "object" && !Array.isArray(raw.sourceSummary) ? raw.sourceSummary : {};
 
 const payload = {
   generatedAt: process.env.GENERATED_AT || new Date().toISOString(),
   reportMarkdown,
   sourceSummary: {
+    ...rawSourceSummary,
     sourceFile: dailyJson,
     listingCount: listings.length,
-    publisher: "codex",
+    publisher: rawSourceSummary.publisher || "codex",
     imagePolicy: "copy-to-r2-v1",
   },
   listings,
@@ -51,8 +55,12 @@ const authHeaders = {
     : {}),
 };
 
-console.log(`Importing ${listings.length} listings into ${baseUrl}...`);
-const importResponse = await fetch(`${baseUrl}/api/admin/import`, {
+const importPath = userId ? `/api/admin/users/${encodeURIComponent(userId)}/runs/import` : "/api/admin/import";
+if (!userId) {
+  console.warn("BEACHCAR_USER_ID is not set; publishing through the legacy bootstrap-owner route.");
+}
+console.log(`Importing ${listings.length} listings into ${baseUrl}${userId ? ` for user ${userId}` : ""}...`);
+const importResponse = await fetch(`${baseUrl}${importPath}`, {
   method: "POST",
   headers: {
     ...authHeaders,

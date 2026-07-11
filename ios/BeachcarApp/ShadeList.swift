@@ -3,10 +3,34 @@ import SwiftUI
 enum ListFilter: String, CaseIterable, Identifiable {
   case all = "All"
   case family = "Family"
+  case solo = "Solo"
   case curiosity = "Curiosity"
-  case starred = "Starred"
+  case saved = "Saved"
+  case wildcard = "Wildcard"
+  case endingSoon = "Ending"
+  case imageReady = "Images"
+  case missingLocation = "No location"
 
   var id: String { rawValue }
+}
+
+enum ListSort: String, CaseIterable, Identifiable {
+  case rank = "Agent"
+  case endingSoon = "Ending soon"
+  case bid = "Bid"
+  case value = "Value"
+  case source = "Source"
+  case location = "Location"
+
+  var id: String { rawValue }
+}
+
+private struct ListDisplayRow: Identifiable {
+  let displayIndex: Int
+  let feedIndex: Int?
+  let car: AuctionListing
+
+  var id: String { car.id }
 }
 
 // "Today's finds" — pulls down from the top edge (follows finger), or via the
@@ -15,6 +39,8 @@ enum ListFilter: String, CaseIterable, Identifiable {
 struct ShadeListOverlay: View {
   @ObservedObject var controller: ShadeController
   let cars: [AuctionListing]
+  let feedCars: [AuctionListing]
+  let sourceSummary: RunSourceSummary?
   let feedbackByKey: [String: FeedbackRecord]
   let api: AuctionAPI
   let geo: FeedGeometry
@@ -27,18 +53,25 @@ struct ShadeListOverlay: View {
     return -geo.height
   }
 
-  private var rows: [(index: Int, car: AuctionListing)] {
+  private var rows: [ListDisplayRow] {
     cars.enumerated()
-      .map { (index: $0.offset, car: $0.element) }
-      .filter { row in
-        switch controller.listFilter {
-        case .all: true
-        case .family: row.car.lane == .family
-        case .curiosity: row.car.lane == .curiosity
-        case .starred:
-          feedbackByKey[row.car.key]?.action == .star || feedbackByKey[row.car.key]?.action == .like
-        }
+      .map { offset, car in
+        ListDisplayRow(
+          displayIndex: offset,
+          feedIndex: feedCars.firstIndex(where: { $0.key == car.key }),
+          car: car
+        )
       }
+      .filter(matchesScanControls)
+      .sorted(by: compareRows)
+  }
+
+  private var availableSources: [String] {
+    Array(Set(cars.map(\.site))).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+  }
+
+  private var searchText: String {
+    controller.listSearch.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
   }
 
   private var nLiked: Int { feedbackByKey.values.filter { $0.action == .like }.count }
@@ -58,11 +91,14 @@ struct ShadeListOverlay: View {
               .padding(.horizontal, 24).padding(.vertical, 48)
           } else {
             ForEach(rows, id: \.car.id) { row in
-              Button { controller.jump(to: row.index) } label: {
-                ListRow(car: row.car, index: row.index, isCurrent: row.index == controller.idx,
-                        feedback: feedbackByKey[row.car.key], api: api)
+              Button {
+                if let feedIndex = row.feedIndex { controller.jump(to: feedIndex) }
+              } label: {
+                ListRow(car: row.car, index: row.displayIndex, isCurrent: row.feedIndex == controller.idx,
+                        sourceHealth: sourceSummary?.health(for: row.car), feedback: feedbackByKey[row.car.key], api: api)
               }
                 .buttonStyle(.plain)
+                .disabled(row.feedIndex == nil)
                 .accessibilityIdentifier("shade-list-row-\(row.car.id)")
             }
           }
@@ -120,23 +156,200 @@ struct ShadeListOverlay: View {
   }
 
   private var filters: some View {
-    HStack(spacing: 7) {
-      ForEach(ListFilter.allCases) { f in
-        let on = controller.listFilter == f
-        Button { withAnimation(.easeOut(duration: 0.18)) { controller.listFilter = f } } label: {
-          Text(f.rawValue)
-            .font(.archivo(12, .extrabold))
-            .foregroundStyle(on ? BC.accent : BC.sub)
-            .padding(.horizontal, 13).padding(.vertical, 7)
-            .background(on ? BC.accent.opacity(0.14) : .clear, in: Capsule())
-            .overlay(Capsule().stroke(on ? BC.accent : BC.border, lineWidth: 1))
+    VStack(spacing: 9) {
+      HStack(spacing: 8) {
+        HStack(spacing: 7) {
+          Image(systemName: "magnifyingglass")
+            .font(.system(size: 12, weight: .bold))
+            .foregroundStyle(BC.muted)
+          TextField("Search", text: $controller.listSearch)
+            .font(.archivo(13, .semibold))
+            .foregroundStyle(BC.white)
+            .textInputAutocapitalization(.never)
+            .disableAutocorrection(true)
+            .accessibilityLabel("Search listings")
+            .accessibilityIdentifier("shade-list-search-field")
+          if !controller.listSearch.isEmpty {
+            Button {
+              controller.listSearch = ""
+            } label: {
+              Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(BC.muted)
+            }
+            .buttonStyle(.plain)
+          }
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("shade-filter-\(f.rawValue)")
+        .padding(.horizontal, 11)
+        .frame(height: 36)
+        .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(BC.border, lineWidth: 1))
+        .accessibilityElement(children: .contain)
+
+        sourceMenu
+        sortMenu
+        hiddenToggle
       }
-      Spacer(minLength: 0)
+      .padding(.horizontal, 16)
+
+      ScrollView(.horizontal, showsIndicators: false) {
+        HStack(spacing: 7) {
+          ForEach(ListFilter.allCases) { f in
+            let on = controller.listFilter == f
+            Button { withAnimation(.easeOut(duration: 0.18)) { controller.listFilter = f } } label: {
+              Text(f.rawValue)
+                .font(.archivo(12, .extrabold))
+                .foregroundStyle(on ? BC.accent : BC.sub)
+                .padding(.horizontal, 13).padding(.vertical, 7)
+                .background(on ? BC.accent.opacity(0.14) : .clear, in: Capsule())
+                .overlay(Capsule().stroke(on ? BC.accent : BC.border, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("shade-filter-\(f.rawValue)")
+          }
+        }
+        .padding(.horizontal, 16)
+      }
+      .scrollIndicators(.hidden)
     }
-    .padding(.horizontal, 16).padding(.bottom, 12)
+    .padding(.bottom, 12)
+  }
+
+  private var sourceMenu: some View {
+    Menu {
+      Button("All sources") { controller.listSource = "all" }
+      ForEach(availableSources, id: \.self) { source in
+        Button(source) { controller.listSource = source }
+      }
+    } label: {
+      compactControl(icon: "square.stack.3d.up.fill", text: controller.listSource == "all" ? "Source" : shortSourceLabel(controller.listSource))
+    }
+    .accessibilityIdentifier("shade-list-source-menu")
+  }
+
+  private var sortMenu: some View {
+    Menu {
+      ForEach(ListSort.allCases) { sort in
+        Button(sort.rawValue) { controller.listSort = sort }
+      }
+    } label: {
+      compactControl(icon: "arrow.up.arrow.down", text: controller.listSort.rawValue)
+    }
+    .accessibilityIdentifier("shade-list-sort-menu")
+  }
+
+  private var hiddenToggle: some View {
+    Button {
+      controller.listIncludeHidden.toggle()
+    } label: {
+      Image(systemName: controller.listIncludeHidden ? "eye.fill" : "eye")
+        .font(.system(size: 13, weight: .bold))
+        .foregroundStyle(controller.listIncludeHidden ? BC.accent : BC.sub)
+        .frame(width: 36, height: 36)
+        .background(controller.listIncludeHidden ? BC.accent.opacity(0.14) : Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(controller.listIncludeHidden ? BC.accent.opacity(0.45) : BC.border, lineWidth: 1))
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(controller.listIncludeHidden ? "Hide hidden listings" : "Show hidden listings")
+    .accessibilityIdentifier("shade-list-show-hidden")
+  }
+
+  private func compactControl(icon: String, text: String) -> some View {
+    HStack(spacing: 5) {
+      Image(systemName: icon)
+        .font(.system(size: 11, weight: .bold))
+      Text(text)
+        .font(.mono(9.5, bold: true))
+        .lineLimit(1)
+        .minimumScaleFactor(0.72)
+    }
+    .foregroundStyle(BC.sub)
+    .frame(width: 74, height: 36)
+    .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(BC.border, lineWidth: 1))
+  }
+
+  private func shortSourceLabel(_ source: String) -> String {
+    source
+      .replacingOccurrences(of: "Bring a Trailer", with: "BaT")
+      .replacingOccurrences(of: "Cars & Bids", with: "C&B")
+  }
+
+  private func matchesScanControls(_ row: ListDisplayRow) -> Bool {
+    let car = row.car
+    if controller.listSource != "all", car.site != controller.listSource { return false }
+    if !searchText.isEmpty {
+      let text = "\(car.title) \(car.site) \(car.displayLocationLabel) \(car.why) \(car.currentTake ?? "")".lowercased()
+      if !text.contains(searchText) { return false }
+    }
+
+    switch controller.listFilter {
+    case .all:
+      return true
+    case .family:
+      return car.lane == .family
+    case .solo:
+      return car.lane == .solo
+    case .curiosity:
+      return car.lane == .curiosity
+    case .saved:
+      return feedbackByKey[car.key]?.action == .star || feedbackByKey[car.key]?.action == .like
+    case .wildcard:
+      return car.isWildcard
+    case .endingSoon:
+      return car.endsSoon
+    case .imageReady:
+      return !car.displayImages.isEmpty
+    case .missingLocation:
+      return car.hasMissingLocation
+    }
+  }
+
+  private func compareRows(_ left: ListDisplayRow, _ right: ListDisplayRow) -> Bool {
+    switch controller.listSort {
+    case .rank:
+      return left.displayIndex < right.displayIndex
+    case .endingSoon:
+      return compareOptionalText(endSortValue(left.car), endSortValue(right.car), left.displayIndex, right.displayIndex)
+    case .bid:
+      let leftBid = left.car.bidNumber ?? Int.max
+      let rightBid = right.car.bidNumber ?? Int.max
+      if leftBid != rightBid { return leftBid < rightBid }
+      return left.displayIndex < right.displayIndex
+    case .value:
+      if left.car.valuePosition != right.car.valuePosition {
+        return left.car.valuePosition < right.car.valuePosition
+      }
+      return left.displayIndex < right.displayIndex
+    case .source:
+      let sourceOrder = left.car.site.localizedCaseInsensitiveCompare(right.car.site)
+      if sourceOrder != .orderedSame { return sourceOrder == .orderedAscending }
+      return left.displayIndex < right.displayIndex
+    case .location:
+      if let leftDistance = left.car.distanceMiles, let rightDistance = right.car.distanceMiles, leftDistance != rightDistance {
+        return leftDistance < rightDistance
+      }
+      if left.car.distanceMiles != nil { return true }
+      if right.car.distanceMiles != nil { return false }
+      return compareOptionalText(left.car.displayLocation, right.car.displayLocation, left.displayIndex, right.displayIndex)
+    }
+  }
+
+  private func endSortValue(_ car: AuctionListing) -> String? {
+    car.endsAt ?? car.ends
+  }
+
+  private func compareOptionalText(_ left: String?, _ right: String?, _ leftIndex: Int, _ rightIndex: Int) -> Bool {
+    switch (left, right) {
+    case let (l?, r?) where l != r:
+      return l.localizedCaseInsensitiveCompare(r) == .orderedAscending
+    case (_?, nil):
+      return true
+    case (nil, _?):
+      return false
+    default:
+      return leftIndex < rightIndex
+    }
   }
 }
 
@@ -144,6 +357,7 @@ private struct ListRow: View {
   let car: AuctionListing
   let index: Int
   let isCurrent: Bool
+  let sourceHealth: SourceHealthState?
   let feedback: FeedbackRecord?
   let api: AuctionAPI
 
@@ -176,6 +390,9 @@ private struct ListRow: View {
             .font(.archivo(15, .extrabold))
             .foregroundStyle(BC.white)
             .lineLimit(1)
+          if let sourceHealth {
+            SourceHealthBadge(state: sourceHealth, compact: true)
+          }
           if car.endsSoon {
             Text(car.shadeTime)
               .font(.mono(9, bold: true))
@@ -210,6 +427,7 @@ private struct ListRow: View {
   private var secondary: String {
     if let feedback { return feedback.action.label }
     if let upside = car.upsideLabel, let location = car.displayLocation { return upside + " · " + location }
+    if car.hasMissingLocation { return "Location missing" }
     return car.displayLocation ?? car.kindLabel
   }
 
@@ -229,7 +447,12 @@ private struct ListRow: View {
         ZStack { Rectangle().fill(BC.imageBg); Image(systemName: "photo").foregroundStyle(BC.muted) }
       }
     } else {
-      ZStack { Rectangle().fill(BC.imageBg); Image(systemName: "photo").foregroundStyle(BC.muted) }
+      ZStack {
+        Rectangle().fill(BC.imageBg)
+        Image(systemName: "photo.badge.exclamationmark").foregroundStyle(BC.muted)
+      }
+      .accessibilityElement(children: .combine)
+      .accessibilityLabel("No listing image")
     }
   }
 

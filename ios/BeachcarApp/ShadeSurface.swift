@@ -10,8 +10,9 @@ struct ShadeSurface: View {
 
   @StateObject private var controller = ShadeController()
   @AppStorage("shade.coachSeen.v1") private var coachSeen = false
+  @State private var undoDismissTask: Task<Void, Never>?
 
-  private var cars: [AuctionListing] { store.run?.listings ?? [] }
+  private var cars: [AuctionListing] { store.visibleListings }
   private var currentCar: AuctionListing? { cars.indices.contains(controller.idx) ? cars[controller.idx] : nil }
 
   var body: some View {
@@ -23,17 +24,20 @@ struct ShadeSurface: View {
           width: proxy.size.width,
           height: proxy.size.height + proxy.safeAreaInsets.top + proxy.safeAreaInsets.bottom
         ),
-        safeTop: proxy.safeAreaInsets.top
+        safeTop: proxy.safeAreaInsets.top,
+        safeBottom: proxy.safeAreaInsets.bottom
       )
       ZStack {
         BC.bg
 
         if store.isLoading && store.run == nil {
           ShadeLoadingView()
+          statusNotices(geo, belowChrome: false)
         } else if cars.isEmpty {
           ShadeEmptyView(hasRun: store.run != nil) {
             await store.load(tokenProvider: tokenProvider, cacheScope: cacheScope)
           }
+          statusNotices(geo, belowChrome: false)
         } else {
           feedLayer(geo)
           overlays(geo)
@@ -45,16 +49,18 @@ struct ShadeSurface: View {
       .accessibilityIdentifier("shade-surface")
     }
     .onAppear { configure() }
-    .onChange(of: cars.count) { _, count in controller.carCount = count }
+    .onChange(of: cars.map(\.key)) { _, _ in syncCars() }
+    .onChange(of: store.lastUndo?.listingKey) { _, listingKey in scheduleUndoDismiss(listingKey) }
+    .onDisappear { undoDismissTask?.cancel() }
   }
 
   // MARK: layers
 
   private func feedLayer(_ geo: FeedGeometry) -> some View {
     ZStack(alignment: .top) {
-      ShadeFeed(controller: controller, cars: cars, api: store.api, geo: geo)
+      ShadeFeed(controller: controller, cars: cars, sourceSummary: store.run?.sourceSummary, api: store.api, geo: geo)
       FeedChrome(controller: controller, cars: cars, geo: geo, onList: controller.openList)
-      statusPill(geo)
+      statusNotices(geo)
       if controller.showHint { coachMark(geo) }
     }
     // .top alignment pins the oversized paging column to the top (no center shift);
@@ -87,12 +93,32 @@ struct ShadeSurface: View {
       ShadeBurst(action: action).id(controller.burst)
     }
 
-    ShadeListOverlay(controller: controller, cars: cars, feedbackByKey: store.feedbackByKey, api: store.api, geo: geo)
+    ShadeListOverlay(
+      controller: controller,
+      cars: controller.listIncludeHidden ? store.orderedListings(includeHidden: true) : cars,
+      feedCars: cars,
+      sourceSummary: store.run?.sourceSummary,
+      feedbackByKey: store.feedbackByKey,
+      api: store.api,
+      geo: geo
+    )
 
     if let car = currentCar {
-      ShadeDossierOverlay(controller: controller, car: car, api: store.api, geo: geo) { note in
+      ShadeDossierOverlay(controller: controller, car: car, sourceSummary: store.run?.sourceSummary, api: store.api, geo: geo) { note in
         Task { _ = await store.submitPreferenceNote(note, listing: car, tokenProvider: tokenProvider) }
       }
+    }
+
+    if store.lastUndo != nil {
+      VStack {
+        Spacer()
+        UndoBar(label: "Saved feedback", undoLabel: "Undo") {
+          Task { await store.undo(tokenProvider: tokenProvider) }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, max(geo.safeBottom + 12, 22))
+      }
+      .transition(.move(edge: .bottom).combined(with: .opacity))
     }
   }
 
@@ -116,36 +142,83 @@ struct ShadeSurface: View {
     .transition(.opacity)
   }
 
-  @ViewBuilder
-  private func statusPill(_ geo: FeedGeometry) -> some View {
-    if let status = store.agentRun?.status, status == .queued || status == .running || status == .failed {
-      HStack(spacing: 7) {
-        Image(systemName: status == .failed ? "exclamationmark.triangle.fill" : "arrow.triangle.2.circlepath")
-          .font(.system(size: 11, weight: .bold))
-        Text(status == .failed ? "Run failed" : (status == .queued ? "Run queued" : "Workflow running"))
-          .font(.mono(10.5, bold: true))
+  private func statusNotices(_ geo: FeedGeometry, belowChrome: Bool = true) -> some View {
+    VStack(spacing: 6) {
+      if store.isUsingCachedRun {
+        statusNotice(
+          "Showing saved copy",
+          icon: "wifi.slash",
+          color: BC.star,
+          identifier: "shade-cached-banner"
+        )
       }
-      .foregroundStyle(status == .failed ? BC.danger : BC.star)
-      .padding(.horizontal, 11).padding(.vertical, 6)
-      .background(Color(hex: 0x080a0e).opacity(0.82), in: Capsule())
-      .overlay(Capsule().stroke((status == .failed ? BC.danger : BC.star).opacity(0.4), lineWidth: 1))
-      .padding(.top, geo.safeTop + geo.chromeHeight + 8)
-      .frame(maxHeight: .infinity, alignment: .top)
-      .allowsHitTesting(false)
+
+      if let error = store.errorMessage, !error.isEmpty {
+        statusNotice(
+          "Sync issue · \(error)",
+          icon: "exclamationmark.triangle.fill",
+          color: BC.danger,
+          identifier: "shade-error-banner"
+        )
+      }
+
+      let queuedCount = store.pendingPreferenceNotes.count
+      if queuedCount > 0 {
+        statusNotice(
+          "\(queuedCount) steering note\(queuedCount == 1 ? "" : "s") queued",
+          icon: "arrow.clockwise.circle.fill",
+          color: BC.sub,
+          identifier: "shade-queued-notes-banner"
+        )
+      }
+
+      if let status = store.agentRun?.status, status == .queued || status == .running || status == .failed {
+        statusNotice(
+          status == .failed ? "Run failed" : (status == .queued ? "Run queued" : "Workflow running"),
+          icon: status == .failed ? "exclamationmark.triangle.fill" : "arrow.triangle.2.circlepath",
+          color: status == .failed ? BC.danger : BC.star,
+          identifier: "shade-run-status-banner"
+        )
+      }
     }
+    .padding(.horizontal, 12)
+    .padding(.top, geo.safeTop + (belowChrome ? geo.chromeHeight + 8 : 16))
+    .frame(maxHeight: .infinity, alignment: .top)
+    .allowsHitTesting(false)
+  }
+
+  private func statusNotice(_ text: String, icon: String, color: Color, identifier: String) -> some View {
+    HStack(spacing: 7) {
+      Image(systemName: icon)
+        .font(.system(size: 11, weight: .bold))
+      Text(text)
+        .font(.mono(10.5, bold: true))
+        .lineLimit(2)
+        .minimumScaleFactor(0.82)
+    }
+    .foregroundStyle(color)
+    .padding(.horizontal, 11)
+    .padding(.vertical, 6)
+    .background(Color(hex: 0x080a0e).opacity(0.88), in: Capsule())
+    .overlay(Capsule().stroke(color.opacity(0.4), lineWidth: 1))
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel(text)
+    .accessibilityIdentifier(identifier)
   }
 
   // MARK: wiring
 
   private func configure() {
-    controller.carCount = cars.count
+    syncCars()
     controller.currentCarInfo = { [weak store] in
-      guard let list = store?.run?.listings, list.indices.contains(controller.idx) else { return nil }
+      guard let list = store?.visibleListings, list.indices.contains(controller.idx) else { return nil }
       let car = list[controller.idx]
       return (car.key, max(car.displayImages.count, 1))
     }
     controller.persist = { [weak store] action in
-      guard let store, let list = store.run?.listings, list.indices.contains(controller.idx) else { return }
+      guard let store else { return }
+      let list = store.visibleListings
+      guard list.indices.contains(controller.idx) else { return }
       let car = list[controller.idx]
       Task { await store.mark(action, listing: car, tokenProvider: tokenProvider) }
       coachSeen = true
@@ -172,6 +245,29 @@ struct ShadeSurface: View {
       }
     }
     #endif
+  }
+
+  private func syncCars() {
+    controller.carCount = cars.count
+    if cars.isEmpty {
+      controller.idx = 0
+    } else if controller.idx >= cars.count {
+      controller.idx = cars.count - 1
+    }
+  }
+
+  private func scheduleUndoDismiss(_ listingKey: String?) {
+    undoDismissTask?.cancel()
+    guard let listingKey else { return }
+    undoDismissTask = Task {
+      try? await Task.sleep(for: .seconds(4.5))
+      guard !Task.isCancelled else { return }
+      await MainActor.run {
+        withAnimation(.snappy(duration: 0.22)) {
+          store.clearUndo(ifListingKey: listingKey)
+        }
+      }
+    }
   }
 }
 

@@ -6,7 +6,8 @@ import {
   type SourceCacheStatus,
   type SourceCacheUpsertResult,
 } from "./db";
-import { parseBringATrailerRssFeed, type SourceCandidate } from "./workflows/source-discovery";
+import { parseBringATrailerRssFeed } from "./sources/bringatrailer";
+import type { SourceCandidate } from "./sources/types";
 
 export const bringATrailerRssFeedUrl = "https://bringatrailer.com/auctions/feed/";
 

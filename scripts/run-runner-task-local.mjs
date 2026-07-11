@@ -72,8 +72,12 @@ async function runExecutor(task) {
 }
 
 async function runLocalTask(task) {
-  if (browserRunner && normalizeSource(task.source) === "carsandbids") {
+  const source = normalizeSource(task.source);
+  if (browserRunner && source === "carsandbids") {
     return runCarsAndBidsBrowserTask(task);
+  }
+  if (browserRunner && source === "hemmings") {
+    return runHemmingsBrowserTask(task);
   }
   return deterministicResult(task);
 }
@@ -122,6 +126,59 @@ async function runCarsAndBidsBrowserTask(task) {
       (status === "completed"
         ? `Cars & Bids browser scrape completed with ${listings.length} normalized candidate(s).`
         : "Cars & Bids browser scrape did not produce candidates."),
+    outputPath: outPath,
+    debugPath,
+    sourceSettings,
+    normalizedCandidates: listings,
+  };
+}
+
+async function runHemmingsBrowserTask(task) {
+  const safeTaskId = slugify(task.id || `task-${Date.now()}`);
+  const outPath = resolve(process.env.HEMMINGS_OUT || `outputs/hemmings-runner-${safeTaskId}.json`);
+  const debugPath = resolve(process.env.HEMMINGS_DEBUG_OUT || `.tmp/hemmings-runner-${safeTaskId}.json`);
+  const sourceSettings = normalizeObject(task.input?.sourceSettings);
+  const runner = normalizeObject(task.input?.runner);
+  const blockedUrls = Array.isArray(task.input?.source?.blockedUrls) ? task.input.source.blockedUrls.filter(Boolean).join(",") : "";
+  const scrapeEnv = {
+    ...process.env,
+    HEMMINGS_OUT: outPath,
+    HEMMINGS_DEBUG_OUT: debugPath,
+    HEMMINGS_SOURCE_NOTES: String(sourceSettings.searchNotes || task.input?.tasteNotes || ""),
+    HEMMINGS_SEED_URLS: process.env.HEMMINGS_SEED_URLS || blockedUrls,
+    HEMMINGS_MAX_DETAILS: String(runner.maxDetails || sourceSettings.maxDetails || process.env.HEMMINGS_MAX_DETAILS || 6),
+  };
+
+  let runError = null;
+  try {
+    await execFileAsync("bun", ["scripts/scrape-hemmings.mjs"], {
+      cwd: process.cwd(),
+      env: scrapeEnv,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+  } catch (error) {
+    runError = error;
+  }
+
+  const scrape = await readJsonOptional(outPath);
+  if (!scrape) {
+    throw runError || new Error(`Hemmings scraper did not write ${outPath}`);
+  }
+
+  const listings = Array.isArray(scrape.listings) ? scrape.listings : [];
+  const status = scrape.status === "ok" ? "completed" : scrape.status || "blocked";
+  return {
+    runner: runnerId,
+    runtime: "local-browser",
+    mode: "hemmings-browser",
+    source: task.source,
+    status,
+    checkedAt: new Date().toISOString(),
+    message:
+      scrape.message ||
+      (status === "completed"
+        ? `Hemmings browser scrape completed with ${listings.length} normalized candidate(s).`
+        : "Hemmings browser scrape did not produce candidates."),
     outputPath: outPath,
     debugPath,
     sourceSettings,

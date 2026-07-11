@@ -34,6 +34,10 @@ final class ShadeController: ObservableObject {
   @Published var dFlyRotation: Double = 0
   @Published var listOpen = false
   @Published var listFilter: ListFilter = .all
+  @Published var listSort: ListSort = .rank
+  @Published var listSearch = ""
+  @Published var listSource = "all"
+  @Published var listIncludeHidden = false
 
   // Ephemerals
   @Published var toast: ToastState?
@@ -230,7 +234,8 @@ final class ShadeController: ObservableObject {
     toastWork = tw
     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: tw)
 
-    if advance {
+    let shouldAdvance = advance && action != .hide && action != .avoid
+    if shouldAdvance {
       advanceWork?.cancel()
       let aw = DispatchWorkItem { [weak self] in self?.advanceWrapping() }
       advanceWork = aw
@@ -249,6 +254,18 @@ final class ShadeController: ObservableObject {
     dossierBodyThrowing = false
     showHint = false
     withAnimation(.spring(duration: 0.3)) { dossierOpen = true }
+  }
+
+  func closeDossier() {
+    flyWork?.cancel()
+    withAnimation(.spring(duration: 0.28)) {
+      dossierOpen = false
+      dFly = nil
+      dFlyRotation = 0
+      dThrow = .zero
+      dDragging = false
+      dossierBodyThrowing = false
+    }
   }
 
   func dossierDragChanged(_ value: DragGesture.Value) {
@@ -413,6 +430,7 @@ final class ShadeController: ObservableObject {
 struct FeedGeometry {
   let size: CGSize
   let safeTop: CGFloat
+  let safeBottom: CGFloat
   var width: CGFloat { size.width }
   var height: CGFloat { size.height }
 

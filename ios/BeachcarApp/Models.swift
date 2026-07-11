@@ -262,6 +262,10 @@ struct RunSourceCheck: Codable, Equatable, Identifiable {
   let label: String?
   let message: String?
   let candidateCount: Int
+  let selectorHits: [String: Int]?
+  let detailAttempts: RunSourceDetailAttempts?
+  let blockedUrls: [String]
+  let cache: RunSourceCacheDiagnostic?
 
   enum CodingKeys: String, CodingKey {
     case source
@@ -270,6 +274,10 @@ struct RunSourceCheck: Codable, Equatable, Identifiable {
     case label
     case message
     case candidateCount
+    case selectorHits
+    case detailAttempts
+    case blockedUrls
+    case cache
   }
 
   init(source: String, site: String, status: String, label: String? = nil, message: String? = nil, candidateCount: Int = 0) {
@@ -279,6 +287,10 @@ struct RunSourceCheck: Codable, Equatable, Identifiable {
     self.label = label
     self.message = message
     self.candidateCount = candidateCount
+    self.selectorHits = nil
+    self.detailAttempts = nil
+    self.blockedUrls = []
+    self.cache = nil
   }
 
   init(from decoder: Decoder) throws {
@@ -289,6 +301,10 @@ struct RunSourceCheck: Codable, Equatable, Identifiable {
     label = try container.decodeIfPresent(String.self, forKey: .label)
     message = try container.decodeIfPresent(String.self, forKey: .message)
     candidateCount = try container.decodeIfPresent(Int.self, forKey: .candidateCount) ?? 0
+    selectorHits = try container.decodeIfPresent([String: Int].self, forKey: .selectorHits)
+    detailAttempts = try container.decodeIfPresent(RunSourceDetailAttempts.self, forKey: .detailAttempts)
+    blockedUrls = try container.decodeIfPresent([String].self, forKey: .blockedUrls) ?? []
+    cache = try container.decodeIfPresent(RunSourceCacheDiagnostic.self, forKey: .cache)
   }
 }
 
@@ -297,6 +313,59 @@ struct RunRunnerTaskSummary: Codable, Equatable, Identifiable {
   let source: String
   let kind: String
   let status: String
+  let mergeStatus: String?
+  let normalizedCandidateCount: Int?
+  let importedCount: Int?
+  let rejectedCount: Int?
+  let rejectionReasons: [RunRunnerRejectionSummary]
+
+  enum CodingKeys: String, CodingKey {
+    case id
+    case source
+    case kind
+    case status
+    case mergeStatus
+    case normalizedCandidateCount
+    case importedCount
+    case rejectedCount
+    case rejectionReasons
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    id = try container.decodeIfPresent(String.self, forKey: .id) ?? "runner-task"
+    source = try container.decodeIfPresent(String.self, forKey: .source) ?? "source"
+    kind = try container.decodeIfPresent(String.self, forKey: .kind) ?? "source_discovery"
+    status = try container.decodeIfPresent(String.self, forKey: .status) ?? "queued"
+    mergeStatus = try container.decodeIfPresent(String.self, forKey: .mergeStatus)
+    normalizedCandidateCount = try container.decodeIfPresent(Int.self, forKey: .normalizedCandidateCount)
+    importedCount = try container.decodeIfPresent(Int.self, forKey: .importedCount)
+    rejectedCount = try container.decodeIfPresent(Int.self, forKey: .rejectedCount)
+    rejectionReasons = try container.decodeIfPresent([RunRunnerRejectionSummary].self, forKey: .rejectionReasons) ?? []
+  }
+}
+
+struct RunSourceDetailAttempts: Codable, Equatable {
+  let attempted: Int
+  let enriched: Int
+  let blocked: Int
+  let failed: Int
+  let empty: Int
+  let blockedUrls: [String]?
+  let failedUrls: [String]?
+}
+
+struct RunSourceCacheDiagnostic: Codable, Equatable {
+  let status: String?
+  let usableCount: Int?
+  let searchedTerms: [String]?
+  let latestIngestionAt: String?
+  let refreshError: String?
+}
+
+struct RunRunnerRejectionSummary: Codable, Equatable {
+  let reason: String
+  let count: Int
 }
 
 struct RunAiScoringSummary: Codable, Equatable {
@@ -321,7 +390,15 @@ struct AuctionListing: Codable, Identifiable, Hashable {
   let url: String
   let bid: String
   let total: String
+  let bidCents: Int?
   let location: String?
+  let locationRaw: String?
+  let locationCity: String?
+  let locationRegion: String?
+  let locationCountry: String?
+  let distanceMiles: Double?
+  let locationStatus: String?
+  let missingData: [String]
   let endsAt: String?
   let ends: String?
   let timeLeft: String?
@@ -360,7 +437,15 @@ struct AuctionListing: Codable, Identifiable, Hashable {
     case url
     case bid
     case total
+    case bidCents
     case location
+    case locationRaw
+    case locationCity
+    case locationRegion
+    case locationCountry
+    case distanceMiles
+    case locationStatus
+    case missingData
     case endsAt
     case ends
     case timeLeft
@@ -394,7 +479,15 @@ struct AuctionListing: Codable, Identifiable, Hashable {
     url = try container.decodeIfPresent(String.self, forKey: .url) ?? ""
     bid = try container.decodeLossyStringIfPresent(forKey: .bid) ?? "Check listing"
     total = try container.decodeLossyStringIfPresent(forKey: .total) ?? "Check listing"
+    bidCents = try container.decodeIfPresent(Int.self, forKey: .bidCents)
     location = AuctionListing.displayableLocation(try container.decodeLossyStringIfPresent(forKey: .location))
+    locationRaw = AuctionListing.displayableLocation(try container.decodeLossyStringIfPresent(forKey: .locationRaw))
+    locationCity = AuctionListing.displayableLocation(try container.decodeLossyStringIfPresent(forKey: .locationCity))
+    locationRegion = AuctionListing.displayableLocation(try container.decodeLossyStringIfPresent(forKey: .locationRegion))
+    locationCountry = AuctionListing.displayableLocation(try container.decodeLossyStringIfPresent(forKey: .locationCountry))
+    distanceMiles = try container.decodeIfPresent(Double.self, forKey: .distanceMiles)
+    locationStatus = try container.decodeLossyStringIfPresent(forKey: .locationStatus)
+    missingData = try container.decodeIfPresent([String].self, forKey: .missingData) ?? []
     endsAt = try container.decodeLossyStringIfPresent(forKey: .endsAt)
     ends = try container.decodeLossyStringIfPresent(forKey: .ends)
     timeLeft = try container.decodeLossyStringIfPresent(forKey: .timeLeft)
@@ -427,11 +520,30 @@ struct AuctionListing: Codable, Identifiable, Hashable {
   }
 
   var displayLocation: String? {
-    AuctionListing.displayableLocation(location) ?? AuctionListing.displayableLocation(dossier?.beachUse?.location)
+    AuctionListing.displayableLocation(location)
+      ?? AuctionListing.displayableLocation(locationRaw)
+      ?? structuredLocation
+      ?? AuctionListing.displayableLocation(dossier?.beachUse?.location)
   }
 
   var displayLocationLabel: String {
-    displayLocation ?? "Location pending"
+    if let displayLocation { return displayLocation }
+    if hasMissingLocation { return "Location missing" }
+    return "Location pending"
+  }
+
+  var hasMissingLocation: Bool {
+    guard displayLocation == nil else { return false }
+    return locationStatus?.lowercased() == "missing"
+      || missingData.contains(where: { $0.lowercased() == "location" })
+  }
+
+  private var structuredLocation: String? {
+    let city = AuctionListing.displayableLocation(locationCity)
+    let region = AuctionListing.displayableLocation(locationRegion)
+    let country = AuctionListing.displayableLocation(locationCountry)
+    let parts = [city, region, country].compactMap { $0 }
+    return parts.isEmpty ? nil : parts.joined(separator: ", ")
   }
 
   var displayImages: [String] {
@@ -594,7 +706,11 @@ extension RunPayload {
             "id": "runner-task-browser-source-carsandbids-ui-test",
             "source": "carsandbids",
             "kind": "browser_source",
-            "status": "queued"
+            "status": "completed",
+            "mergeStatus": "merged",
+            "normalizedCandidateCount": 1,
+            "importedCount": 1,
+            "rejectedCount": 0
           }
         ],
         "rawCandidateCount": 12,
@@ -718,7 +834,8 @@ extension RunPayload {
           "url": "https://example.com/citicar",
           "bid": "$6,100",
           "total": "$6,405",
-          "location": "Providence, RI",
+          "locationStatus": "missing",
+          "missingData": ["location", "image"],
           "timeLeft": "3 days",
           "bids": "11",
           "bidders": "6",

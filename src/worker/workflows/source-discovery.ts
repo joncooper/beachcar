@@ -1,4 +1,29 @@
-import type { AuctionListing, Lane, ShadeDossierData } from "../../shared/types";
+import { normalizeLocationMetadata } from "../../shared/normalize";
+import type { AuctionListing, FeedbackExport, Lane, RunSourceCheck, ShadeDossierData } from "../../shared/types";
+import {
+  BAT_KEYWORD_PAGES,
+  BAT_RSS_FEED,
+  bringATrailerPagesFromSourceNotes,
+  dedupeBringATrailerPages,
+  discoverBringATrailerNextPages,
+  parseBringATrailerDetailPage,
+  parseBringATrailerLiveListings,
+  parseBringATrailerRssFeed,
+} from "../sources/bringatrailer";
+import {
+  buildHemmingsSeedPages,
+  parseHemmingsDetailPage,
+  parseHemmingsListingsPage,
+} from "../sources/hemmings";
+import type { CandidateDetailEnrichment, SourceCandidate } from "../sources/types";
+import type { SourceCacheSearchResult } from "../source-cache";
+
+export {
+  parseBringATrailerDetailPage,
+  parseBringATrailerLiveListings,
+  parseBringATrailerRssFeed,
+} from "../sources/bringatrailer";
+export type { CandidateDetailEnrichment, SourceCandidate } from "../sources/types";
 
 export const SOURCE_DISCOVERY_PUBLISHER = "cloudflare-workflow-source-discovery";
 
@@ -17,6 +42,7 @@ export interface DiscoveryContext {
   enabledSources: string[];
   sourceSettings?: DiscoverySourceSetting[];
   feedbackCount: number;
+  feedbackSteering?: FeedbackExport["steering"];
   latestRunId: string | null;
 }
 
@@ -34,20 +60,15 @@ export interface DiscoveryParams {
 
 export type SourceDiscoveryStatus = "ok" | "blocked" | "failed" | "skipped" | "fallback";
 
-export interface SourceDiscoveryCheck {
-  source: string;
-  site: string;
+export interface SourceDiscoveryCheck extends RunSourceCheck {
   status: SourceDiscoveryStatus;
-  label?: string;
-  url?: string;
-  candidateCount: number;
   checkedAt: string;
-  message?: string;
 }
 
 export interface SourceDiscoveryDraft {
   generatedAt: string;
   listings: AuctionListing[];
+  cacheableCandidates: SourceCandidate[];
   reportMarkdown: string;
   checkedSources: SourceDiscoveryCheck[];
   blockedSources: SourceDiscoveryCheck[];
@@ -60,41 +81,13 @@ interface DiscoveryOptions {
   fetchImpl?: FetchLike;
   now?: Date;
   aiScorer?: CandidateAiScorer | null;
+  sourceCache?: {
+    searchBringATrailer(input: { terms: string[]; limit: number; refresh?: boolean }): Promise<SourceCacheSearchResult>;
+  };
 }
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
-
-export interface SourceCandidate {
-  source: string;
-  site: string;
-  sourceQuery: string;
-  title: string;
-  url: string;
-  bid: string;
-  bidNum?: number;
-  total: string;
-  location?: string;
-  endsAt?: string;
-  timeLeft?: string;
-  bids?: string | number;
-  bidders?: string | number;
-  comments?: string | number;
-  imageUrls: string[];
-  summary: string;
-  noReserve?: boolean;
-  sourceUrl: string;
-  publishedAt?: string;
-  dossier?: ShadeDossierData;
-}
-
-interface CandidateDetailEnrichment {
-  location?: string;
-  bids?: string | number;
-  bidders?: string | number;
-  comments?: string | number;
-  imageUrls?: string[];
-  dossier?: ShadeDossierData;
-}
+type BringATrailerCacheSearch = NonNullable<DiscoveryOptions["sourceCache"]>["searchBringATrailer"];
 
 export interface AiCandidateScore {
   url: string;
@@ -147,27 +140,13 @@ export interface ScoredCandidate {
 const DEFAULT_SOURCES = ["bringatrailer", "carsandbids"] as const;
 const USER_AGENT = "BeachcarSourceDiscovery/0.1 (+https://beachcar.local)";
 
-const BAT_KEYWORD_PAGES: Array<{ label: string; url: string }> = [
-  { label: "Volkswagen Thing", url: "https://bringatrailer.com/volkswagen/thing/" },
-  { label: "Suzuki Samurai", url: "https://bringatrailer.com/suzuki/samurai/" },
-  { label: "Geo Tracker", url: "https://bringatrailer.com/geo/tracker/" },
-  { label: "Jeep Wrangler", url: "https://bringatrailer.com/jeep/wrangler/" },
-  { label: "Mitsubishi Delica", url: "https://bringatrailer.com/mitsubishi/delica/" },
-  { label: "Mini Moke", url: "https://bringatrailer.com/mini/moke/" },
-  { label: "Citroen Mehari", url: "https://bringatrailer.com/citroen/mehari/" },
-  { label: "Honda Monkey", url: "https://bringatrailer.com/honda/monkey/" },
-  { label: "Vespa", url: "https://bringatrailer.com/vespa/" },
-];
-
-const BAT_RSS_FEED = "https://bringatrailer.com/auctions/feed/";
-
 const PRIORITY_TERMS: Array<[RegExp, string, number, Lane]> = [
   [/\bvw thing\b|\bvolkswagen thing\b|\btype 181\b/, "VW Thing", 34, "family"],
   [/\bmini moke\b|\bmoke\b/, "Mini Moke", 34, "family"],
   [/\bmehari\b|\bcitroen mehari\b/, "Citroen Mehari", 34, "family"],
   [/\bjolly\b|\bfiat jolly\b/, "Fiat Jolly-style", 30, "family"],
   [/\bsamurai\b|\bsidekick\b|\btracker\b|\bamigo\b|\brocky\b/, "small open 4x4", 26, "family"],
-  [/\bwrangler\b|\bcj-?\d?\b|\byj\b|\btj\b|\blj\b|\bjk\b/, "Jeep runabout", 18, "family"],
+  [/\bwrangler\b|\bcj-?\d?\b|\bcj-?8\b|\bscrambler\b|\byj\b|\btj\b|\blj\b|\bjk\b/, "Jeep runabout", 18, "family"],
   [/\b4runner\b|\bmontero\b|\bdelica\b|\bkei truck\b|\bkei van\b/, "compact utility", 18, "family"],
   [/\bbrat\b|\bbaja\b|\bgolf cart\b|\bnev\b|\belectric resort\b/, "quirky utility", 18, "curiosity"],
   [/\bvespa\b|\bscooter\b|\bmonkey\b|\bgrom\b|\btrail\b|\bcub\b|\bsidecar\b/, "solo runabout", 22, "solo"],
@@ -194,13 +173,19 @@ export async function discoverAndScoreCandidates(
   const candidates: SourceCandidate[] = [];
 
   if (sources.includes("bringatrailer")) {
-    const result = await discoverBringATrailer(context, fetchImpl, generatedAt);
+    const result = await discoverBringATrailer(context, fetchImpl, generatedAt, options.sourceCache?.searchBringATrailer);
     checkedSources.push(...result.checks);
     candidates.push(...result.candidates);
   }
 
   if (sources.includes("carsandbids")) {
     checkedSources.push(await checkCarsAndBids(fetchImpl, generatedAt));
+  }
+
+  if (sources.includes("hemmings")) {
+    const result = await discoverHemmings(context, fetchImpl, generatedAt);
+    checkedSources.push(...result.checks);
+    candidates.push(...result.candidates);
   }
 
   if (sources.includes("marketplace")) {
@@ -215,7 +200,7 @@ export async function discoverAndScoreCandidates(
   }
 
   for (const source of sources) {
-    if (source !== "bringatrailer" && source !== "carsandbids" && source !== "marketplace") {
+    if (source !== "bringatrailer" && source !== "carsandbids" && source !== "hemmings" && source !== "marketplace") {
       checkedSources.push({
         source,
         site: source,
@@ -230,9 +215,22 @@ export async function discoverAndScoreCandidates(
   let scored = uniqueCandidates(candidates)
     .map((candidate) => scoreCandidate(candidate, context))
     .filter((candidate) => candidate.score >= 12)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 8);
+    .sort((a, b) => b.score - a.score);
   let aiScoring: CandidateAiScoringResult | null = null;
+
+  if (scored.length) {
+    const enriched = await enrichBringATrailerFinalists(scored, fetchImpl, generatedAt);
+    scored = enriched.candidates.map((entry) => scoreCandidate(entry.candidate, context)).sort((a, b) => b.score - a.score);
+    if (enriched.check) checkedSources.push(enriched.check);
+  }
+
+  if (scored.length) {
+    const enriched = await enrichHemmingsFinalists(scored, fetchImpl, generatedAt);
+    scored = enriched.candidates.map((entry) => scoreCandidate(entry.candidate, context)).sort((a, b) => b.score - a.score);
+    if (enriched.check) checkedSources.push(enriched.check);
+  }
+
+  scored = scored.slice(0, 8);
 
   if (options.aiScorer && scored.length) {
     aiScoring = await runAiScoring(options.aiScorer, context, params, scored);
@@ -244,16 +242,11 @@ export async function discoverAndScoreCandidates(
     }
   }
 
-  if (scored.length) {
-    const enriched = await enrichBringATrailerFinalists(scored, fetchImpl, generatedAt);
-    scored = enriched.candidates;
-    if (enriched.check) checkedSources.push(enriched.check);
-  }
-
   const fallbackUsed = scored.length === 0;
   const listings = fallbackUsed
     ? buildFallbackListings(context, params, generatedAt, sources)
     : scored.map((candidate) => listingFromCandidate(candidate, context));
+  const cacheableCandidates = fallbackUsed ? [] : scored.map((candidate) => candidate.candidate);
 
   if (fallbackUsed) {
     checkedSources.push({
@@ -271,107 +264,13 @@ export async function discoverAndScoreCandidates(
   return {
     generatedAt,
     listings,
+    cacheableCandidates,
     reportMarkdown: buildReport(context, params, listings, checkedSources, fallbackUsed),
     checkedSources,
     blockedSources,
     fallbackUsed,
     rawCandidateCount: candidates.length,
     aiScoring,
-  };
-}
-
-export function parseBringATrailerLiveListings(html: string, page: { label: string; url: string }): SourceCandidate[] {
-  const liveHtml = liveListingsSection(html);
-  if (!liveHtml) return [];
-
-  return liveHtml
-    .split(/<div class="listing-card\b/)
-    .slice(1)
-    .map((card) => candidateFromBatCard(card, page))
-    .filter((candidate): candidate is SourceCandidate => candidate !== null);
-}
-
-export function parseBringATrailerRssFeed(xml: string): SourceCandidate[] {
-  const items = Array.from(xml.matchAll(/<item>[\s\S]*?<\/item>/gi)).slice(0, 60);
-  return items
-    .map((match): SourceCandidate | null => {
-      const block = match[0];
-      const title = textFromXmlTag(block, "title");
-      const url = textFromXmlTag(block, "link");
-      if (!title || !url) return null;
-      const summary = stripHtml(textFromXmlTag(block, "description") || textFromXmlTag(block, "content:encoded") || "");
-      const publishedAt = isoDateOrUndefined(textFromXmlTag(block, "pubDate") || textFromXmlTag(block, "dc:date"));
-      return {
-        source: "bringatrailer",
-        site: "Bring a Trailer",
-        sourceQuery: "BaT auctions feed",
-        title: decodeHtml(title),
-        url: decodeHtml(url),
-        bid: "Check listing",
-        total: "Check listing",
-        timeLeft: "check listing",
-        bids: "check listing",
-        bidders: "check listing",
-        comments: "check listing",
-        imageUrls: imageUrlsFromText(block).slice(0, 4),
-        summary,
-        sourceUrl: BAT_RSS_FEED,
-        publishedAt,
-      } satisfies SourceCandidate;
-    })
-    .filter((candidate): candidate is SourceCandidate => candidate !== null);
-}
-
-export function parseBringATrailerDetailPage(html: string): CandidateDetailEnrichment {
-  const listingBlock = firstHtmlBlock(
-    html,
-    [
-      "post-content",
-      "entry-content",
-      "listing-content",
-      "auction-description",
-      "item-description",
-      "description",
-    ],
-    80_000,
-  );
-  const listing = paragraphsFromHtml(listingBlock || html).slice(0, 8);
-  const summary = firstNonEmpty(
-    metaContent(html, "og:description"),
-    metaContent(html, "description"),
-    listing[0],
-  );
-  const imageUrls = detailImageUrls(html).slice(0, 6);
-  const specs = detailSpecs(html);
-  const equipment = listItemsAfterHeading(html, /equipment|highlights|features/i).slice(0, 12);
-  const service = listItemsAfterHeading(html, /service|maintenance|recent work|work performed/i).slice(0, 12);
-  const bidLog = detailBidLog(html).slice(0, 8);
-  const commentRows = detailComments(html).slice(0, 8);
-  const location = firstNonEmpty(
-    specs.location,
-    locationFromHtml(html, [...listing, summary].filter(Boolean).join(" ")),
-  );
-  const bids = countLabel(html, /bids?/i);
-  const comments = countLabel(html, /comments?/i);
-  const bidders = countLabel(html, /bidders?/i);
-
-  const dossier: ShadeDossierData = {
-    ...(summary ? { summary: summary.slice(0, 520) } : {}),
-    ...(specs.dossierSpecs ? { specs: specs.dossierSpecs } : {}),
-    ...(listing.length ? { listing } : {}),
-    ...(equipment.length ? { equipment } : {}),
-    ...(service.length ? { service } : {}),
-    ...(bidLog.length ? { bidLog } : {}),
-    ...(commentRows.length ? { comments: commentRows } : {}),
-  };
-
-  return {
-    ...(location ? { location } : {}),
-    ...(bids ? { bids } : {}),
-    ...(bidders ? { bidders } : {}),
-    ...(comments ? { comments } : {}),
-    ...(imageUrls.length ? { imageUrls } : {}),
-    ...(Object.keys(dossier).length ? { dossier } : {}),
   };
 }
 
@@ -385,17 +284,26 @@ async function discoverBringATrailer(
   context: DiscoveryContext,
   fetchImpl: FetchLike,
   checkedAt: string,
+  searchCache?: BringATrailerCacheSearch,
 ): Promise<{ checks: SourceDiscoveryCheck[]; candidates: SourceCandidate[] }> {
   const checks: SourceDiscoveryCheck[] = [];
   const candidates: SourceCandidate[] = [];
+  const pages = dedupeBringATrailerPages([
+    ...BAT_KEYWORD_PAGES,
+    ...bringATrailerPagesFromSourceNotes(sourceSettingsFor(context, "bringatrailer").searchNotes),
+  ]);
 
-  for (const page of BAT_KEYWORD_PAGES) {
+  for (const page of pages) {
     try {
       const response = await fetchImpl(page.url, requestInit("text/html"));
       const text = await response.text();
       if (!response.ok) {
         if (response.status === 404) {
           checks.push(skippedCheck("bringatrailer", "Bring a Trailer", page.url, page.label, checkedAt, "Keyword page is not available."));
+          continue;
+        }
+        if (looksLikeChallengeResponse(response, text)) {
+          checks.push(blockedCheck("bringatrailer", "Bring a Trailer", page.url, page.label, checkedAt));
           continue;
         }
         checks.push(failedCheck("bringatrailer", "Bring a Trailer", page.url, page.label, checkedAt, `HTTP ${response.status}`));
@@ -414,9 +322,55 @@ async function discoverBringATrailer(
         url: page.url,
         candidateCount: parsed.length,
         checkedAt,
-        message: parsed.length ? "Parsed live keyword-page listing cards." : "Keyword page was reachable but had no live listing cards.",
+        message: sourceParseMessage(
+          parsed,
+          "Parsed live keyword-page listing cards.",
+          "Keyword page was reachable but had no live listing cards.",
+        ),
+        selectorHits: selectorHitsForCandidates(parsed, "listing-card"),
       });
       candidates.push(...parsed);
+      for (const nextPage of discoverBringATrailerNextPages(text, page, 1)) {
+        try {
+          const nextResponse = await fetchImpl(nextPage.url, requestInit("text/html"));
+          const nextText = await nextResponse.text();
+          if (!nextResponse.ok) {
+            if (nextResponse.status === 404) {
+              checks.push(skippedCheck("bringatrailer", "Bring a Trailer", nextPage.url, nextPage.label, checkedAt, "Keyword pagination page is not available."));
+              continue;
+            }
+            if (looksLikeChallengeResponse(nextResponse, nextText)) {
+              checks.push(blockedCheck("bringatrailer", "Bring a Trailer", nextPage.url, nextPage.label, checkedAt));
+              continue;
+            }
+            checks.push(failedCheck("bringatrailer", "Bring a Trailer", nextPage.url, nextPage.label, checkedAt, `HTTP ${nextResponse.status}`));
+            continue;
+          }
+          if (looksLikeBotChallenge(nextText)) {
+            checks.push(blockedCheck("bringatrailer", "Bring a Trailer", nextPage.url, nextPage.label, checkedAt));
+            continue;
+          }
+          const nextParsed = parseBringATrailerLiveListings(nextText, nextPage);
+          checks.push({
+            source: "bringatrailer",
+            site: "Bring a Trailer",
+            status: "ok",
+            label: nextPage.label,
+            url: nextPage.url,
+            candidateCount: nextParsed.length,
+            checkedAt,
+            message: sourceParseMessage(
+              nextParsed,
+              "Parsed bounded keyword-page pagination listing cards.",
+              "Keyword pagination page was reachable but had no live listing cards.",
+            ),
+            selectorHits: selectorHitsForCandidates(nextParsed, "listing-card"),
+          });
+          candidates.push(...nextParsed);
+        } catch (error) {
+          checks.push(failedCheck("bringatrailer", "Bring a Trailer", nextPage.url, nextPage.label, checkedAt, errorMessage(error)));
+        }
+      }
     } catch (error) {
       checks.push(failedCheck("bringatrailer", "Bring a Trailer", page.url, page.label, checkedAt, errorMessage(error)));
     }
@@ -426,7 +380,11 @@ async function discoverBringATrailer(
     const response = await fetchImpl(BAT_RSS_FEED, requestInit("application/rss+xml"));
     const text = await response.text();
     if (!response.ok) {
-      checks.push(failedCheck("bringatrailer", "Bring a Trailer", BAT_RSS_FEED, "Auctions RSS", checkedAt, `HTTP ${response.status}`));
+      checks.push(
+        looksLikeChallengeResponse(response, text)
+          ? blockedCheck("bringatrailer", "Bring a Trailer", BAT_RSS_FEED, "Auctions RSS", checkedAt)
+          : failedCheck("bringatrailer", "Bring a Trailer", BAT_RSS_FEED, "Auctions RSS", checkedAt, `HTTP ${response.status}`),
+      );
     } else if (looksLikeBotChallenge(text)) {
       checks.push(blockedCheck("bringatrailer", "Bring a Trailer", BAT_RSS_FEED, "Auctions RSS", checkedAt));
     } else {
@@ -439,7 +397,8 @@ async function discoverBringATrailer(
         url: BAT_RSS_FEED,
         candidateCount: parsed.length,
         checkedAt,
-        message: "Parsed public RSS items as a broad source sweep.",
+        message: sourceParseMessage(parsed, "Parsed public RSS items as a broad source sweep."),
+        selectorHits: selectorHitsForCandidates(parsed, "rss-item"),
       });
       candidates.push(...parsed);
     }
@@ -447,7 +406,73 @@ async function discoverBringATrailer(
     checks.push(failedCheck("bringatrailer", "Bring a Trailer", BAT_RSS_FEED, "Auctions RSS", checkedAt, errorMessage(error)));
   }
 
+  if (candidates.length === 0 && searchCache) {
+    const terms = sourceCacheTerms(context);
+    try {
+      const result = await searchCache({ terms, limit: 16, refresh: true });
+      const cached = result.candidates.filter((candidate) => !isOverBudget(candidate, context, 1.8));
+      candidates.push(...cached);
+      checks.push({
+        source: "bringatrailer-cache",
+        site: "Bring a Trailer",
+        status: cached.length ? "fallback" : "skipped",
+        label: "D1 cache fallback",
+        url: result.feed,
+        candidateCount: cached.length,
+        checkedAt,
+        message: bringATrailerCacheMessage(result, terms, cached.length),
+        cache: {
+          status: result.cacheStatus,
+          usableCount: cached.length,
+          searchedTerms: terms.slice(0, 20),
+          latestIngestionAt: result.status.latestIngestion?.finishedAt || null,
+          refreshError: result.refreshError || null,
+        },
+      });
+    } catch (error) {
+      checks.push(failedCheck("bringatrailer-cache", "Bring a Trailer", BAT_RSS_FEED, "D1 cache fallback", checkedAt, errorMessage(error)));
+    }
+  }
+
   return { checks, candidates: candidates.filter((candidate) => !isOverBudget(candidate, context, 1.8)) };
+}
+
+function bringATrailerCacheMessage(result: SourceCacheSearchResult, terms: string[], usableCount: number): string {
+  const latest = result.status.latestIngestion?.finishedAt ? ` Latest ingestion: ${result.status.latestIngestion.finishedAt}.` : "";
+  const refresh = result.refreshError ? ` Refresh failed: ${result.refreshError}.` : "";
+  const termText = terms.length ? ` Terms: ${terms.slice(0, 8).join(", ")}.` : "";
+  if (usableCount) return `Used ${usableCount} cached BaT candidate(s) because live fetch produced none. Cache status: ${result.cacheStatus}.${termText}${latest}${refresh}`;
+  return `BaT cache fallback had no usable candidates. Cache status: ${result.cacheStatus}.${termText}${latest}${refresh}`;
+}
+
+function sourceCacheTerms(context: DiscoveryContext): string[] {
+  const sourceNotes = sourceSettingsFor(context, "bringatrailer").searchNotes;
+  const feedbackTerms = [
+    ...(context.feedbackSteering?.prioritizeSimilarTo || []).flatMap((entry) => [entry.title, ...entry.tags]),
+    ...(context.feedbackSteering?.notes || []).flatMap((entry) => [entry.title || "", ...entry.tags]),
+  ];
+  const raw = [
+    "thing",
+    "samurai",
+    "tracker",
+    "moke",
+    "mehari",
+    "wrangler",
+    "cj",
+    "vespa",
+    "monkey",
+    "grom",
+    sourceNotes,
+    context.tasteNotes,
+    ...feedbackTerms,
+  ].join(" ");
+  const stop = new Set(["and", "the", "with", "for", "car", "cars", "beach", "open", "simple", "town", "notes"]);
+  const terms = raw
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 3 && !stop.has(term));
+  return [...new Set(terms)].slice(0, 20);
 }
 
 async function checkCarsAndBids(fetchImpl: FetchLike, checkedAt: string): Promise<SourceDiscoveryCheck> {
@@ -456,7 +481,9 @@ async function checkCarsAndBids(fetchImpl: FetchLike, checkedAt: string): Promis
     const response = await fetchImpl(url, requestInit("text/html"));
     const text = await response.text();
     if (!response.ok) {
-      return failedCheck("carsandbids", "Cars & Bids", url, undefined, checkedAt, `HTTP ${response.status}`);
+      return looksLikeChallengeResponse(response, text)
+        ? blockedCheck("carsandbids", "Cars & Bids", url, undefined, checkedAt)
+        : failedCheck("carsandbids", "Cars & Bids", url, undefined, checkedAt, `HTTP ${response.status}`);
     }
     if (looksLikeBotChallenge(text) || /just a moment/i.test(text)) {
       return blockedCheck("carsandbids", "Cars & Bids", url, undefined, checkedAt);
@@ -464,15 +491,71 @@ async function checkCarsAndBids(fetchImpl: FetchLike, checkedAt: string): Promis
     return {
       source: "carsandbids",
       site: "Cars & Bids",
-      status: "skipped",
+      status: "blocked",
       url,
       candidateCount: 0,
       checkedAt,
-      message: "The page was reachable, but a Cars & Bids parser is not implemented in the Worker path yet.",
+      message: "Cars & Bids is intentionally handled by a logged-in browser runner; Worker fetch only verifies reachability and queues browser-source work.",
+      blockedUrls: [url],
     };
   } catch (error) {
     return failedCheck("carsandbids", "Cars & Bids", url, undefined, checkedAt, errorMessage(error));
   }
+}
+
+async function discoverHemmings(
+  context: DiscoveryContext,
+  fetchImpl: FetchLike,
+  checkedAt: string,
+): Promise<{ checks: SourceDiscoveryCheck[]; candidates: SourceCandidate[] }> {
+  const checks: SourceDiscoveryCheck[] = [];
+  const candidates: SourceCandidate[] = [];
+  const settings = sourceSettingsFor(context, "hemmings");
+  const pages = buildHemmingsSeedPages({ sourceNotes: settings.searchNotes, limit: settings.maxSeedPages || undefined });
+
+  for (const page of pages) {
+    try {
+      const response = await fetchImpl(page.url, requestInit("text/html"));
+      const text = await response.text();
+      if (!response.ok) {
+        if (response.status === 404) {
+          checks.push(skippedCheck("hemmings", "Hemmings", page.url, page.label, checkedAt, "Curated seed page is not available."));
+          continue;
+        }
+        if (looksLikeChallengeResponse(response, text)) {
+          checks.push(blockedCheck("hemmings", "Hemmings", page.url, page.label, checkedAt));
+          continue;
+        }
+        checks.push(failedCheck("hemmings", "Hemmings", page.url, page.label, checkedAt, `HTTP ${response.status}`));
+        continue;
+      }
+      if (looksLikeBotChallenge(text)) {
+        checks.push(blockedCheck("hemmings", "Hemmings", page.url, page.label, checkedAt));
+        continue;
+      }
+      const parsed = parseHemmingsListingsPage(text, page);
+      checks.push({
+        source: "hemmings",
+        site: "Hemmings",
+        status: "ok",
+        label: page.label,
+        url: page.url,
+        candidateCount: parsed.length,
+        checkedAt,
+        message: sourceParseMessage(
+          parsed,
+          "Parsed curated Hemmings listing page candidates.",
+          "Curated Hemmings page was reachable but had no parseable listing cards.",
+        ),
+        selectorHits: selectorHitsForCandidates(parsed, "listing-card"),
+      });
+      candidates.push(...parsed);
+    } catch (error) {
+      checks.push(failedCheck("hemmings", "Hemmings", page.url, page.label, checkedAt, errorMessage(error)));
+    }
+  }
+
+  return { checks, candidates: candidates.filter((candidate) => !isOverBudget(candidate, context, 1.4)) };
 }
 
 async function enrichBringATrailerFinalists(
@@ -480,12 +563,14 @@ async function enrichBringATrailerFinalists(
   fetchImpl: FetchLike,
   checkedAt: string,
 ): Promise<{ candidates: ScoredCandidate[]; check?: SourceDiscoveryCheck }> {
-  const maxDetailPages = 6;
+  const maxDetailPages = 20;
   let attempted = 0;
   let enriched = 0;
   let blocked = 0;
   let failed = 0;
   let empty = 0;
+  const blockedUrls: string[] = [];
+  const failedUrls: string[] = [];
 
   const next: ScoredCandidate[] = [];
   for (const scored of candidates) {
@@ -501,26 +586,29 @@ async function enrichBringATrailerFinalists(
       const text = await response.text();
       if (!response.ok) {
         failed += 1;
-        next.push(scored);
+        failedUrls.push(candidate.url);
+        next.push(markDetail(scored, "failed", checkedAt, `HTTP ${response.status}`));
         continue;
       }
       if (looksLikeBotChallenge(text)) {
         blocked += 1;
-        next.push(scored);
+        blockedUrls.push(candidate.url);
+        next.push(markDetail(scored, "blocked", checkedAt, "Detail page reached a bot/access challenge."));
         continue;
       }
 
       const detail = parseBringATrailerDetailPage(text);
       if (hasDetailEnrichment(detail)) {
         enriched += 1;
-        next.push(mergeDetail(scored, detail));
+        next.push(mergeDetail(scored, { ...detail, lastDetailAt: checkedAt, detailStatus: "ok" }));
       } else {
         empty += 1;
-        next.push(scored);
+        next.push(markDetail(scored, "empty", checkedAt));
       }
-    } catch {
+    } catch (error) {
       failed += 1;
-      next.push(scored);
+      failedUrls.push(candidate.url);
+      next.push(markDetail(scored, "failed", checkedAt, errorMessage(error)));
     }
   }
 
@@ -539,13 +627,113 @@ async function enrichBringATrailerFinalists(
       source: "bringatrailer-detail",
       site: "Bring a Trailer",
       status,
-      label: "Finalist detail pages",
+      label: "Shortlist detail pages",
       url: "https://bringatrailer.com/",
       candidateCount: enriched,
       checkedAt,
-      message: `Enriched ${enriched}/${attempted} shortlisted BaT finalist detail page(s).${suffix.length ? ` ${suffix.join(", ")}.` : ""}`,
+      message: `Enriched ${enriched}/${attempted} shortlisted BaT detail page(s) before the final cut.${suffix.length ? ` ${suffix.join(", ")}.` : ""}`,
+      detailAttempts: { attempted, enriched, blocked, failed, empty, blockedUrls, failedUrls },
+      blockedUrls,
     },
   };
+}
+
+async function enrichHemmingsFinalists(
+  candidates: ScoredCandidate[],
+  fetchImpl: FetchLike,
+  checkedAt: string,
+): Promise<{ candidates: ScoredCandidate[]; check?: SourceDiscoveryCheck }> {
+  const maxDetailPages = 4;
+  let attempted = 0;
+  let enriched = 0;
+  let blocked = 0;
+  let failed = 0;
+  let empty = 0;
+  const blockedUrls: string[] = [];
+  const failedUrls: string[] = [];
+
+  const next: ScoredCandidate[] = [];
+  for (const scored of candidates) {
+    const candidate = scored.candidate;
+    if (candidate.source !== "hemmings" || attempted >= maxDetailPages) {
+      next.push(scored);
+      continue;
+    }
+    attempted += 1;
+
+    try {
+      const response = await fetchImpl(candidate.url, requestInit("text/html"));
+      const text = await response.text();
+      if (!response.ok) {
+        failed += 1;
+        failedUrls.push(candidate.url);
+        next.push(markDetail(scored, "failed", checkedAt, `HTTP ${response.status}`));
+        continue;
+      }
+      if (looksLikeBotChallenge(text)) {
+        blocked += 1;
+        blockedUrls.push(candidate.url);
+        next.push(markDetail(scored, "blocked", checkedAt, "Detail page reached a bot/access challenge."));
+        continue;
+      }
+
+      const detail = parseHemmingsDetailPage(text);
+      if (hasDetailEnrichment(detail)) {
+        enriched += 1;
+        next.push(mergeDetail(scored, { ...detail, lastDetailAt: checkedAt, detailStatus: "ok" }));
+      } else {
+        empty += 1;
+        next.push(markDetail(scored, "empty", checkedAt));
+      }
+    } catch (error) {
+      failed += 1;
+      failedUrls.push(candidate.url);
+      next.push(markDetail(scored, "failed", checkedAt, errorMessage(error)));
+    }
+  }
+
+  if (!attempted) return { candidates: next };
+
+  const status: SourceDiscoveryStatus = enriched > 0 ? "ok" : blocked > 0 ? "blocked" : failed > 0 ? "failed" : "skipped";
+  const suffix = [
+    blocked ? `${blocked} blocked` : "",
+    failed ? `${failed} failed` : "",
+    empty ? `${empty} empty` : "",
+  ].filter(Boolean);
+
+  return {
+    candidates: next,
+    check: {
+      source: "hemmings-detail",
+      site: "Hemmings",
+      status,
+      label: "Finalist detail pages",
+      url: "https://www.hemmings.com/",
+      candidateCount: enriched,
+      checkedAt,
+      message: `Enriched ${enriched}/${attempted} shortlisted Hemmings finalist detail page(s).${suffix.length ? ` ${suffix.join(", ")}.` : ""}`,
+      detailAttempts: { attempted, enriched, blocked, failed, empty, blockedUrls, failedUrls },
+      blockedUrls,
+    },
+  };
+}
+
+function selectorHitsForCandidates(candidates: SourceCandidate[], rootSelector: string): Record<string, number> {
+  const missingLocationCount = candidates.filter((candidate) => normalizeLocationMetadata(candidate).locationStatus === "missing").length;
+  return {
+    [rootSelector]: candidates.length,
+    "candidate-with-location": candidates.filter((candidate) => !!candidate.location).length,
+    "candidate-missing-location": missingLocationCount,
+    "candidate-with-image": candidates.filter((candidate) => candidate.imageUrls.length > 0).length,
+    "candidate-with-bid": candidates.filter((candidate) => typeof candidate.bidNum === "number").length,
+  };
+}
+
+function sourceParseMessage(candidates: SourceCandidate[], okMessage: string, emptyMessage?: string): string {
+  const base = candidates.length ? okMessage : emptyMessage || okMessage;
+  const missingLocationCount = candidates.filter((candidate) => normalizeLocationMetadata(candidate).locationStatus === "missing").length;
+  if (!candidates.length || missingLocationCount === 0) return base;
+  return `${base} ${missingLocationCount}/${candidates.length} candidate(s) missing source location.`;
 }
 
 function mergeDetail(scored: ScoredCandidate, detail: CandidateDetailEnrichment): ScoredCandidate {
@@ -558,10 +746,22 @@ function mergeDetail(scored: ScoredCandidate, detail: CandidateDetailEnrichment)
       ...(preferDetail(detail.bids, candidate.bids) ? { bids: detail.bids } : {}),
       ...(preferDetail(detail.bidders, candidate.bidders) ? { bidders: detail.bidders } : {}),
       ...(preferDetail(detail.comments, candidate.comments) ? { comments: detail.comments } : {}),
+      ...(detail.lastDetailAt ? { lastDetailAt: detail.lastDetailAt } : {}),
+      ...(detail.detailStatus ? { detailStatus: detail.detailStatus } : {}),
+      ...(detail.detailError ? { detailError: detail.detailError } : {}),
+      ...(detail.noReserve !== undefined ? { noReserve: detail.noReserve } : {}),
       imageUrls: mergeImageUrls(candidate.imageUrls, detail.imageUrls || []),
       dossier: mergeDossier(candidate.dossier, detail.dossier),
     },
   };
+}
+
+function markDetail(scored: ScoredCandidate, status: string, checkedAt: string, error?: string): ScoredCandidate {
+  return mergeDetail(scored, {
+    lastDetailAt: checkedAt,
+    detailStatus: status,
+    ...(error ? { detailError: error.slice(0, 240) } : {}),
+  });
 }
 
 function hasDetailEnrichment(detail: CandidateDetailEnrichment): boolean {
@@ -571,6 +771,7 @@ function hasDetailEnrichment(detail: CandidateDetailEnrichment): boolean {
       detail.bidders ||
       detail.comments ||
       detail.imageUrls?.length ||
+      detail.noReserve !== undefined ||
       (detail.dossier && Object.keys(detail.dossier).length),
   );
 }
@@ -616,274 +817,22 @@ function mergeRecords<T extends Record<string, string> | undefined>(base: T, det
   return { ...base, ...detail } as T;
 }
 
-function liveListingsSection(html: string): string | null {
-  const start = html.indexOf("listings-live");
-  if (start < 0) return null;
-  const completed = html.indexOf("auctions-completed", start);
-  const end = completed > start ? completed : html.length;
-  return html.slice(start, end);
-}
-
-function candidateFromBatCard(card: string, page: { label: string; url: string }): SourceCandidate | null {
-  const title = decodeHtml(firstMatch(card, /<a class="image-overlay"[^>]*title="([^"]+)"/i) || firstMatch(card, /<h3>\s*<a [^>]*>([\s\S]*?)<\/a>\s*<\/h3>/i));
-  const url = decodeHtml(firstMatch(card, /<a class="image-overlay"[^>]*href="([^"]+)"/i) || firstMatch(card, /<h3>\s*<a href="([^"]+)"/i));
-  if (!title || !url) return null;
-
-  const timestamp = Number(firstMatch(card, /data-timestamp_end="(\d+)"/i) || "");
-  const endsAt = Number.isFinite(timestamp) && timestamp > 0 ? new Date(timestamp * 1000).toISOString() : undefined;
-  const bid = decodeHtml(stripHtml(firstMatch(card, /<span class="bid-formatted bold">([\s\S]*?)<\/span>/i) || "")) || "Check listing";
-  const bidNum = parseMoney(bid);
-  const image = decodeHtml(firstMatch(card, /<img src="([^"]+)"[^>]*alt=/i));
-  const excerpt = decodeHtml(stripHtml(firstMatch(card, /<div class="item-excerpt">([\s\S]*?)<\/div>/i) || ""));
-  const location = locationFromHtml(card);
-
-  return {
-    source: "bringatrailer",
-    site: "Bring a Trailer",
-    sourceQuery: page.label,
-    title,
-    url,
-    bid,
-    bidNum,
-    total: bidNum ? `$${Math.round(bidNum * 1.05).toLocaleString()} incl. buyer fee estimate` : "Check listing",
-    ...(location ? { location } : {}),
-    endsAt,
-    timeLeft: "check listing",
-    bids: "check listing",
-    bidders: "check listing",
-    comments: "check listing",
-    imageUrls: image ? [image] : [],
-    summary: excerpt,
-    noReserve: /item-tag-noreserve/i.test(card),
-    sourceUrl: page.url,
-  };
-}
-
-function firstHtmlBlock(html: string, classHints: string[], maxLength: number): string | null {
-  for (const hint of classHints) {
-    const escaped = escapeRegExp(hint);
-    const match = html.match(new RegExp(`<([a-z0-9]+)[^>]+class=["'][^"']*${escaped}[^"']*["'][^>]*>([\\s\\S]*?)<\\/\\1>`, "i"));
-    if (match?.[2]) return match[2].slice(0, maxLength);
-  }
-  return null;
-}
-
-function paragraphsFromHtml(html: string): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const match of html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)) {
-    const text = normalizeText(match[1] || "");
-    if (text.length < 35) continue;
-    if (/^(submit|view listing|share this|see all|click here)/i.test(text)) continue;
-    if (seen.has(text)) continue;
-    seen.add(text);
-    out.push(text);
-  }
-  return out;
-}
-
-function metaContent(html: string, name: string): string | undefined {
-  const escaped = escapeRegExp(name);
-  const propertyMatch = html.match(new RegExp(`<meta[^>]+property=["']${escaped}["'][^>]+content=["']([^"']+)["'][^>]*>`, "i"));
-  const nameMatch = html.match(new RegExp(`<meta[^>]+name=["']${escaped}["'][^>]+content=["']([^"']+)["'][^>]*>`, "i"));
-  return cleanText(propertyMatch?.[1] || nameMatch?.[1] || "");
-}
-
-function detailImageUrls(html: string): string[] {
-  const urls = [
-    metaContent(html, "og:image") || "",
-    ...imageUrlsFromText(html),
-  ];
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const url of urls) {
-    if (!url || !/^https?:\/\//i.test(url)) continue;
-    if (/avatar|icon|logo|sprite|emoji|blank|placeholder/i.test(url)) continue;
-    const canonical = url.replace(/\?.*$/, "");
-    if (seen.has(canonical)) continue;
-    seen.add(canonical);
-    out.push(url);
-  }
-  return out;
-}
-
-function detailSpecs(html: string): { location?: string; dossierSpecs?: ShadeDossierData["specs"] } {
-  const location = locationFromHtml(html);
-  const specs: NonNullable<ShadeDossierData["specs"]> = {};
-  const fields: Array<[keyof NonNullable<ShadeDossierData["specs"]>, RegExp]> = [
-    ["odometer", /odometer|mileage|miles/i],
-    ["engine", /engine/i],
-    ["transmission", /transmission/i],
-    ["drivetrain", /drivetrain|drive type|drive/i],
-    ["exterior", /exterior|paint|color/i],
-    ["interior", /interior/i],
-    ["title", /title|registration/i],
-    ["seller", /seller|seller name/i],
-    ["lot", /lot/i],
-  ];
-  for (const [key, label] of fields) {
-    const value = labeledValue(html, label);
-    if (value) specs[key] = value;
-  }
-  return {
-    ...(location ? { location } : {}),
-    ...(Object.keys(specs).length ? { dossierSpecs: specs } : {}),
-  };
-}
-
-function locationFromHtml(html: string, textFallback?: string): string | undefined {
-  return firstNonEmpty(
-    labeledValue(html, /location/i),
-    locationClassText(html),
-    textFromClass(html, /listing-location|item-location|auction-location|vehicle-location|location/i),
-    locationFromText(textFallback || normalizeText(html)),
-  );
-}
-
-function locationClassText(html: string): string | undefined {
-  const match = html.match(/<[a-z0-9]+\b[^>]*class=["'][^"']*(?:listing-location|item-location|auction-location|vehicle-location)[^"']*["'][^>]*>([\s\S]*?)<\/[a-z0-9]+>/i);
-  return match?.[1] ? normalizeText(match[1]) : undefined;
-}
-
-function locationFromText(text: string): string | undefined {
-  const city = String.raw`[A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+)*`;
-  const state = String.raw`(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*|[A-Z]{2})`;
-  const place = String.raw`(${city},\s*${state})`;
-  const patterns = [
-    new RegExp(String.raw`\b(?:located|based|garaged)\s+in\s+${place}`, "i"),
-    new RegExp(String.raw`\boffered\s+(?:by\s+[^,.]{0,100}\s+)?(?:in|from)\s+${place}`, "i"),
-    new RegExp(String.raw`\b(?:seller|dealer)\s+(?:is\s+)?(?:located|based)?\s*(?:in|from)\s+${place}`, "i"),
-  ];
-  for (const pattern of patterns) {
-    const location = firstMatch(text, pattern);
-    if (location) return location;
-  }
-  return undefined;
-}
-
-function listItemsAfterHeading(html: string, label: RegExp): string[] {
-  for (const match of html.matchAll(/<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/gi)) {
-    const heading = normalizeText(match[1] || "");
-    if (!label.test(heading)) continue;
-    const start = (match.index || 0) + match[0].length;
-    const rest = html.slice(start);
-    const nextHeading = rest.search(/<h[1-6]\b/i);
-    const section = rest.slice(0, nextHeading >= 0 ? nextHeading : 20_000);
-    const firstList = section.match(/<ul\b[^>]*>([\s\S]*?)<\/ul>/i);
-    return firstList ? listItems(firstList[1] || "") : [];
-  }
-  return [];
-}
-
-function listItems(html: string): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const match of html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/gi)) {
-    const text = normalizeText(match[1] || "");
-    if (text.length < 3 || seen.has(text)) continue;
-    seen.add(text);
-    out.push(text);
-  }
-  return out;
-}
-
-function detailBidLog(html: string): NonNullable<ShadeDossierData["bidLog"]> {
-  const rows: NonNullable<ShadeDossierData["bidLog"]> = [];
-  for (const block of classBlocks(html, /bid-history|bid-row|bid-log|bidder-row/).slice(0, 20)) {
-    const amount = cleanText(firstMatch(normalizeText(block), /(\$[\d,]+(?:\.\d{2})?)/));
-    const bidder = textFromClassBlock(block, /bidder|username|user|member/) || cleanText(firstMatch(normalizeText(block), /(?:by|from)\s+([A-Za-z0-9_.-]{2,})/i));
-    const ago = textFromClassBlock(block, /ago|time|date/) || timeText(block);
-    if (!amount || !bidder) continue;
-    rows.push({ bidder, amount, ...(ago ? { ago } : {}) });
-  }
-  return rows;
-}
-
-function detailComments(html: string): NonNullable<ShadeDossierData["comments"]> {
-  const rows: NonNullable<ShadeDossierData["comments"]> = [];
-  for (const block of classBlocks(html, /comment\b|comment-item|comment-row/).slice(0, 30)) {
-    const user = textFromClassBlock(block, /comment-author|author|username|user/) || cleanText(firstMatch(block, /data-author=["']([^"']+)["']/i));
-    const body = textFromClassBlock(block, /comment-content|comment-body|body|content/) || paragraphText(block);
-    const ago = textFromClassBlock(block, /ago|date|time/) || timeText(block);
-    if (!user || !body || body.length < 5) continue;
-    rows.push({
-      user,
-      body,
-      ...(ago ? { ago } : {}),
-      ...(isSellerComment(block) ? { seller: true } : {}),
-    });
-  }
-  return rows;
-}
-
-function classBlocks(html: string, classPattern: RegExp): string[] {
-  const blocks: string[] = [];
-  const pattern = /<(article|li|tr|div|span|p|time)\b[^>]*class=["']([^"']+)["'][^>]*>([\s\S]*?)<\/\1>/gi;
-  for (const match of html.matchAll(pattern)) {
-    if (classPattern.test(match[2] || "")) blocks.push(match[0] || "");
-  }
-  return blocks;
-}
-
-function labeledValue(html: string, label: RegExp): string | undefined {
-  for (const match of html.matchAll(/<dt\b[^>]*>([\s\S]*?)<\/dt>\s*<dd\b[^>]*>([\s\S]*?)<\/dd>/gi)) {
-    if (label.test(normalizeText(match[1] || ""))) return cleanText(normalizeText(match[2] || ""));
-  }
-  for (const match of html.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>\s*<td\b[^>]*>([\s\S]*?)<\/td>/gi)) {
-    if (label.test(normalizeText(match[1] || ""))) return cleanText(normalizeText(match[2] || ""));
-  }
-  for (const match of html.matchAll(/<(?:li|p|div)\b[^>]*>([\s\S]*?)<\/(?:li|p|div)>/gi)) {
-    const text = normalizeText(match[1] || "");
-    const parts = text.match(/^([^:]{2,45}):\s*(.{1,140})$/);
-    if (parts && label.test(parts[1] || "")) return cleanText(parts[2] || "");
-  }
-  return undefined;
-}
-
-function countLabel(html: string, label: RegExp): number | undefined {
-  const text = normalizeText(html);
-  for (const match of text.matchAll(/(\d{1,4})\s+([A-Za-z ]{2,20})/g)) {
-    if (label.test(match[2] || "")) return Number(match[1]);
-  }
-  for (const match of text.matchAll(/([A-Za-z ]{2,20}):\s*(\d{1,4})/g)) {
-    if (label.test(match[1] || "")) return Number(match[2]);
-  }
-  return undefined;
-}
-
-function textFromClass(html: string, classPattern: RegExp): string | undefined {
-  const block = classBlocks(html, classPattern)[0];
-  return block ? normalizeText(block) : undefined;
-}
-
-function textFromClassBlock(html: string, classPattern: RegExp): string | undefined {
-  const leafPattern = /<(span|p|time|a|strong|em)\b[^>]*class=["']([^"']+)["'][^>]*>([\s\S]*?)<\/\1>/gi;
-  for (const match of html.matchAll(leafPattern)) {
-    if (classPattern.test(match[2] || "")) return normalizeText(match[3] || "");
-  }
-  return textFromClass(html, classPattern);
-}
-
-function paragraphText(html: string): string | undefined {
-  const match = html.match(/<p\b[^>]*>([\s\S]*?)<\/p>/i);
-  return match ? normalizeText(match[1] || "") : undefined;
-}
-
-function timeText(html: string): string | undefined {
-  const match = html.match(/<time\b[^>]*>([\s\S]*?)<\/time>/i);
-  return match ? normalizeText(match[1] || "") : undefined;
-}
-
-function isSellerComment(html: string): boolean {
-  return /seller|listing-author|author-badge|badge-seller/i.test(html);
-}
-
 function scoreCandidate(candidate: SourceCandidate, context: DiscoveryContext): ScoredCandidate {
-  const text = `${candidate.title} ${candidate.summary} ${candidate.sourceQuery}`.toLowerCase();
+  const detailText = [
+    candidate.dossier?.summary,
+    ...(candidate.dossier?.listing || []),
+    ...(candidate.dossier?.equipment || []),
+  ].join(" ");
+  const text = `${candidate.title} ${candidate.summary} ${candidate.sourceQuery} ${detailText}`.toLowerCase();
   const settings = sourceSettingsFor(context, candidate.source);
   let score = 0;
   const matches: string[] = [];
   const penalties: string[] = [];
+
+  const feedback = feedbackAdjustment(candidate, context.feedbackSteering);
+  score += feedback.scoreDelta;
+  matches.push(...feedback.matches);
+  penalties.push(...feedback.penalties);
 
   for (const [pattern, label, weight] of PRIORITY_TERMS) {
     if (pattern.test(text)) {
@@ -913,6 +862,18 @@ function scoreCandidate(candidate: SourceCandidate, context: DiscoveryContext): 
     }
   }
 
+  const modernJeep = modernJeepLocality(candidate, context);
+  if (modernJeep === "nearby") {
+    score += 3;
+    matches.push("nearby modern Jeep");
+  } else if (modernJeep === "unknown") {
+    score -= 20;
+    penalties.push("modern Jeep without a clear local location");
+  } else if (modernJeep === "far") {
+    score -= 28;
+    penalties.push("modern Jeep outside the local driving radius");
+  }
+
   for (const [pattern, label, weight] of AVOID_TERMS) {
     if (pattern.test(text)) {
       score -= weight;
@@ -928,6 +889,128 @@ function scoreCandidate(candidate: SourceCandidate, context: DiscoveryContext): 
   }
 
   return { candidate, score, matches: [...new Set(matches)], penalties: [...new Set(penalties)] };
+}
+
+function feedbackAdjustment(
+  candidate: SourceCandidate,
+  steering: FeedbackExport["steering"] | undefined,
+): { scoreDelta: number; matches: string[]; penalties: string[] } {
+  if (!steering) return { scoreDelta: 0, matches: [], penalties: [] };
+
+  const candidateUrl = canonicalFeedbackUrl(candidate.url);
+  const suppressedUrls = new Set(steering.suppressExactUrls.map(canonicalFeedbackUrl));
+  if (candidateUrl && suppressedUrls.has(candidateUrl)) {
+    return { scoreDelta: -100, matches: [], penalties: ["hidden by feedback"] };
+  }
+
+  const avoidExact = steering.avoidSimilarTo.some((entry) => canonicalFeedbackUrl(entry.url) === candidateUrl);
+  if (candidateUrl && avoidExact) {
+    return { scoreDelta: -100, matches: [], penalties: ["avoided by feedback"] };
+  }
+
+  const candidateTerms = feedbackTerms(`${candidate.title} ${candidate.summary} ${candidate.sourceQuery || ""}`);
+  const prioritized = bestFeedbackSimilarity(candidateTerms, steering.prioritizeSimilarTo);
+  const avoided = bestFeedbackSimilarity(candidateTerms, steering.avoidSimilarTo);
+  let scoreDelta = 0;
+  const matches: string[] = [];
+  const penalties: string[] = [];
+
+  if (prioritized >= 0.5) {
+    scoreDelta += prioritized >= 0.75 ? 14 : 9;
+    matches.push("feedback priority");
+  }
+  if (avoided >= 0.5) {
+    scoreDelta -= avoided >= 0.75 ? 30 : 20;
+    penalties.push("feedback avoid-similar");
+  }
+
+  return { scoreDelta, matches, penalties };
+}
+
+function bestFeedbackSimilarity(
+  candidateTerms: Set<string>,
+  entries: Array<{ title: string; tags: string[] }>,
+): number {
+  let best = 0;
+  for (const entry of entries) {
+    const entryTerms = feedbackTerms(`${entry.title} ${entry.tags.join(" ")}`);
+    if (!entryTerms.size) continue;
+    let overlap = 0;
+    for (const term of entryTerms) if (candidateTerms.has(term)) overlap += 1;
+    if (overlap < 2) continue;
+    best = Math.max(best, overlap / Math.min(4, entryTerms.size));
+  }
+  return Math.min(1, best);
+}
+
+function feedbackTerms(value: string): Set<string> {
+  const stop = new Set([
+    "and",
+    "auction",
+    "beach",
+    "bring",
+    "cars",
+    "from",
+    "look",
+    "model",
+    "more",
+    "similar",
+    "that",
+    "the",
+    "this",
+    "trailer",
+    "vehicle",
+    "with",
+  ]);
+  return new Set(
+    value
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((term) => term.length >= 3 && !stop.has(term) && !/^\d{4}$/.test(term)),
+  );
+}
+
+function canonicalFeedbackUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    url.hash = "";
+    url.search = "";
+    return `${url.origin.toLowerCase()}${url.pathname.replace(/\/+$/, "").toLowerCase()}`;
+  } catch {
+    return value.trim().replace(/[?#].*$/, "").replace(/\/+$/, "").toLowerCase();
+  }
+}
+
+function modernJeepLocality(candidate: SourceCandidate, context: DiscoveryContext): "nearby" | "far" | "unknown" | "not-modern-jeep" {
+  const text = `${candidate.title} ${candidate.summary}`.toLowerCase();
+  if (!/\bjeep\b|\bwrangler\b|\bgladiator\b/.test(text)) return "not-modern-jeep";
+  const year = Number((candidate.title.match(/\b(19|20)\d{2}\b/) || [])[0]);
+  if (!Number.isFinite(year) || year < 2007) return "not-modern-jeep";
+  if (!candidate.location) return "unknown";
+  return isClearlyNearDrivingRadius(candidate.location, context.homeRegion) ? "nearby" : "far";
+}
+
+function isClearlyNearDrivingRadius(location: string, homeRegion: string): boolean {
+  const normalizedLocation = ` ${location.toLowerCase()} `;
+  const normalizedHome = homeRegion.toLowerCase();
+  if (!/connecticut|\bct\b|northeast|new england|nyc|new york/i.test(normalizedHome)) {
+    return normalizedHome.length >= 3 && normalizedLocation.includes(normalizedHome);
+  }
+
+  return [
+    /\bct\b|connecticut/i,
+    /\bri\b|rhode island/i,
+    /\bma\b|massachusetts/i,
+    /\bny\b|new york/i,
+    /\bnj\b|new jersey/i,
+    /\bpa\b|pennsylvania/i,
+    /\bvt\b|vermont/i,
+    /\bnh\b|new hampshire/i,
+    /\bme\b|maine/i,
+    /\bde\b|delaware/i,
+    /\bmd\b|maryland/i,
+    /\bdc\b|district of columbia/i,
+  ].some((pattern) => pattern.test(normalizedLocation));
 }
 
 async function runAiScoring(
@@ -985,6 +1068,7 @@ function listingFromCandidate(scored: ScoredCandidate, context: DiscoveryContext
   const penaltyText = scored.penalties.length ? ` Watch: ${scored.penalties.join(", ")}.` : "";
   const aiWhy = scored.ai?.why ? ` AI fit note: ${scored.ai.why}` : "";
   const aiConcerns = scored.ai?.concerns ? ` AI caution: ${scored.ai.concerns}` : "";
+  const location = normalizeLocationMetadata(candidate);
 
   return {
     section: scored.ai?.section || (scored.score >= 30 ? "Strong fits" : "Worth a look"),
@@ -994,8 +1078,9 @@ function listingFromCandidate(scored: ScoredCandidate, context: DiscoveryContext
     url: candidate.url,
     bid: candidate.bid,
     bidNum: candidate.bidNum,
+    bidCents: candidate.bidCents,
     total: candidate.total,
-    location: candidate.location,
+    ...location,
     endsAt: candidate.endsAt,
     timeLeft: candidate.timeLeft,
     bids: candidate.bids,
@@ -1004,12 +1089,49 @@ function listingFromCandidate(scored: ScoredCandidate, context: DiscoveryContext
     fair: candidate.bidNum ? fairBand(candidate.bidNum) : "Check comparable sales before bidding",
     ceiling: `Keep total under $${ceiling.toLocaleString()} unless unusually clean.`,
     conf: `source-score-${Math.round(scored.score)}`,
-    why: `Found on ${candidate.site} via ${candidate.sourceQuery}; matched ${matchText}. Saved taste: ${context.tasteNotes}.${aiWhy}`,
+    why: listingFitText(candidate, matchText, context, aiWhy),
     concerns: `Verify title, rust, underside, driving video, seating/restraint practicality, and final buyer-fee total.${penaltyText}${aiConcerns} Saved avoid notes: ${context.avoidNotes}`,
-    currentTake: "source-discovery candidate from public source data",
+    currentTake: currentTakeText(scored),
     images: candidate.imageUrls,
     dossier: dossierFromCandidate(scored),
   };
+}
+
+function listingFitText(candidate: SourceCandidate, matchText: string, context: DiscoveryContext, aiWhy: string): string {
+  const sourceDetail = firstUsefulSentence(candidate.dossier?.summary || candidate.summary);
+  const route = sourceRouteText(candidate);
+  const detail = sourceDetail ? ` Source notes: ${sourceDetail}` : "";
+  return `${candidate.title} matched ${matchText} from ${route}; ${context.tasteNotes}.${detail}${aiWhy}`;
+}
+
+function sourceRouteText(candidate: SourceCandidate): string {
+  const site = candidate.site || candidate.source || "source";
+  const query = String(candidate.sourceQuery || "").trim();
+  if (!query) return site;
+  if (query.toLowerCase().includes(site.toLowerCase())) return query;
+  const cleanedQuery = query.replace(/^bat\s+/i, "").replace(/^bring a trailer\s+/i, "").trim();
+  return cleanedQuery ? `${site} ${cleanedQuery}` : site;
+}
+
+function currentTakeText(scored: ScoredCandidate): string {
+  const candidate = scored.candidate;
+  const parts: string[] = [];
+  if (candidate.noReserve) parts.push("no reserve");
+  if (candidate.bidNum) parts.push(candidate.source === "hemmings" ? `${candidate.bid} asking` : `${candidate.bid} current`);
+  if (candidate.timeLeft && !/^check\b/i.test(candidate.timeLeft)) parts.push(candidate.timeLeft);
+  if (scored.matches.includes("nearby modern Jeep")) parts.push("nearby Jeep exception");
+  if (scored.penalties.some((penalty) => /budget|cap/i.test(penalty))) parts.push("watch budget");
+  if (parts.length) return parts.join(" / ");
+  return scored.score >= 30 ? "strong source match" : "worth a closer look";
+}
+
+function firstUsefulSentence(value: string | undefined): string {
+  const normalized = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return "";
+  const sentence = normalized.match(/^.{45,220}?(?:[.!?](?:\s|$)|$)/)?.[0] || normalized.slice(0, 220);
+  return sentence.length > 220 ? `${sentence.slice(0, 217).trim()}...` : sentence.trim();
 }
 
 /**
@@ -1072,12 +1194,13 @@ function clampNumber(value: unknown, min: number, max: number): number {
 function sourceSettingsFor(
   context: DiscoveryContext,
   source: string,
-): { maxBudgetCents: number | null; noReserveOnly: boolean; searchNotes: string } {
+): { maxBudgetCents: number | null; noReserveOnly: boolean; searchNotes: string; maxSeedPages: number | null } {
   const settings = context.sourceSettings?.find((setting) => setting.source === source)?.settings || {};
   return {
     maxBudgetCents: positiveNumber(settings.maxBudgetCents),
     noReserveOnly: settings.noReserveOnly === true,
     searchNotes: typeof settings.searchNotes === "string" ? settings.searchNotes.trim() : "",
+    maxSeedPages: positiveNumber(settings.maxSeedPages),
   };
 }
 
@@ -1118,7 +1241,7 @@ function buildFallbackListings(
       url: "https://bringatrailer.com/volkswagen/thing/",
       bid: "Check listing",
       total: "Check listing",
-      location: context.homeRegion || "Check listing",
+      ...normalizeLocationMetadata({ location: context.homeRegion }),
       endsAt: generatedAt,
       timeLeft: "manual check",
       bids: "check listing",
@@ -1140,7 +1263,7 @@ function buildFallbackListings(
       url: "https://bringatrailer.com/auctions/",
       bid: "Check listing",
       total: "Check listing",
-      location: context.homeRegion || "Check listing",
+      ...normalizeLocationMetadata({ location: context.homeRegion }),
       endsAt: generatedAt,
       timeLeft: "manual check",
       bids: "check listing",
@@ -1265,6 +1388,7 @@ function blockedCheck(source: string, site: string, url: string, label: string |
     candidateCount: 0,
     checkedAt,
     message: "Fetch reached a bot/access challenge; use a logged-in browser or container runner for this source.",
+    blockedUrls: [url],
   };
 }
 
@@ -1272,88 +1396,12 @@ function looksLikeBotChallenge(text: string): boolean {
   return /cf-chl|cf_chl|Just a moment|enable javascript|checking your browser/i.test(text);
 }
 
+function looksLikeChallengeResponse(response: Response, text: string): boolean {
+  return /challenge/i.test(response.headers.get("cf-mitigated") || "") || looksLikeBotChallenge(text);
+}
+
 function sourceSummaryText(sources: string[]): string {
   return sources.length ? sources.join(", ") : "default public sources";
-}
-
-function imageUrlsFromText(text: string): string[] {
-  const urls = Array.from(text.matchAll(/https?:\/\/[^\s"'<>]+?\.(?:jpe?g|png|webp)(?:\?[^\s"'<>]*)?/gi)).map((match) => decodeHtml(match[0]));
-  const seen = new Set<string>();
-  const unique: string[] = [];
-  for (const url of urls) {
-    const canonical = url.replace(/\?.*$/, "");
-    if (seen.has(canonical)) continue;
-    seen.add(canonical);
-    unique.push(url);
-  }
-  return unique;
-}
-
-function textFromXmlTag(xml: string, tagName: string): string | null {
-  const escaped = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = xml.match(new RegExp(`<${escaped}[^>]*>\\s*(?:<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>|([\\s\\S]*?))\\s*<\\/${escaped}>`, "i"));
-  return match ? match[1] || match[2] || null : null;
-}
-
-function firstMatch(value: string, pattern: RegExp): string {
-  const match = value.match(pattern);
-  return match ? match[1] || "" : "";
-}
-
-function firstNonEmpty(...values: Array<string | undefined | null>): string | undefined {
-  for (const value of values) {
-    const cleaned = cleanText(value || "");
-    if (cleaned) return cleaned;
-  }
-  return undefined;
-}
-
-function normalizeText(value: string): string {
-  return cleanText(stripHtml(value));
-}
-
-function cleanText(value: string): string {
-  return decodeHtml(value).replace(/\s+/g, " ").trim();
-}
-
-function stripHtml(value: string): string {
-  return value.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function decodeHtml(value: string): string {
-  const named: Record<string, string> = {
-    amp: "&",
-    quot: "\"",
-    apos: "'",
-    "#039": "'",
-    nbsp: " ",
-    lt: "<",
-    gt: ">",
-    ndash: "-",
-    mdash: "-",
-  };
-  return value
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, raw: string) => String.fromCharCode(Number.parseInt(raw, 10)))
-    .replace(/&([a-zA-Z0-9#]+);/g, (entity, name: string) => named[name] || entity)
-    .trim();
-}
-
-function isoDateOrUndefined(value: string | null): string | undefined {
-  if (!value) return undefined;
-  const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toISOString() : undefined;
-}
-
-function parseMoney(value: string): number | undefined {
-  const match = value.replace(/,/g, "").match(/\$?\s*(\d+(?:\.\d+)?)/);
-  if (!match) return undefined;
-  const parsed = Number(match[1]);
-  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function errorMessage(error: unknown): string {

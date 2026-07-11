@@ -189,6 +189,7 @@ img {
 }
 
 .ai-settings,
+.research-service,
 .notification-settings,
 .source-settings,
 .automation-settings {
@@ -198,6 +199,143 @@ img {
   border-radius: 12px;
   padding: 12px;
   background: rgba(248, 250, 247, 0.72);
+}
+
+.research-service {
+  display: grid;
+  gap: 12px;
+  border-color: rgba(30, 95, 82, 0.2);
+  background: linear-gradient(145deg, rgba(242, 251, 247, 0.94), rgba(248, 250, 247, 0.82));
+}
+
+.managed-service-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+}
+
+.managed-service-card > span:last-child {
+  min-width: 0;
+}
+
+.managed-service-card strong,
+.managed-service-card small {
+  display: block;
+}
+
+.managed-service-card strong {
+  color: #14201c;
+  font-size: 0.94rem;
+  font-weight: 900;
+}
+
+.managed-service-card small {
+  margin-top: 3px;
+  color: #53625c;
+  font-size: 0.79rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.managed-service-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 11px;
+  background: #1e5f52;
+  color: #fff;
+}
+
+.managed-service-note,
+.advanced-settings-note,
+.field-help {
+  margin: 0;
+  color: #58665f;
+  font-size: 0.76rem;
+  font-weight: 750;
+  line-height: 1.4;
+  text-transform: none;
+}
+
+.managed-service-note {
+  border-radius: 9px;
+  background: rgba(30, 95, 82, 0.08);
+  padding: 8px 10px;
+  color: #365f55;
+}
+
+.advanced-settings {
+  overflow: hidden;
+  border: 1px solid rgba(20, 32, 28, 0.12);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.advanced-settings > summary {
+  display: flex;
+  min-height: 50px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  color: #35443f;
+  list-style: none;
+}
+
+.advanced-settings > summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced-settings > summary::after {
+  content: "+";
+  flex: 0 0 auto;
+  color: #65736d;
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.advanced-settings[open] > summary::after {
+  content: "−";
+}
+
+.advanced-settings > summary span,
+.advanced-settings > summary strong,
+.advanced-settings > summary small {
+  display: block;
+  min-width: 0;
+}
+
+.advanced-settings > summary strong {
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.advanced-settings > summary small {
+  margin-top: 2px;
+  color: #65736d;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.advanced-settings-body {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid rgba(20, 32, 28, 0.1);
+  padding: 12px;
+}
+
+.automation-disclosure {
+  background: rgba(248, 250, 247, 0.72);
+}
+
+.automation-disclosure .automation-settings {
+  border: 0;
+  padding: 0;
+  background: transparent;
 }
 
 .ai-usage-strip {
@@ -1992,6 +2130,62 @@ h2 {
   white-space: nowrap;
 }
 
+.scan-activity {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.scan-activity span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border-radius: 999px;
+  background: rgba(20, 32, 28, 0.06);
+  padding: 2px 5px;
+  color: #4e5b55;
+  font-size: 0.7rem;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.scan-activity svg {
+  width: 12px;
+  height: 12px;
+  color: #2d7665;
+}
+
+.budget-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  justify-self: end;
+  border-radius: 999px;
+  padding: 3px 6px;
+  font-size: 0.68rem;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.budget-chip svg {
+  width: 12px;
+  height: 12px;
+}
+
+.budget-chip.is-near {
+  background: rgba(224, 166, 41, 0.16);
+  color: #705116;
+}
+
+.budget-chip.is-stretch,
+.budget-chip.is-over {
+  background: rgba(179, 70, 47, 0.13);
+  color: #8f3328;
+}
+
 .scan-price svg {
   color: #9aa49f;
 }
@@ -2247,6 +2441,16 @@ h2 {
   margin-top: 2px;
   color: #65736d;
   font-size: 0.76rem;
+}
+
+.source-check-list .source-diagnostic-line,
+.runner-task-list .source-diagnostic-line {
+  color: #4d5e57;
+  font-size: 0.72rem;
+  line-height: 1.25;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .source-check-list em {

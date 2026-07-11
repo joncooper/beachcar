@@ -1,4 +1,4 @@
-import type { AuctionListing, FeedbackAction, Lane, ShadeDossierData } from "./types";
+import type { AuctionListing, FeedbackAction, Lane, LocationStatus, ShadeDossierData } from "./types";
 
 export function normalizeLane(value: unknown): Lane {
   if (value === "solo" || value === "curiosity") return value;
@@ -13,6 +13,8 @@ export function normalizeAction(value: unknown): FeedbackAction | null {
 export function normalizeListing(input: Partial<AuctionListing>): AuctionListing {
   const site = String(input.site || "Unknown");
   const url = String(input.url || "");
+  const dossier = normalizeDossier(input.dossier);
+  const location = normalizeLocationMetadata({ ...input, dossier });
   return {
     section: String(input.section || "Worth a look"),
     lane: normalizeLane(input.lane),
@@ -21,8 +23,9 @@ export function normalizeListing(input: Partial<AuctionListing>): AuctionListing
     url,
     bid: String(input.bid || "Check listing"),
     total: String(input.total || "Check listing"),
-    location: input.location ? String(input.location) : undefined,
+    ...location,
     bidNum: typeof input.bidNum === "number" ? input.bidNum : undefined,
+    bidCents: normalizeBidCents(input.bidCents, input.bidNum),
     endsAt: input.endsAt ? String(input.endsAt) : undefined,
     ends: input.ends ? String(input.ends) : undefined,
     timeLeft: input.timeLeft ? String(input.timeLeft) : undefined,
@@ -36,7 +39,108 @@ export function normalizeListing(input: Partial<AuctionListing>): AuctionListing
     concerns: String(input.concerns || ""),
     currentTake: input.currentTake ? String(input.currentTake) : undefined,
     images: normalizeImages(input.images, { site, url }),
-    dossier: normalizeDossier(input.dossier),
+    dossier,
+  };
+}
+
+function normalizeBidCents(bidCents: unknown, bidNum: unknown): number | undefined {
+  const cents = typeof bidCents === "number" ? bidCents : typeof bidCents === "string" ? Number(bidCents) : Number.NaN;
+  if (Number.isInteger(cents) && cents >= 0) return cents;
+  const dollars = typeof bidNum === "number" ? bidNum : typeof bidNum === "string" ? Number(bidNum) : Number.NaN;
+  return Number.isFinite(dollars) && dollars >= 0 ? Math.round(dollars * 100) : undefined;
+}
+
+type LocationInput = Partial<
+  Pick<
+    AuctionListing,
+    | "location"
+    | "locationRaw"
+    | "locationCity"
+    | "locationRegion"
+    | "locationCountry"
+    | "distanceMiles"
+    | "locationStatus"
+    | "missingData"
+    | "dossier"
+  >
+>;
+
+type LocationMetadata = Pick<
+  AuctionListing,
+  "location" | "locationRaw" | "locationCity" | "locationRegion" | "locationCountry" | "distanceMiles" | "locationStatus" | "missingData"
+>;
+
+export function normalizeLocationMetadata(input: LocationInput): LocationMetadata {
+  const dossierLocation = input.dossier?.beachUse?.location;
+  const display = displayableLocation(input.location) || displayableLocation(input.locationRaw) || displayableLocation(dossierLocation);
+  const raw = cleanLocation(input.locationRaw) || cleanLocation(input.location) || cleanLocation(dossierLocation);
+  const parsed = parseLocationParts(display || raw);
+  const status = normalizeLocationStatus(input.locationStatus, display);
+  const missingData = normalizeMissingData(input.missingData, status);
+  const distanceMiles = normalizeDistanceMiles(input.distanceMiles);
+
+  return {
+    ...(display ? { location: display } : {}),
+    ...(raw ? { locationRaw: raw } : {}),
+    ...(cleanLocation(input.locationCity) || parsed.city ? { locationCity: cleanLocation(input.locationCity) || parsed.city } : {}),
+    ...(cleanLocation(input.locationRegion) || parsed.region ? { locationRegion: cleanLocation(input.locationRegion) || parsed.region } : {}),
+    ...(cleanLocation(input.locationCountry) || parsed.country ? { locationCountry: cleanLocation(input.locationCountry) || parsed.country } : {}),
+    ...(distanceMiles !== undefined ? { distanceMiles } : {}),
+    locationStatus: status,
+    ...(missingData.length ? { missingData } : {}),
+  };
+}
+
+function normalizeLocationStatus(value: unknown, display: string | undefined): LocationStatus {
+  if (value === "ok" && display) return "ok";
+  if (value === "missing" && !display) return "missing";
+  return display ? "ok" : "missing";
+}
+
+function normalizeMissingData(value: unknown, locationStatus: LocationStatus): string[] {
+  const existing = stringArray(value) || [];
+  const withoutLocation = existing.filter((item) => item !== "location");
+  const next = locationStatus === "missing" ? [...withoutLocation, "location"] : withoutLocation;
+  return [...new Set(next)];
+}
+
+function normalizeDistanceMiles(value: unknown): number | undefined {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function cleanLocation(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.replace(/\s+/g, " ").trim() : undefined;
+}
+
+function displayableLocation(value: unknown): string | undefined {
+  const cleaned = cleanLocation(value);
+  if (!cleaned) return undefined;
+  const lower = cleaned.toLowerCase();
+  if (lower === "check" || lower === "location check" || lower === "check listing" || lower === "check the listing") return undefined;
+  if (lower.startsWith("check listing") || lower.startsWith("check the listing")) return undefined;
+  return cleaned;
+}
+
+function parseLocationParts(value: string | undefined): { city?: string; region?: string; country?: string } {
+  if (!value) return {};
+  const parts = value
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length < 2) return {};
+  const usStateZip = parts[1].match(/^([A-Z]{2})(?:\s+\d{5}(?:-\d{4})?)?$/);
+  if (usStateZip) {
+    return {
+      city: parts[0],
+      region: usStateZip[1],
+      country: parts[2] || "US",
+    };
+  }
+  return {
+    city: parts[0],
+    region: parts[1],
+    ...(parts[2] ? { country: parts.slice(2).join(", ") } : {}),
   };
 }
 

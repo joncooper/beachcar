@@ -1,12 +1,15 @@
 import { Agent } from "agents";
 import type { AgentRunRecord } from "../../shared/types";
-import { createAgentRunRequest, markAgentRunPrepared, markAgentRunRunning } from "../db";
+import { createAgentRunRequest, getProfile, markAgentRunPrepared, markAgentRunRunning } from "../db";
+import { isDailyCron, nextDailyRunAt, normalizeTimezone } from "../daily-schedule";
 import type { BeachcarRunWorkflowParams } from "../workflows/beachcar-run-workflow";
 
 export interface BeachcarAgentState {
   userId: string | null;
   scheduleCron: string | null;
+  scheduleTimezone: string | null;
   scheduleId: string | null;
+  nextRunAt: string | null;
   latestRunId: string | null;
   latestStatus: AgentRunRecord["status"] | null;
   phase: "idle" | "scheduled" | "queued";
@@ -23,13 +26,29 @@ interface QueuePayload {
   runId: string;
 }
 
+interface ScheduledRunPayload {
+  userId: string;
+  scheduleCron: string;
+  timezone: string;
+  scheduledFor?: string;
+}
+
+interface ScheduledRunCallbackPayload {
+  userId: string;
+  scheduleCron?: string;
+  timezone?: string;
+  scheduledFor?: string;
+}
+
 export class BeachcarAgent extends Agent<Env, BeachcarAgentState, BeachcarAgentProps> {
   static options = { sendIdentityOnConnect: false };
 
   initialState: BeachcarAgentState = {
     userId: null,
     scheduleCron: null,
+    scheduleTimezone: null,
     scheduleId: null,
+    nextRunAt: null,
     latestRunId: null,
     latestStatus: null,
     phase: "idle",
@@ -61,21 +80,35 @@ export class BeachcarAgent extends Agent<Env, BeachcarAgentState, BeachcarAgentP
     return started;
   }
 
-  async syncSchedule(input: { userId: string; scheduleCron?: string | null; enabled?: boolean }): Promise<BeachcarAgentState> {
-    await this.cancelDailySchedules();
-
+  async syncSchedule(input: {
+    userId: string;
+    scheduleCron?: string | null;
+    timezone?: string | null;
+    enabled?: boolean;
+  }): Promise<BeachcarAgentState> {
     const scheduleCron = normalizeCron(input.scheduleCron);
+    const scheduleTimezone = normalizeTimezone(input.timezone);
+    const nextRun = input.enabled && scheduleCron && isDailyCron(scheduleCron) ? nextDailyRunAt(scheduleCron, scheduleTimezone) : null;
+
     let scheduleId: string | null = null;
+    let nextRunAt: string | null = null;
     if (input.enabled && scheduleCron) {
-      const schedule = await this.schedule(scheduleCron, "queueScheduledRun", { userId: input.userId }, { idempotent: true });
+      const scheduled = await this.scheduleNextDailyRun({ userId: input.userId, scheduleCron, timezone: scheduleTimezone }, nextRun);
+      const { schedule } = scheduled;
       scheduleId = schedule.id;
+      nextRunAt = scheduled.nextRunAt;
+      await this.cancelDailySchedules(schedule.id);
+    } else {
+      await this.cancelDailySchedules();
     }
 
     const nextState: BeachcarAgentState = {
       ...this.state,
       userId: input.userId,
       scheduleCron,
+      scheduleTimezone,
       scheduleId,
+      nextRunAt,
       phase: scheduleId ? "scheduled" : this.state.latestStatus === "queued" ? "queued" : "idle",
       updatedAt: new Date().toISOString(),
     };
@@ -83,8 +116,69 @@ export class BeachcarAgent extends Agent<Env, BeachcarAgentState, BeachcarAgentP
     return nextState;
   }
 
-  async queueScheduledRun(input: { userId: string }): Promise<AgentRunRecord> {
-    const run = await createAgentRunRequest(this.env.DB, { userId: input.userId, source: "schedule", reason: "scheduled_agent" });
+  async queueScheduledRun(input: ScheduledRunCallbackPayload): Promise<AgentRunRecord | null> {
+    const profile = await getProfile(this.env.DB, input.userId);
+    if (!profile?.onboardingCompletedAt) {
+      await this.cancelDailySchedules();
+      this.setState({
+        ...this.state,
+        userId: input.userId,
+        scheduleCron: null,
+        scheduleTimezone: null,
+        scheduleId: null,
+        nextRunAt: null,
+        phase: "idle",
+        updatedAt: new Date().toISOString(),
+      });
+      console.log(JSON.stringify({ level: "info", message: "scheduled_agent.cancelled_missing_profile", userId: input.userId }));
+      return null;
+    }
+    const scheduleCron = normalizeCron(profile.scheduleCron) || normalizeCron(input.scheduleCron) || normalizeCron(this.state.scheduleCron) || "0 8 * * *";
+    const timezone = normalizeTimezone(profile.timezone || input.timezone || this.state.scheduleTimezone);
+    const scheduled = await this.scheduleNextDailyRun({ userId: input.userId, scheduleCron, timezone });
+    await this.cancelDailySchedules(scheduled.schedule.id);
+    this.setState({
+      ...this.state,
+      userId: input.userId,
+      scheduleCron,
+      scheduleTimezone: timezone,
+      scheduleId: scheduled.schedule.id,
+      nextRunAt: scheduled.nextRunAt,
+      phase: "scheduled",
+      updatedAt: new Date().toISOString(),
+    });
+
+    let run: AgentRunRecord;
+    try {
+      run = await createAgentRunRequest(this.env.DB, { userId: input.userId, source: "schedule", reason: "scheduled_agent" });
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("AI budget exceeded")) {
+        console.log(
+          JSON.stringify({
+            level: "info",
+            message: "scheduled_agent.skipped_budget",
+            userId: input.userId,
+            scheduledFor: input.scheduledFor || null,
+            nextRunAt: scheduled.nextRunAt,
+          }),
+        );
+        return null;
+      }
+      if (error instanceof Error && error.message.includes("Active user required")) {
+        await this.cancelDailySchedules();
+        this.setState({
+          ...this.state,
+          userId: input.userId,
+          scheduleId: null,
+          nextRunAt: null,
+          phase: "idle",
+          updatedAt: new Date().toISOString(),
+        });
+        console.log(JSON.stringify({ level: "info", message: "scheduled_agent.cancelled_inactive_user", userId: input.userId }));
+        return null;
+      }
+      throw error;
+    }
     const started = await this.startRunWorkflow(run, {
       userId: input.userId,
       runId: run.id,
@@ -158,9 +252,51 @@ export class BeachcarAgent extends Agent<Env, BeachcarAgentState, BeachcarAgentP
     return nextState;
   }
 
-  private async cancelDailySchedules(): Promise<void> {
-    const schedules = await this.listSchedules({ type: "cron" });
-    await Promise.all(schedules.filter((schedule) => schedule.callback === "queueScheduledRun").map((schedule) => this.cancelSchedule(schedule.id)));
+  private async cancelDailySchedules(exceptId?: string): Promise<void> {
+    const schedules = await this.listSchedules();
+    await Promise.all(
+      schedules
+        .filter((schedule) => schedule.callback === "queueScheduledRun" && schedule.id !== exceptId)
+        .map((schedule) => this.cancelSchedule(schedule.id)),
+    );
+  }
+
+  private async scheduleNextDailyRun(input: {
+    userId: string;
+    scheduleCron: string;
+    timezone: string;
+  }, nextRun: Date | null = isDailyCron(input.scheduleCron) ? nextDailyRunAt(input.scheduleCron, input.timezone) : null): Promise<{
+    schedule: Awaited<ReturnType<BeachcarAgent["schedule"]>>;
+    nextRunAt: string;
+  }> {
+    if (!nextRun) {
+      const schedule = await this.schedule<ScheduledRunPayload>(
+        input.scheduleCron,
+        "queueScheduledRun",
+        input,
+        { idempotent: true },
+      );
+      const nextRunAt = new Date(schedule.time * 1_000).toISOString();
+      console.log(
+        JSON.stringify({
+          level: "warn",
+          message: "scheduled_agent.legacy_utc_cron",
+          userId: input.userId,
+          scheduleCron: input.scheduleCron,
+          nextRunAt,
+        }),
+      );
+      return { schedule, nextRunAt };
+    }
+
+    const nextRunAt = nextRun.toISOString();
+    const schedule = await this.schedule<ScheduledRunPayload>(
+      nextRun,
+      "queueScheduledRun",
+      { ...input, scheduledFor: nextRunAt },
+      { idempotent: true },
+    );
+    return { schedule, nextRunAt };
   }
 
   private async startRunWorkflow(run: AgentRunRecord, params: BeachcarRunWorkflowParams): Promise<AgentRunRecord> {

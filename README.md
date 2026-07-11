@@ -1,8 +1,8 @@
 # Beachcar
 
-Beachcar is a mobile-first auction watch app for people who want a daily AI agent to research listings, apply taste/preferences, estimate values, copy listing images, and publish a private shortlist.
+Beachcar is a managed, mobile-first auction scout. A friend sets their taste, budget, region, and sources; Beachcar researches listings each day, applies their feedback, and publishes a private shortlist to the web and iOS apps.
 
-The default example is a beach-car/runabout watchlist, but the app is intentionally reusable for other collector niches.
+The friend-facing default requires no provider key, automation token, MCP client, or agent setup. Those capabilities remain available as advanced options for operators and technical users. The default niche is beach cars and runabouts; other collector niches can reuse the same system later.
 
 ## What It Includes
 
@@ -19,7 +19,7 @@ The default example is a beach-car/runabout watchlist, but the app is intentiona
   - Hide: remove this exact listing from the default view.
   - Avoid: suppress similar listings unless unusually compelling.
 - Admin import, invite, user, AI usage, Agent run, and runner-task APIs for the daily automation and friend beta.
-- Hosted remote MCP preview with scoped automation tokens, user-visible events, and a downloadable friend skill for cloud agents.
+- Advanced hosted MCP integration with scoped automation tokens, OAuth, user-visible events, and a downloadable skill for people who intentionally run their own cloud agent.
 - Agent playbooks for Codex, Claude, or another browser-capable AI operator.
 
 ## Native iOS Preview
@@ -35,25 +35,20 @@ These are actual iPhone simulator screenshots from the current SwiftUI app:
   <img src="docs/screenshots/ios-details.png" alt="Beachcar iOS detail back view" width="220">
 </p>
 
-## Operating Model
+## Canonical Product Workflow
 
-Beachcar supports two run paths:
+The friend beta has one primary workflow: **Beachcar-managed daily research**.
 
-1. A local/hosted AI automation can still publish normalized daily data through the admin import API.
-2. A signed-in user can request an Agent-backed run. The per-user Cloudflare Agent starts a Workflow, loads that user's profile/source/feedback context, discovers public candidates, scores them through AI Gateway when configured, imports a user-scoped run, warms image variants, and queues blocked source work for the runner-task/Container boundary.
+1. A friend accepts an invite and sets taste, budget, region, and enabled sources. They do not configure an AI provider or agent.
+2. A managed schedule or signed-in **Run now** request starts that user's Cloudflare Agent and durable Workflow.
+3. The Workflow loads that user's profile, source settings, feedback, and preference events; searches enabled sources; and evaluates the candidates.
+4. It publishes the user-scoped shortlist, warms image variants, and records normal-language run/source status.
+5. The friend reviews it in the PWA or iOS app and leaves like/star/hide/avoid feedback.
+6. The next managed Workflow run uses that feedback to improve the shortlist.
 
-For the external daily automation path:
+The operator-owned automation in `automation/codex-daily-run.md` remains a quality reference and fallback publisher when source research needs intervention. It is not a second friend setup path.
 
-1. Fetch feedback memory from `GET /api/admin/feedback/export`.
-2. Search/scrape auction sites using the user's own browser/session/API access.
-3. Evaluate listings against the user's profile and prior feedback.
-4. Estimate fair value and a practical bid ceiling.
-5. Collect useful image URLs.
-6. Emit normalized JSON.
-7. Publish to `POST /api/admin/import` or `POST /api/admin/users/:userId/runs/import`.
-8. Copy images into R2 through the publish flow.
-
-The app is the hosted review and memory surface. The agent is the collector, analyst, and publisher.
+The hosted MCP, manual automation tokens, OAuth, AI Gateway aliases, and BYOK mode are **advanced, optional paths**. They are useful for operator tooling and technical users who deliberately want to run their own agent, but they are not part of normal onboarding.
 
 ## Local Setup
 
@@ -177,13 +172,14 @@ bun run cloudflare:bootstrap -- --yes --migrate --dry-run-deploy --deploy
 `CLERK_JWT_ISSUER` is your Clerk issuer URL, usually like `https://your-instance.clerk.accounts.dev`.
 `bun run deploy:env:check` hides secret values and reports only missing or malformed deployment inputs. Use `-- --strict` to make missing required values fail.
 
-## Publishing A Daily Run
+## Operator Fallback: Publishing A Daily Run
 
-Configure `.publish.env`:
+The managed Agent/Workflow is the primary publisher. For an operator intervention or quality comparison, configure `.publish.env` with the target user's Beachcar id:
 
 ```bash
 AUCTION_WATCH_URL=https://beachcar-watch.<your-workers-subdomain>.workers.dev
 PUBLISH_TOKEN=<same value configured as Worker secret>
+BEACHCAR_USER_ID=<target-user-id>
 ```
 
 Publish sample data:
@@ -198,7 +194,7 @@ Publish a real daily run:
 DAILY_JSON=outputs/daily-run-2026-06-20.json bun run publish:daily
 ```
 
-The publish script imports the run first, then copies queued listing images to R2 through the admin image API.
+The publish script imports the run into that user's history first, then copies queued listing images to R2 through the admin image API. If `BEACHCAR_USER_ID` is absent, it warns and uses the legacy bootstrap-owner route.
 It also warms `deck` and `thumb` image variants by default so the iOS/PWA review flow does not pay the first-view transform cost. Set `SKIP_IMAGE_WARM=1` to skip that step, or tune it with `IMAGE_WARM_VARIANTS`, `IMAGE_WARM_CONCURRENCY`, and `IMAGE_WARM_LIMIT`.
 
 Backfill variants for an already published run:
@@ -214,32 +210,32 @@ Use `bun run images:warm -- --all --execute` to backfill every copied image in t
 1. Sign in as the bootstrap owner.
 2. Open the admin console from the PWA and create an invite.
 3. Friend signs in with Clerk, enters the invite code, and completes onboarding.
-4. Friend configures profile, source toggles, schedule, AI mode, and budget caps.
-5. Friend reviews their own latest run in the PWA or iOS app.
-6. Friend can open Preferences > Connect automation, create a scoped token, download the Beachcar skill, and give both to a cloud agent.
-7. Feedback, preference events, AI usage, Agent runs, remote automation events, and account export/delete stay scoped to that user.
+4. Managed daily research uses the saved profile and source toggles; no key, token, or external agent is required from the friend.
+5. Friend reviews their own latest run in the PWA or iOS app and leaves feedback for the next run.
+6. Feedback, preference events, AI usage, Agent runs, remote automation events, and account export/delete stay scoped to that user.
+7. Optional for technical users only: Preferences > Advanced > Connect your own agent exposes OAuth/manual tokens and the downloadable Beachcar skill.
 
-Friends do not need to paste raw OpenAI keys for the first beta. Prefer managed Cloudflare AI Gateway budgets. If BYOK is enabled, store the provider key in Cloudflare AI Gateway/Secrets Store and save only the gateway key reference in Beachcar.
+Friends do not need to paste raw OpenAI keys for the beta. The default is Beachcar-managed research with operator-owned cost controls. If an advanced BYOK path is deliberately enabled, store the provider key in Cloudflare AI Gateway/Secrets Store and save only the gateway key reference in Beachcar.
 
 The Container runner stays deterministic unless explicitly configured. To test a deployed Codex-backed runner intentionally, set `BEACHCAR_RUNNER_MODE=codex`, optionally set `BEACHCAR_CODEX_MODEL`, provide the runner credential as a Worker secret such as `OPENAI_API_KEY`, and deploy with `--deploy-containers`. Do not store friend-provided raw keys in D1.
 
-## Remote MCP Friend Automation
+## Advanced: Remote MCP Automation
 
-The hosted MCP preview lets a friend use Codex, Claude, or another cloud agent without running a local MCP server:
+This is not a friend-beta setup step. It lets a technical user or operator intentionally replace the managed researcher with Codex, Claude, or another cloud agent without running a local MCP server:
 
 1. Complete onboarding and source preferences.
-2. Open Preferences > Connect automation.
+2. Open Preferences > Advanced: connect your own agent.
 3. Create a token and download the Beachcar skill.
 4. Configure the cloud agent to use `/mcp` with the token as Bearer auth.
 5. Have the agent call `get_setup_context`, gather candidates, `publish_run`, `record_usage`, and `verify_latest_run`.
 
-The preview stores only token hashes in D1, supports revocation, and logs automation events. Production should replace manual token creation with MCP OAuth while keeping the same tool contracts.
+The integration stores only token hashes in D1, supports revocation, and logs automation events. Prefer OAuth when the MCP client supports it; scoped manual tokens remain a fallback.
 
 See `docs/remote-mcp-friend-automation.md`.
 
-## AI Automation
+## Operator Fallback And Research Playbooks
 
-Start with:
+When the managed Workflow needs source intervention or a quality comparison, start with:
 
 - `.agents/skills/beachcar-daily-run/SKILL.md`
 - `automation/codex-daily-run.md`
@@ -249,7 +245,7 @@ Start with:
 - `automation/valuation-guide.md`
 - `automation/source-profile.beach-cars.md`
 
-The automation instructions are intentionally explicit because auction pages change. A browser-capable AI agent should inspect pages live, adapt extraction, and keep producing the stable import JSON shape documented in `docs/publishing.md`.
+The automation instructions are intentionally explicit because auction pages change. A browser-capable operator job should inspect pages live, adapt extraction, and keep producing the stable import JSON shape documented in `docs/publishing.md`. This is an operational fallback and quality harness; friends consume the result and do not operate it.
 
 ## Compliance
 
@@ -257,4 +253,6 @@ You are responsible for how your automation accesses third-party sites. Use your
 
 ## Project Status
 
-This worktree contains a local friend-beta implementation. No production deploy is implied by the local preflight. Before inviting real friends, run `bun run preflight:full`, deploy intentionally, then verify the remote Worker, D1 migrations, AI Gateway budget policy, image variant creation, and Container runner against the deployed Cloudflare account.
+The hosted beta surface is deployed at `https://beachcar-watch.jon-cooper.workers.dev`; the last confirmed production baseline has D1 migrations `0001`-`0010` applied and passed public app-shell, MCP/OAuth metadata, auth-bypass rejection, and admin source-cache verification. `docs/cloudflare.md` is the deployment source of truth.
+
+The current Source Quality v1 worktree, including migration `0011`, still needs a deliberate rollout and a signed-in end-to-end run before a friend pilot. Real Clerk-session onboarding/run checks, remote image variants, and the selected managed execution path should be reverified after that rollout. Advanced Container, MCP-client, and BYOK validation do not block the default friend experience unless those optional paths are enabled.

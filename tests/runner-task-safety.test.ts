@@ -22,4 +22,10 @@ describe("remote runner task safety", () => {
     expect(source).toContain("`local-codex-${process.pid}-${randomUUID()}`");
     expect(source).toContain('body.task.status !== "running" || body.task.runnerId !== runnerId');
   });
+
+  it("preserves the runner-result protocol instead of confusing task completion with scrape success", () => {
+    expect(source).not.toContain('scrape.status === "ok" ? "completed"');
+    expect(source.match(/const status = scrape\.status \|\| \(listings\.length \? "ok" : "empty"\);/g)).toHaveLength(2);
+    expect(source.match(/status === "ok"/g)).toHaveLength(2);
+  });
 });

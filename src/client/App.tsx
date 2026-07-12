@@ -242,6 +242,12 @@ const sourceOptions = [
   },
 ];
 
+function sourceDisplayLabel(source: string): string {
+  const normalized = source.trim().toLowerCase();
+  if (normalized === "bringatrailer-detail") return "Bring a Trailer detail";
+  return sourceOptions.find((option) => option.source === normalized)?.label || source;
+}
+
 const tasteCalibrationOptions: CalibrationOption[] = [
   { id: "open-air", label: "Open-air", note: "convertibles, door-off 4x4s, targas, and sunroof cars" },
   { id: "simple", label: "Simple", note: "mechanically simple cars with easy parts and light electronics" },
@@ -1762,7 +1768,7 @@ function RunDetailSheet(props: {
         <section className="run-detail-section">
           <div className="setup-section-title">
             <span>Sources</span>
-            <small>{summary.enabledSources.length ? summary.enabledSources.join(", ") : "default"}</small>
+            <small>{summary.enabledSources.length ? summary.enabledSources.map(sourceDisplayLabel).join(", ") : "default"}</small>
           </div>
           <div className="source-check-list">
             {sourceChecks.slice(0, 12).map((check, index) => (
@@ -1816,7 +1822,7 @@ function RunDetailSheet(props: {
               <article key={task.id}>
                 <span className={`source-status-dot ${sourceStatusClass(task.status)}`}>{task.status}</span>
                 <div>
-                  <strong>{task.source}</strong>
+                  <strong>{sourceDisplayLabel(task.source)}</strong>
                   <small>{runnerTaskDetailText(task)}</small>
                   {runnerTaskDiagnosticText(task) ? <small className="source-diagnostic-line">{runnerTaskDiagnosticText(task)}</small> : null}
                 </div>

@@ -129,23 +129,31 @@ try {
     throw new Error("Clerk ticket navigation failed.");
   });
   addCheck("Ticket redemption loaded the current production app", Boolean(navigation?.ok()), `HTTP ${navigation?.status() || "unknown"}`);
-  await page
+  const authOutcome = await page
     .waitForFunction(
       (expectedOrigin) => {
         const current = new URL(window.location.href);
-        return (
+        if (
           current.origin === expectedOrigin &&
           Boolean(window.Clerk?.session) &&
           !current.searchParams.has("__clerk_ticket") &&
           !current.searchParams.has("ticket")
-        );
+        ) {
+          return { status: "signed-in" };
+        }
+        const authError = document.querySelector(".auth-error")?.textContent?.trim();
+        return authError ? { status: "error", message: authError } : null;
       },
       baseUrl,
       { timeout: 60_000 },
     )
+    .then((handle) => handle.jsonValue())
     .catch(() => {
       throw new Error("Clerk ticket did not create a cleaned active session on the current production origin.");
     });
+  if (authOutcome?.status === "error") {
+    throw new Error(`Clerk ticket redemption failed: ${authOutcome.message || "unknown Clerk error"}`);
+  }
   const finalBrowserUrl = new URL(page.url());
   addCheck(
     "Clerk ticket was redeemed only on the current production origin",

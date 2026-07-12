@@ -338,6 +338,14 @@ describe("managed verifier executable lifecycle invariants", () => {
     expect(source).not.toContain("--resume-run-id");
   });
 
+  it("surfaces the rendered Clerk ticket error before a one-time credential can time out generically", () => {
+    expect(source).toContain('document.querySelector(".auth-error")');
+    expect(source).toContain('authOutcome?.status === "error"');
+    expect(source).toContain("Clerk ticket redemption failed:");
+    expect(source.indexOf('document.querySelector(".auth-error")'))
+      .toBeLessThan(source.indexOf("await markTicketConsumed()"));
+  });
+
   it("checkpoints runner ids before merge waiting and keeps UI proof before final schedule sync", () => {
     expect(source).toContain('const requireRunnerMerge = !allowRunnerHandoffOnly');
     expect(source).toContain('--allow-runner-handoff-only');
@@ -361,5 +369,11 @@ describe("managed verifier executable lifecycle invariants", () => {
     expect(source).toContain("renderedRun.workflowInstanceId === expectedRun.workflowInstanceId");
     expect(source).toContain("renderedRun.publishedRunId === expectedRun.publishedRunId");
     expect(source).toContain("renderedRun.generatedAt === expectedRun.generatedAt");
+  });
+
+  it("renders human-readable source evidence in the signed-in Run detail", () => {
+    expect(appSource).toContain("function sourceDisplayLabel(source: string)");
+    expect(appSource).toContain("summary.enabledSources.map(sourceDisplayLabel).join");
+    expect(appSource).toContain("<strong>{sourceDisplayLabel(task.source)}</strong>");
   });
 });

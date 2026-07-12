@@ -137,7 +137,7 @@ async function runCarsAndBidsBrowserTask(task) {
   }
 
   const listings = Array.isArray(scrape.listings) ? scrape.listings : [];
-  const status = scrape.status === "ok" ? "completed" : scrape.status || "blocked";
+  const status = scrape.status || (listings.length ? "ok" : "empty");
   return {
     runner: runnerId,
     runtime: "local-browser",
@@ -147,7 +147,7 @@ async function runCarsAndBidsBrowserTask(task) {
     checkedAt: new Date().toISOString(),
     message:
       scrape.message ||
-      (status === "completed"
+      (status === "ok"
         ? `Cars & Bids browser scrape completed with ${listings.length} normalized candidate(s).`
         : "Cars & Bids browser scrape did not produce candidates."),
     outputPath: outPath,
@@ -190,7 +190,7 @@ async function runHemmingsBrowserTask(task) {
   }
 
   const listings = Array.isArray(scrape.listings) ? scrape.listings : [];
-  const status = scrape.status === "ok" ? "completed" : scrape.status || "blocked";
+  const status = scrape.status || (listings.length ? "ok" : "empty");
   return {
     runner: runnerId,
     runtime: "local-browser",
@@ -200,7 +200,7 @@ async function runHemmingsBrowserTask(task) {
     checkedAt: new Date().toISOString(),
     message:
       scrape.message ||
-      (status === "completed"
+      (status === "ok"
         ? `Hemmings browser scrape completed with ${listings.length} normalized candidate(s).`
         : "Hemmings browser scrape did not produce candidates."),
     outputPath: outPath,

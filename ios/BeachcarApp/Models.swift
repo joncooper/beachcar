@@ -748,7 +748,10 @@ extension RunPayload {
           "why": "Open-air, light, local-beach friendly, and usable for short school runs with diligence on belts.",
           "concerns": "Rust, title status, rear belts, highway manners",
           "currentTake": "bargain watch",
-          "images": [],
+          "images": [
+            "https://example.com/ui-test-samurai-front.jpg",
+            "https://example.com/ui-test-samurai-cabin.jpg"
+          ],
           "dossier": {
             "summary": "Two-owner Samurai wearing a fresh soft top, with recent brakes, tires, and a rebuilt carburetor. Sold on a clean Connecticut title with service records.",
             "specs": {

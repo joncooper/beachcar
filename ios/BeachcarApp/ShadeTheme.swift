@@ -100,15 +100,31 @@ enum ArchivoWeight {
 }
 
 extension Font {
-  /// Display / UI typeface. Sizes are fixed (pt) to match the pixel-spec design.
+  /// Display / UI typeface. The reference style preserves the authored hierarchy
+  /// while allowing Dynamic Type to scale it with the user's reading preference.
   static func archivo(_ size: CGFloat, _ weight: ArchivoWeight = .regular) -> Font {
-    .custom(weight.psName, fixedSize: size)
+    let readableSize = max(size, 11)
+    return .custom(weight.psName, size: readableSize, relativeTo: beachcarTextStyle(for: readableSize))
   }
 
   /// Mono / tracked-label typeface (counters, locations, timestamps, labels).
   static func mono(_ size: CGFloat, bold: Bool = false) -> Font {
-    .custom(bold ? "SpaceMono-Bold" : "SpaceMono-Regular", fixedSize: size)
+    let readableSize = max(size, 10.5)
+    return .custom(
+      bold ? "SpaceMono-Bold" : "SpaceMono-Regular",
+      size: readableSize,
+      relativeTo: beachcarTextStyle(for: readableSize)
+    )
   }
+}
+
+private func beachcarTextStyle(for size: CGFloat) -> Font.TextStyle {
+  if size >= 30 { return .largeTitle }
+  if size >= 24 { return .title }
+  if size >= 19 { return .title2 }
+  if size >= 16 { return .body }
+  if size >= 13 { return .callout }
+  return .caption
 }
 
 // MARK: - Icon map (design Unicode glyphs → SF Symbols)

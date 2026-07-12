@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // Transient interaction state for the Shade surface. Ports the prototype's
 // component logic: feed paging, photo paging, the Shade pull-to-judge gesture,
@@ -6,6 +7,10 @@ import SwiftUI
 // choreography. Pure UI state — persistence is delegated to `persist`.
 
 enum DragMode { case cars, photos, shade, list }
+
+enum ReviewSwipeIntent { case undecided, vertical, horizontal }
+
+enum ReviewSwipeStage: Equatable { case resting, preview, primary, strong }
 
 struct ToastState: Equatable {
   let action: FeedbackAction
@@ -45,6 +50,17 @@ final class ShadeController: ObservableObject {
   @Published var showHint = true
   @Published var note = ""
 
+  // Scrolling dossier review
+  @Published var reviewOffset: CGFloat = 0
+  @Published var reviewRawOffset: CGFloat = 0
+  @Published var reviewIntent: ReviewSwipeIntent = .undecided
+  @Published var reviewStage: ReviewSwipeStage = .resting
+  @Published var reviewAction: FeedbackAction?
+  @Published var completionOpen = false
+  @Published var galleryOpen = false
+  @Published var galleryIndex = 0
+  @Published var scrollResetID = 0
+
   // Config (design defaults)
   var commitThreshold: CGFloat = 0.6
   var celebrate = true
@@ -62,6 +78,10 @@ final class ShadeController: ObservableObject {
   private var lastTap: Date = .distantPast
   private var lastDossierTap: Date = .distantPast
   private var dossierBodyThrowing = false
+  private var reviewOrder: [String] = []
+  private var reviewedKeys: Set<String> = []
+  private var crossedPrimary = false
+  private var crossedStrong = false
 
   let trayActions: [FeedbackAction] = [.hide, .avoid, .like, .star]
 
@@ -77,6 +97,132 @@ final class ShadeController: ObservableObject {
   }
 
   func photo(for key: String) -> Int { photoIndex[key] ?? 0 }
+
+  // MARK: scrolling review session
+
+  func configureReview(keys: [String], reviewed: Set<String>) {
+    let currentKey = reviewOrder.indices.contains(idx) ? reviewOrder[idx] : nil
+    reviewOrder = keys
+    reviewedKeys.formUnion(reviewed)
+    carCount = keys.count
+
+    if let currentKey, let preserved = keys.firstIndex(of: currentKey) {
+      idx = preserved
+    } else if let next = keys.indices.first(where: { !reviewedKeys.contains(keys[$0]) }) {
+      idx = next
+    } else {
+      idx = min(idx, max(keys.count - 1, 0))
+      completionOpen = !keys.isEmpty
+    }
+  }
+
+  func reviewDragChanged(_ value: DragGesture.Value, width: CGFloat) {
+    guard !listOpen, !galleryOpen, !completionOpen else { return }
+    let dx = value.translation.width
+    let dy = value.translation.height
+
+    if reviewIntent == .undecided, max(abs(dx), abs(dy)) >= 12 {
+      if abs(dx) > abs(dy) * 1.35 {
+        reviewIntent = .horizontal
+      } else if abs(dy) > abs(dx) * 1.15 {
+        reviewIntent = .vertical
+      }
+    }
+
+    guard reviewIntent == .horizontal else { return }
+    reviewRawOffset = dx
+    let primary = ReviewSwipeDecision.primaryDistance(for: width)
+    reviewOffset = ReviewSwipeDecision.displayOffset(for: dx, primary: primary)
+    updateReviewStage(width: width)
+  }
+
+  func reviewDragEnded(_ value: DragGesture.Value, width: CGFloat, reduceMotion: Bool) {
+    guard reviewIntent == .horizontal else {
+      resetReviewDrag(animated: false)
+      return
+    }
+
+    let action = ReviewSwipeDecision.action(
+      translation: reviewRawOffset,
+      predicted: value.predictedEndTranslation.width,
+      velocity: value.velocity.width,
+      width: width
+    )
+    guard let action else {
+      resetReviewDrag(animated: true)
+      return
+    }
+
+    UIImpactFeedbackGenerator(style: action == .star || action == .avoid ? .heavy : .medium).impactOccurred()
+    let direction: CGFloat = reviewRawOffset < 0 ? -1 : 1
+    let animation = reduceMotion ? Animation.easeOut(duration: 0.14) : .timingCurve(0.2, 0.9, 0.24, 1, duration: 0.28)
+    withAnimation(animation) { reviewOffset = direction * (width + 80) }
+    doAction(action, advance: true)
+  }
+
+  private func updateReviewStage(width: CGFloat) {
+    let distance = abs(reviewRawOffset)
+    let primary = ReviewSwipeDecision.primaryDistance(for: width)
+    let strong = ReviewSwipeDecision.strongDistance(for: width)
+    let stage: ReviewSwipeStage = distance >= strong ? .strong : (distance >= primary ? .primary : .preview)
+    reviewStage = stage
+    reviewAction = ReviewSwipeDecision.previewAction(offset: reviewRawOffset, strong: stage == .strong)
+
+    if distance >= primary, !crossedPrimary {
+      UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.5)
+      crossedPrimary = true
+    } else if distance < primary {
+      crossedPrimary = false
+    }
+    if distance >= strong, !crossedStrong {
+      UIImpactFeedbackGenerator(style: .heavy).impactOccurred(intensity: 0.78)
+      crossedStrong = true
+    } else if distance < strong {
+      crossedStrong = false
+    }
+  }
+
+  func openGallery(at index: Int = 0) {
+    galleryIndex = max(index, 0)
+    galleryOpen = true
+    showHint = false
+  }
+
+  func closeGallery() { galleryOpen = false }
+
+  func reviewAgain() {
+    completionOpen = false
+    if !reviewOrder.isEmpty { idx = 0 }
+    scrollResetID += 1
+  }
+
+  private func advanceToNextUnreviewed() {
+    guard !reviewOrder.isEmpty else { return }
+    let trailing = idx + 1 < reviewOrder.count ? Array((idx + 1)..<reviewOrder.count) : []
+    let leading = idx > 0 ? Array(0..<idx) : []
+    if let next = (trailing + leading).first(where: { !reviewedKeys.contains(reviewOrder[$0]) }) {
+      withAnimation(.reviewTransition) { idx = next }
+      scrollResetID += 1
+      resetReviewDrag(animated: false)
+    } else {
+      resetReviewDrag(animated: false)
+      withAnimation(.reviewTransition) { completionOpen = true }
+    }
+  }
+
+  private func resetReviewDrag(animated: Bool) {
+    let reset = {
+      self.reviewOffset = 0
+      self.reviewRawOffset = 0
+      self.reviewIntent = .undecided
+      self.reviewStage = .resting
+      self.reviewAction = nil
+      self.crossedPrimary = false
+      self.crossedStrong = false
+    }
+    if animated { withAnimation(.spring(response: 0.3, dampingFraction: 0.84), reset) }
+    else { reset() }
+  }
 
   // MARK: feed drag
 
@@ -176,7 +322,9 @@ final class ShadeController: ObservableObject {
     withAnimation(.feedSpring) {
       idx = index
       listOpen = false
+      completionOpen = false
     }
+    scrollResetID += 1
   }
 
   private func pagePhoto(_ delta: Int) {
@@ -221,6 +369,7 @@ final class ShadeController: ObservableObject {
   // MARK: judging
 
   func doAction(_ action: FeedbackAction, advance: Bool) {
+    if let key = currentCarInfo?()?.key { reviewedKeys.insert(key) }
     persist?(action)
     if showHint { showHint = false }
     let id = (toast?.id ?? 0) + 1
@@ -234,12 +383,11 @@ final class ShadeController: ObservableObject {
     toastWork = tw
     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: tw)
 
-    let shouldAdvance = advance && action != .hide && action != .avoid
-    if shouldAdvance {
+    if advance {
       advanceWork?.cancel()
-      let aw = DispatchWorkItem { [weak self] in self?.advanceWrapping() }
+      let aw = DispatchWorkItem { [weak self] in self?.advanceToNextUnreviewed() }
       advanceWork = aw
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.28, execute: aw)
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.24, execute: aw)
     }
   }
 
@@ -445,8 +593,48 @@ struct FeedGeometry {
 
 func clamp<T: Comparable>(_ v: T, _ lo: T, _ hi: T) -> T { min(hi, max(lo, v)) }
 
+enum ReviewSwipeDecision {
+  static func primaryDistance(for width: CGFloat) -> CGFloat {
+    clamp(width * 0.32, 118, 160)
+  }
+
+  static func strongDistance(for width: CGFloat) -> CGFloat {
+    clamp(width * 0.72, 270, 340)
+  }
+
+  static func displayOffset(for raw: CGFloat, primary: CGFloat) -> CGFloat {
+    let distance = abs(raw)
+    guard distance > primary else { return raw }
+    let resisted = primary + (distance - primary) * 0.72
+    return raw < 0 ? -resisted : resisted
+  }
+
+  static func previewAction(offset: CGFloat, strong: Bool) -> FeedbackAction? {
+    guard abs(offset) > 1 else { return nil }
+    if offset > 0 { return strong ? .star : .like }
+    return strong ? .avoid : .hide
+  }
+
+  static func action(
+    translation: CGFloat,
+    predicted: CGFloat,
+    velocity: CGFloat,
+    width: CGFloat
+  ) -> FeedbackAction? {
+    let distance = abs(translation)
+    let primary = primaryDistance(for: width)
+    let strong = strongDistance(for: width)
+    if distance >= strong { return translation > 0 ? .star : .avoid }
+
+    let predictedPrimary = abs(predicted) >= primary && abs(translation) >= width * 0.18 && abs(velocity) >= 700
+    if distance >= primary || predictedPrimary { return translation > 0 ? .like : .hide }
+    return nil
+  }
+}
+
 extension Animation {
   static let feedSpring = Animation.timingCurve(0.2, 0.9, 0.24, 1, duration: 0.52)
   static let photoSpring = Animation.timingCurve(0.2, 0.9, 0.24, 1, duration: 0.42)
   static let overlaySpring = Animation.timingCurve(0.2, 0.85, 0.22, 1, duration: 0.42)
+  static let reviewTransition = Animation.timingCurve(0.2, 0.9, 0.24, 1, duration: 0.34)
 }

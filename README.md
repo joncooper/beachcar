@@ -15,16 +15,16 @@ The friend-facing default requires no provider key, automation token, MCP client
 - Native SwiftUI iOS app for invite/onboarding states, cached image-first review, and run-status visibility.
 - Feedback actions:
   - Like: show more like this without pinning it as a favorite.
-  - Star: prioritize this listing and similar future finds.
-  - Hide: remove this exact listing from the default view.
-  - Avoid: suppress similar listings unless unusually compelling.
+  - Love it: prioritize this listing and similar future finds (`star` in the API).
+  - Pass: remove this exact listing from the default view (`hide` in the API).
+  - Never again: suppress similar listings unless unusually compelling (`avoid` in the API).
 - Admin import, invite, user, AI usage, Agent run, and runner-task APIs for the daily automation and friend beta.
 - Advanced hosted MCP integration with scoped automation tokens, OAuth, user-visible events, and a downloadable skill for people who intentionally run their own cloud agent.
 - Agent playbooks for Codex, Claude, or another browser-capable AI operator.
 
 ## Native iOS Preview
 
-The native app is an image-first review surface for daily auction finds. The primary mode is a one-listing deck: swipe photos horizontally, move through vehicles vertically, like/hide/star/avoid with card gestures, tap for the back-of-card detail view, or jump into list and filter modes when scanning.
+The native app is a one-listing-at-a-time research surface for daily auction finds. Each find is a vertically scrolling dossier. Swipe right to Like, far right to Love it, left to Pass, or far left for Never again; tap the cover to inspect a separate, zoomable photo gallery. An explicit `FIND x OF y` counter distinguishes listings from photos, while Today's Finds provides search, filtering, sorting, and direct navigation.
 
 These are actual iPhone simulator screenshots from the current SwiftUI app:
 

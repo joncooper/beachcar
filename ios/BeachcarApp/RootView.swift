@@ -35,6 +35,8 @@ struct RootView: View {
     .prefetchClerkImages()
     .sheet(isPresented: $authIsPresented) {
       AuthView()
+        .environment(\.clerkTheme, .beachcar)
+        .preferredColorScheme(.dark)
         .presentationDragIndicator(.visible)
     }
     #if DEBUG
@@ -45,17 +47,20 @@ struct RootView: View {
   }
 
   private var signedOutView: some View {
-    VStack(spacing: 20) {
+    VStack(spacing: 22) {
       Spacer()
       VStack(alignment: .leading, spacing: 14) {
-        Text("PRIVATE AUCTION WATCH")
+        HStack(spacing: 8) {
+          Circle().fill(BC.accent).frame(width: 7, height: 7)
+          Text("YOUR DAILY SHORTLIST")
+        }
           .font(.caption.weight(.bold))
           .tracking(1.6)
-          .foregroundStyle(BeachcarColors.muted)
+          .foregroundStyle(BC.accent)
         Text(AppConfig.appName)
           .font(.archivo(48, .black))
           .foregroundStyle(BC.white)
-        Text("Review today's beach-car shortlist, save taste signals, and send steering notes back into the next daily run.")
+        Text("The best beach cars from across the auctions—ranked for your taste, budget, and tolerance for adventure.")
           .font(.archivo(15))
           .foregroundStyle(BeachcarColors.secondary)
           .lineSpacing(3)
@@ -69,6 +74,12 @@ struct RootView: View {
           .stroke(BC.border, lineWidth: 1)
       }
       .shadow(color: .black.opacity(0.5), radius: 24, y: 16)
+
+      HStack(spacing: 8) {
+        signedOutFeature("sparkles", "Curated")
+        signedOutFeature("chart.line.uptrend.xyaxis", "Value read")
+        signedOutFeature("hand.thumbsup.fill", "Learns taste")
+      }
 
       UserButton(signedOutContent: {
         Button {
@@ -92,6 +103,16 @@ struct RootView: View {
       user = nil
       accountError = nil
     }
+  }
+
+  private func signedOutFeature(_ icon: String, _ label: String) -> some View {
+    VStack(spacing: 7) {
+      Image(systemName: icon).foregroundStyle(BC.accent)
+      Text(label).font(.mono(9.5, bold: true)).foregroundStyle(BC.sub)
+    }
+    .frame(maxWidth: .infinity, minHeight: 66)
+    .background(BC.faint, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(BC.border, lineWidth: 1))
   }
 
   @ViewBuilder
@@ -363,6 +384,11 @@ private struct InviteGateView: View {
         Text(email)
           .font(.subheadline.weight(.semibold))
           .foregroundStyle(BeachcarColors.secondary)
+        Text("Beachcar is currently shared by invitation. Your invitation email includes the code below; if it’s missing, ask the person who invited you.")
+          .font(.archivo(14, .medium))
+          .foregroundStyle(BC.sub)
+          .lineSpacing(3)
+          .fixedSize(horizontal: false, vertical: true)
         TextField("Invite code", text: $inviteCode)
           .accessibilityIdentifier("invite-code-field")
           .textInputAutocapitalization(.never)
@@ -413,6 +439,9 @@ private struct ProfileOnboardingView: View {
   @State private var browserRunner: Bool
   @State private var emailDigest: Bool
   @State private var strongFitAlerts: Bool
+  @State private var step = 0
+  @State private var selectedTaste: Set<String>
+  @State private var selectedAvoid: Set<String>
 
   init(user: UserPayload, isSaving: Bool, error: String?, onSave: @escaping (ProfileInput) -> Void) {
     self.user = user
@@ -435,59 +464,194 @@ private struct ProfileOnboardingView: View {
     _browserRunner = State(initialValue: true)
     _emailDigest = State(initialValue: true)
     _strongFitAlerts = State(initialValue: true)
+    _selectedTaste = State(initialValue: ["open-air", "simple", "kid-plausible"])
+    _selectedAvoid = State(initialValue: ["rust", "salvage", "heavy-project"])
   }
 
   var body: some View {
-    ScrollView {
-      AccountCard {
-        VStack(alignment: .leading, spacing: 16) {
-          Text("Preferences")
-            .font(.largeTitle.weight(.black))
-            .foregroundStyle(BeachcarColors.ink)
-          Text(user.email)
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(BeachcarColors.secondary)
-
-          AccountField(title: "Name", text: $displayName)
-          AccountField(title: "Region", text: $homeRegion)
-          AccountField(title: "Budget ceiling", text: $budgetMax, keyboard: .numberPad)
-          AccountField(title: "Stretch room", text: $stretchBudget, keyboard: .numberPad)
-          AccountTextArea(title: "Prioritize", text: $tasteNotes)
-          AccountTextArea(title: "Avoid", text: $avoidNotes)
-          AccountPreferenceSection(title: "Sources") {
-            Toggle("Bring a Trailer", isOn: $bringATrailerEnabled)
-            Toggle("Cars & Bids", isOn: $carsAndBidsEnabled)
-            Toggle("Hemmings", isOn: $hemmingsEnabled)
-            Toggle("Marketplace", isOn: $marketplaceEnabled)
-            AccountField(title: "Max miles", text: $maxDistanceMiles, keyboard: .numberPad)
-            AccountField(title: "Source cap", text: $sourceBudget, keyboard: .decimalPad)
-            Toggle("No-reserve only on BaT", isOn: $noReserveOnly)
-            Toggle("Use browser runner", isOn: $browserRunner)
+    VStack(spacing: 0) {
+      onboardingHeader
+      ScrollView {
+        AccountCard {
+          VStack(alignment: .leading, spacing: 18) {
+            stepHeading
+            stepContent
+            if let error {
+              Text(error)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(BeachcarColors.stop)
+            }
           }
-          AccountPreferenceSection(title: "Notifications") {
-            Toggle("Daily run digest", isOn: $emailDigest)
-            Toggle("Strong-fit alerts", isOn: $strongFitAlerts)
-          }
-
-          if let error {
-            Text(error)
-              .font(.footnote.weight(.semibold))
-              .foregroundStyle(BeachcarColors.stop)
-          }
-
-          Button {
-            onSave(profileInput)
-          } label: {
-            Label(isSaving ? "Saving..." : "Save preferences", systemImage: "checkmark.circle")
-              .frame(maxWidth: .infinity)
-          }
-          .accessibilityIdentifier("save-preferences-button")
-          .buttonStyle(AccountPrimaryButtonStyle())
-          .disabled(isSaving)
         }
       }
+      .scrollDismissesKeyboard(.interactively)
+      .accessibilityIdentifier("onboarding-view")
+      onboardingNavigation
     }
-    .accessibilityIdentifier("onboarding-view")
+  }
+
+  private var onboardingHeader: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack {
+        Text("SET UP YOUR SEARCH")
+          .font(.mono(10.5, bold: true))
+          .tracking(1.3)
+          .foregroundStyle(BC.accent)
+        Spacer()
+        Text("\(step + 1) OF 4")
+          .font(.mono(10.5, bold: true))
+          .foregroundStyle(BC.sub)
+      }
+      GeometryReader { proxy in
+        ZStack(alignment: .leading) {
+          Capsule().fill(BC.faint)
+          Capsule().fill(BC.accent).frame(width: proxy.size.width * CGFloat(step + 1) / 4)
+        }
+      }
+      .frame(height: 5)
+    }
+    .padding(.horizontal, 22)
+    .padding(.top, 18)
+    .padding(.bottom, 4)
+  }
+
+  private var stepHeading: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text(stepTitles[step])
+        .font(.archivo(30, .black))
+        .foregroundStyle(BC.white)
+      Text(stepSubtitles[step])
+        .font(.archivo(14, .medium))
+        .foregroundStyle(BC.sub)
+        .lineSpacing(3)
+    }
+  }
+
+  @ViewBuilder
+  private var stepContent: some View {
+    switch step {
+    case 0:
+      AccountField(title: "Your name", text: $displayName)
+      AccountField(title: "Home region", text: $homeRegion)
+      AccountField(title: "How far should Beachcar look?", text: $maxDistanceMiles, keyboard: .numberPad)
+      Text("We’ll use this to rank pickup practicality—not to exclude an exceptional find.")
+        .font(.archivo(12.5, .medium)).foregroundStyle(BC.muted)
+    case 1:
+      CurrencyAccountField(title: "Comfortable ceiling", text: $budgetMax)
+      CurrencyAccountField(title: "Stretch room", text: $stretchBudget)
+      Toggle("Prioritize no-reserve auctions", isOn: $noReserveOnly)
+        .font(.archivo(14, .semibold)).tint(BC.accent)
+      budgetPreview
+    case 2:
+      CalibrationGrid(title: "Show me more", choices: tasteChoices, selection: $selectedTaste, tint: BC.accent)
+      CalibrationGrid(title: "Help me avoid", choices: avoidChoices, selection: $selectedAvoid, tint: BC.danger)
+      AccountTextArea(title: "Anything else? (optional)", text: $tasteNotes)
+    default:
+      AccountPreferenceSection(title: "Auction sources") {
+        Toggle("Bring a Trailer", isOn: $bringATrailerEnabled)
+        Toggle("Cars & Bids", isOn: $carsAndBidsEnabled)
+        Toggle("Hemmings", isOn: $hemmingsEnabled)
+        Toggle("Local marketplace", isOn: $marketplaceEnabled)
+      }
+      AccountPreferenceSection(title: "Keep me posted") {
+        Toggle("Daily shortlist", isOn: $emailDigest)
+        Toggle("Strong-fit alerts", isOn: $strongFitAlerts)
+      }
+      shortlistPreview
+    }
+  }
+
+  private var onboardingNavigation: some View {
+    HStack(spacing: 10) {
+      if step > 0 {
+        Button("Back") { withAnimation(.easeOut(duration: 0.2)) { step -= 1 } }
+          .font(.archivo(14, .bold))
+          .foregroundStyle(BC.sub)
+          .frame(width: 82, height: 50)
+          .background(BC.faint, in: Capsule())
+      }
+      Button {
+        if step < 3 { withAnimation(.easeOut(duration: 0.2)) { step += 1 } }
+        else { onSave(profileInput) }
+      } label: {
+        Label(
+          step == 3 ? (isSaving ? "Saving…" : "Build my shortlist") : "Continue",
+          systemImage: step == 3 ? "sparkles" : "arrow.right"
+        )
+        .frame(maxWidth: .infinity)
+      }
+      .accessibilityIdentifier(step == 3 ? "save-preferences-button" : "onboarding-continue-button")
+      .buttonStyle(AccountPrimaryButtonStyle())
+      .disabled(isSaving)
+    }
+    .padding(.horizontal, 20)
+    .padding(.top, 10)
+    .padding(.bottom, 16)
+    .background(BC.bg)
+  }
+
+  private var budgetPreview: some View {
+    HStack(spacing: 10) {
+      Image(systemName: "gauge.with.dots.needle.50percent")
+        .font(.system(size: 22, weight: .bold)).foregroundStyle(BC.accent)
+      VStack(alignment: .leading, spacing: 3) {
+        Text("Your buying lane").font(.archivo(13, .bold)).foregroundStyle(BC.white)
+        Text("Beachcar will distinguish a fair buy from a tempting stretch.")
+          .font(.archivo(12, .medium)).foregroundStyle(BC.sub)
+      }
+    }
+    .padding(14)
+    .background(BC.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+  }
+
+  private var shortlistPreview: some View {
+    VStack(alignment: .leading, spacing: 9) {
+      Label("You’re set", systemImage: "checkmark.seal.fill")
+        .font(.archivo(16, .extrabold)).foregroundStyle(BC.accent)
+      Text("Each morning, Beachcar will rank the most promising finds for \(homeRegion.isEmpty ? "your region" : homeRegion), explain the value, and learn from every swipe.")
+        .font(.archivo(13.5, .medium)).foregroundStyle(BC.white.opacity(0.78)).lineSpacing(3)
+    }
+    .padding(16)
+    .background(BC.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+  }
+
+  private var stepTitles: [String] { ["Where should we look?", "What feels comfortable?", "Calibrate your taste", "Choose your rhythm"] }
+  private var stepSubtitles: [String] { [
+    "A little context helps rank local practicality against a truly special car.",
+    "Set the line between a confident buy and a worthwhile stretch.",
+    "Start with a few instincts. You can teach Beachcar more with every daily run.",
+    "Pick the sources and alerts you actually want; the research machinery stays out of your way.",
+  ] }
+
+  private var tasteChoices: [CalibrationChoice] { [
+    .init(id: "open-air", label: "Open-air", detail: "Convertibles, targas, and door-off 4x4s"),
+    .init(id: "simple", label: "Simple", detail: "Easy parts and light electronics"),
+    .init(id: "kid-plausible", label: "Kid-plausible", detail: "Rear seats and relaxed errands"),
+    .init(id: "small-4x4", label: "Small 4x4", detail: "Samurai, Tracker, Thing, and friends"),
+    .init(id: "no-reserve", label: "No reserve", detail: "Low-drama auctions worth watching"),
+    .init(id: "quirky-clean", label: "Quirky clean", detail: "Unusual, tidy, and charming"),
+  ] }
+
+  private var avoidChoices: [CalibrationChoice] { [
+    .init(id: "rust", label: "Rust", detail: "Structural corrosion or vague undersides"),
+    .init(id: "salvage", label: "Salvage", detail: "Rebuilt, bonded, or title-story cars"),
+    .init(id: "heavy-project", label: "Heavy project", detail: "Non-runners and missing major parts"),
+    .init(id: "overbuilt", label: "Overbuilt", detail: "Extreme lifts and irreversible mods"),
+    .init(id: "fragile", label: "Fragile", detail: "Scarce parts or specialist ownership"),
+    .init(id: "price-chasing", label: "Price chase", detail: "Already beyond the sensible budget"),
+  ] }
+
+  private func calibratedNotes(base: String, selected: Set<String>, choices: [CalibrationChoice], prefix: String) -> String {
+    let details = choices.filter { selected.contains($0.id) }.map(\.detail)
+    let trimmed = base.trimmingCharacters(in: .whitespacesAndNewlines)
+    return [trimmed, details.isEmpty ? "" : "\(prefix): \(details.joined(separator: "; "))."]
+      .filter { !$0.isEmpty }
+      .joined(separator: " ")
+  }
+
+  private func currencyValue(_ text: String) -> Int? {
+    let cleaned = text.filter(\.isNumber)
+    return cleaned.isEmpty ? nil : Int(cleaned)
   }
 
   private var profileInput: ProfileInput {
@@ -495,13 +659,13 @@ private struct ProfileOnboardingView: View {
     return ProfileInput(
       displayName: displayName.trimmedOrNil,
       niche: user.profile?.niche ?? "Beach cars and runabouts",
-      budgetMax: Int(budgetMax.trimmingCharacters(in: .whitespacesAndNewlines)),
-      stretchBudget: Int(stretchBudget.trimmingCharacters(in: .whitespacesAndNewlines)),
+      budgetMax: currencyValue(budgetMax),
+      stretchBudget: currencyValue(stretchBudget),
       homeRegion: homeRegion.trimmedOrNil,
       timezone: user.profile?.timezone ?? TimeZone.current.identifier,
       profile: ProfilePreferences(
-        tasteNotes: tasteNotes,
-        avoidNotes: avoidNotes,
+        tasteNotes: calibratedNotes(base: tasteNotes, selected: selectedTaste, choices: tasteChoices, prefix: "Selected tastes"),
+        avoidNotes: calibratedNotes(base: avoidNotes, selected: selectedAvoid, choices: avoidChoices, prefix: "Selected avoids"),
         lanes: ["family", "solo", "curiosity"],
         sources: sourceSettings.sources.filter(\.enabled).map(\.source),
         sourcePreferences: sourceSettings.sources,
@@ -560,6 +724,87 @@ private struct ProfileOnboardingView: View {
         searchNotes: nil
       )
     )
+  }
+}
+
+private struct CalibrationChoice: Identifiable {
+  let id: String
+  let label: String
+  let detail: String
+}
+
+private struct CalibrationGrid: View {
+  let title: String
+  let choices: [CalibrationChoice]
+  @Binding var selection: Set<String>
+  let tint: Color
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text(title).font(.mono(10.5, bold: true)).tracking(0.8).foregroundStyle(BC.sub)
+      LazyVGrid(columns: [GridItem(.adaptive(minimum: 138), spacing: 9)], spacing: 9) {
+        ForEach(choices) { choice in
+          let selected = selection.contains(choice.id)
+          Button {
+            if selected { selection.remove(choice.id) }
+            else { selection.insert(choice.id) }
+          } label: {
+            VStack(alignment: .leading, spacing: 5) {
+              HStack {
+                Text(choice.label).font(.archivo(13.5, .extrabold))
+                Spacer(minLength: 4)
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+              }
+              Text(choice.detail)
+                .font(.archivo(11.5, .medium))
+                .foregroundStyle(selected ? BC.white.opacity(0.72) : BC.muted)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+            }
+            .foregroundStyle(selected ? tint : BC.sub)
+            .frame(maxWidth: .infinity, minHeight: 76, alignment: .topLeading)
+            .padding(12)
+            .background(selected ? tint.opacity(0.1) : BC.faint, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(selected ? tint.opacity(0.5) : BC.border, lineWidth: 1))
+          }
+          .buttonStyle(.plain)
+          .accessibilityValue(selected ? "Selected" : "Not selected")
+        }
+      }
+    }
+  }
+}
+
+private struct CurrencyAccountField: View {
+  let title: String
+  @Binding var text: String
+  @FocusState private var focused: Bool
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 7) {
+      Text(title).font(.caption.weight(.bold)).foregroundStyle(BeachcarColors.secondary)
+      HStack(spacing: 9) {
+        Text("$").font(.archivo(20, .extrabold)).foregroundStyle(BC.accent)
+        TextField("30,000", text: $text)
+          .keyboardType(.numberPad)
+          .focused($focused)
+          .font(.archivo(19, .bold))
+      }
+      .padding(13)
+      .background(BC.faint, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+      .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(BeachcarColors.hairline, lineWidth: 1))
+    }
+    .onAppear { format() }
+    .onChange(of: focused) { _, isFocused in
+      if isFocused { text = text.filter(\.isNumber) }
+      else { format() }
+    }
+  }
+
+  private func format() {
+    let digits = text.filter(\.isNumber)
+    guard let value = Int(digits) else { return }
+    text = value.formatted(.number.grouping(.automatic))
   }
 }
 
@@ -677,4 +922,29 @@ private extension String {
     let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
     return trimmed.isEmpty ? nil : trimmed
   }
+}
+
+@MainActor
+private extension ClerkTheme {
+  static let beachcar = ClerkTheme(
+    colors: .init(
+      primary: BC.accent,
+      background: BC.panel,
+      input: BC.card,
+      danger: BC.danger,
+      success: BC.accent,
+      warning: BC.star,
+      foreground: BC.white,
+      mutedForeground: BC.sub,
+      primaryForeground: BC.accentInk,
+      inputForeground: BC.white,
+      neutral: BC.sub,
+      ring: BC.accent,
+      muted: BC.faint,
+      shadow: Color.black,
+      border: BC.white
+    ),
+    fonts: .init(fontFamily: "ArchivoRoman-Regular"),
+    design: .init(borderRadius: 16)
+  )
 }

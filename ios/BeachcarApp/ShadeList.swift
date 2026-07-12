@@ -2,10 +2,14 @@ import SwiftUI
 
 enum ListFilter: String, CaseIterable, Identifiable {
   case all = "All"
+  case unreviewed = "Unreviewed"
+  case liked = "Liked"
+  case loved = "Loved"
+  case passed = "Passed"
+  case neverAgain = "Never again"
   case family = "Family"
   case solo = "Solo"
   case curiosity = "Curiosity"
-  case saved = "Saved"
   case wildcard = "Wildcard"
   case endingSoon = "Ending"
   case imageReady = "Images"
@@ -44,6 +48,7 @@ struct ShadeListOverlay: View {
   let feedbackByKey: [String: FeedbackRecord]
   let api: AuctionAPI
   let geo: FeedGeometry
+  @AccessibilityFocusState private var headerFocused: Bool
 
   private var pulling: Bool { controller.mode == .list && controller.dragging }
 
@@ -56,9 +61,10 @@ struct ShadeListOverlay: View {
   private var rows: [ListDisplayRow] {
     cars.enumerated()
       .map { offset, car in
-        ListDisplayRow(
-          displayIndex: offset,
-          feedIndex: feedCars.firstIndex(where: { $0.key == car.key }),
+        let feedIndex = feedCars.firstIndex(where: { $0.key == car.key })
+        return ListDisplayRow(
+          displayIndex: feedIndex ?? offset,
+          feedIndex: feedIndex,
           car: car
         )
       }
@@ -114,6 +120,11 @@ struct ShadeListOverlay: View {
     .offset(y: offsetY)
     .animation(pulling ? nil : .overlaySpring, value: controller.listOpen)
     .allowsHitTesting(controller.listOpen)
+    .accessibilityHidden(!controller.listOpen)
+    .accessibilityAddTraits(.isModal)
+    .onChange(of: controller.listOpen) { _, open in
+      if open { headerFocused = true }
+    }
   }
 
   private var header: some View {
@@ -123,6 +134,7 @@ struct ShadeListOverlay: View {
           .font(.archivo(26, .extrabold))
           .tracking(-0.6)
           .foregroundStyle(BC.white)
+          .accessibilityFocused($headerFocused)
         Text(subtitle)
           .font(.mono(11))
           .foregroundStyle(BC.muted)
@@ -132,7 +144,7 @@ struct ShadeListOverlay: View {
         Image(systemName: Icon.closeList)
           .font(.system(size: 15, weight: .semibold))
           .foregroundStyle(BC.white)
-          .frame(width: 34, height: 34)
+          .frame(width: 44, height: 44)
           .background(Color.white.opacity(0.08), in: Circle())
       }
       .buttonStyle(.plain)
@@ -146,7 +158,7 @@ struct ShadeListOverlay: View {
     var parts = "\(cars.count) cars · updated \(updatedLabel)"
     var tail: [String] = []
     if nLiked > 0 { tail.append("\(nLiked) liked") }
-    if nStar > 0 { tail.append("\(nStar) starred") }
+    if nStar > 0 { tail.append("\(nStar) loved") }
     if !tail.isEmpty { parts += " · " + tail.joined(separator: " · ") }
     return parts
   }
@@ -156,7 +168,7 @@ struct ShadeListOverlay: View {
   }
 
   private var filters: some View {
-    VStack(spacing: 9) {
+    VStack(spacing: 8) {
       HStack(spacing: 8) {
         HStack(spacing: 7) {
           Image(systemName: "magnifyingglass")
@@ -181,50 +193,85 @@ struct ShadeListOverlay: View {
           }
         }
         .padding(.horizontal, 11)
-        .frame(height: 36)
+        .frame(height: 44)
         .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(BC.border, lineWidth: 1))
         .accessibilityElement(children: .contain)
 
-        sourceMenu
+        filterMenu
         sortMenu
-        hiddenToggle
       }
       .padding(.horizontal, 16)
 
-      ScrollView(.horizontal, showsIndicators: false) {
+      if hasActiveFilters {
         HStack(spacing: 7) {
-          ForEach(ListFilter.allCases) { f in
-            let on = controller.listFilter == f
-            Button { withAnimation(.easeOut(duration: 0.18)) { controller.listFilter = f } } label: {
-              Text(f.rawValue)
-                .font(.archivo(12, .extrabold))
-                .foregroundStyle(on ? BC.accent : BC.sub)
-                .padding(.horizontal, 13).padding(.vertical, 7)
-                .background(on ? BC.accent.opacity(0.14) : .clear, in: Capsule())
-                .overlay(Capsule().stroke(on ? BC.accent : BC.border, lineWidth: 1))
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("shade-filter-\(f.rawValue)")
+          Image(systemName: "line.3.horizontal.decrease.circle.fill")
+          Text(activeFilterSummary)
+            .lineLimit(1)
+          Spacer()
+          Button("Clear") {
+            controller.listFilter = .all
+            controller.listSource = "all"
+            controller.listIncludeHidden = false
           }
+          .foregroundStyle(BC.accent)
+          .frame(minHeight: 32)
         }
-        .padding(.horizontal, 16)
+        .font(.mono(10, bold: true))
+        .foregroundStyle(BC.sub)
+        .padding(.horizontal, 17)
       }
-      .scrollIndicators(.hidden)
     }
     .padding(.bottom, 12)
   }
 
-  private var sourceMenu: some View {
+  private var filterMenu: some View {
     Menu {
-      Button("All sources") { controller.listSource = "all" }
-      ForEach(availableSources, id: \.self) { source in
-        Button(source) { controller.listSource = source }
+      Section("Review") {
+        filterButton(.all)
+        filterButton(.unreviewed)
+        filterButton(.liked)
+        filterButton(.loved)
+        filterButton(.passed, includeHidden: true)
+        filterButton(.neverAgain, includeHidden: true)
+      }
+      Section("Use") {
+        filterButton(.family)
+        filterButton(.solo)
+        filterButton(.curiosity)
+        filterButton(.wildcard)
+      }
+      Section("Listing") {
+        filterButton(.endingSoon)
+        filterButton(.imageReady)
+        filterButton(.missingLocation)
+      }
+      Menu("Source") {
+        Button("All sources") { controller.listSource = "all" }
+        ForEach(availableSources, id: \.self) { source in
+          Button(source) { controller.listSource = source }
+        }
+      }
+      Divider()
+      Button(controller.listIncludeHidden ? "Hide passed listings" : "Include passed listings") {
+        controller.listIncludeHidden.toggle()
       }
     } label: {
-      compactControl(icon: "square.stack.3d.up.fill", text: controller.listSource == "all" ? "Source" : shortSourceLabel(controller.listSource))
+      squareControl(icon: "line.3.horizontal.decrease", active: hasActiveFilters)
     }
-    .accessibilityIdentifier("shade-list-source-menu")
+    .accessibilityLabel("Filter listings")
+    .accessibilityIdentifier("shade-list-filter-menu")
+  }
+
+  private func filterButton(_ filter: ListFilter, includeHidden: Bool = false) -> some View {
+    Button {
+      controller.listFilter = filter
+      if includeHidden { controller.listIncludeHidden = true }
+    } label: {
+      if controller.listFilter == filter { Label(filter.rawValue, systemImage: "checkmark") }
+      else { Text(filter.rawValue) }
+    }
+    .accessibilityIdentifier("shade-filter-\(filter.rawValue)")
   }
 
   private var sortMenu: some View {
@@ -233,46 +280,31 @@ struct ShadeListOverlay: View {
         Button(sort.rawValue) { controller.listSort = sort }
       }
     } label: {
-      compactControl(icon: "arrow.up.arrow.down", text: controller.listSort.rawValue)
+      squareControl(icon: "arrow.up.arrow.down", active: controller.listSort != .rank)
     }
+    .accessibilityLabel("Sort listings, \(controller.listSort.rawValue)")
     .accessibilityIdentifier("shade-list-sort-menu")
   }
 
-  private var hiddenToggle: some View {
-    Button {
-      controller.listIncludeHidden.toggle()
-    } label: {
-      Image(systemName: controller.listIncludeHidden ? "eye.fill" : "eye")
-        .font(.system(size: 13, weight: .bold))
-        .foregroundStyle(controller.listIncludeHidden ? BC.accent : BC.sub)
-        .frame(width: 36, height: 36)
-        .background(controller.listIncludeHidden ? BC.accent.opacity(0.14) : Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(controller.listIncludeHidden ? BC.accent.opacity(0.45) : BC.border, lineWidth: 1))
-    }
-    .buttonStyle(.plain)
-    .accessibilityLabel(controller.listIncludeHidden ? "Hide hidden listings" : "Show hidden listings")
-    .accessibilityIdentifier("shade-list-show-hidden")
+  private func squareControl(icon: String, active: Bool) -> some View {
+    Image(systemName: icon)
+      .font(.system(size: 14, weight: .bold))
+      .foregroundStyle(active ? BC.accent : BC.sub)
+      .frame(width: 44, height: 44)
+      .background(active ? BC.accent.opacity(0.12) : Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+      .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(active ? BC.accent.opacity(0.35) : BC.border, lineWidth: 1))
   }
 
-  private func compactControl(icon: String, text: String) -> some View {
-    HStack(spacing: 5) {
-      Image(systemName: icon)
-        .font(.system(size: 11, weight: .bold))
-      Text(text)
-        .font(.mono(9.5, bold: true))
-        .lineLimit(1)
-        .minimumScaleFactor(0.72)
-    }
-    .foregroundStyle(BC.sub)
-    .frame(width: 74, height: 36)
-    .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(BC.border, lineWidth: 1))
+  private var hasActiveFilters: Bool {
+    controller.listFilter != .all || controller.listSource != "all" || controller.listIncludeHidden
   }
 
-  private func shortSourceLabel(_ source: String) -> String {
-    source
-      .replacingOccurrences(of: "Bring a Trailer", with: "BaT")
-      .replacingOccurrences(of: "Cars & Bids", with: "C&B")
+  private var activeFilterSummary: String {
+    var values: [String] = []
+    if controller.listFilter != .all { values.append(controller.listFilter.rawValue) }
+    if controller.listSource != "all" { values.append(controller.listSource) }
+    if controller.listIncludeHidden { values.append("including passed") }
+    return values.joined(separator: " · ")
   }
 
   private func matchesScanControls(_ row: ListDisplayRow) -> Bool {
@@ -286,14 +318,22 @@ struct ShadeListOverlay: View {
     switch controller.listFilter {
     case .all:
       return true
+    case .unreviewed:
+      return feedbackByKey[car.key] == nil
+    case .liked:
+      return feedbackByKey[car.key]?.action == .like
+    case .loved:
+      return feedbackByKey[car.key]?.action == .star
+    case .passed:
+      return feedbackByKey[car.key]?.action == .hide
+    case .neverAgain:
+      return feedbackByKey[car.key]?.action == .avoid
     case .family:
       return car.lane == .family
     case .solo:
       return car.lane == .solo
     case .curiosity:
       return car.lane == .curiosity
-    case .saved:
-      return feedbackByKey[car.key]?.action == .star || feedbackByKey[car.key]?.action == .like
     case .wildcard:
       return car.isWildcard
     case .endingSoon:
@@ -364,57 +404,70 @@ private struct ListRow: View {
   private var dimmed: Bool { feedback?.action == .hide || feedback?.action == .avoid }
 
   var body: some View {
-    HStack(spacing: 13) {
-      Text(twoDigit(index + 1))
-        .font(.mono(12, bold: true))
-        .foregroundStyle(isCurrent ? BC.accent : BC.muted)
-        .frame(width: 20)
-
+    HStack(spacing: 12) {
       thumbnail
-        .frame(width: 66, height: 52)
-        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .frame(width: 76, height: 70)
+        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
         .overlay(alignment: .topLeading) {
+          Text(twoDigit(index + 1))
+            .font(.mono(9.5, bold: true))
+            .foregroundStyle(isCurrent ? BC.accentInk : BC.white)
+            .frame(width: 25, height: 20)
+            .background(isCurrent ? BC.accent : Color.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .padding(5)
+        }
+        .overlay(alignment: .bottomTrailing) {
           if let feedback {
             Image(systemName: Icon.feedback(feedback.action))
               .font(.system(size: 10, weight: .bold))
               .foregroundStyle(Color(hex: 0x0c0d10))
-              .frame(width: 18, height: 18)
+              .frame(width: 22, height: 22)
               .background(Icon.color(for: feedback.action).opacity(0.92), in: Circle())
-              .padding(4)
+              .padding(5)
           }
         }
 
-      VStack(alignment: .leading, spacing: 3) {
-        HStack(spacing: 7) {
-          Text(car.shortTitle)
-            .font(.archivo(15, .extrabold))
-            .foregroundStyle(BC.white)
-            .lineLimit(1)
+      VStack(alignment: .leading, spacing: 5) {
+        Text(car.title)
+          .font(.archivo(15.5, .extrabold))
+          .foregroundStyle(BC.white)
+          .lineLimit(2)
+          .multilineTextAlignment(.leading)
+        HStack(spacing: 5) {
           if let sourceHealth {
-            SourceHealthBadge(state: sourceHealth, compact: true)
+            Image(systemName: "checkmark.circle.fill")
+              .foregroundStyle(BC.accent)
+              .accessibilityLabel("\(sourceHealth.label), \(sourceHealth.detail)")
+              .accessibilityIdentifier("source-health-badge-\(car.site.lowercased().filter(\.isLetter))")
           }
-          if car.endsSoon {
-            Text(car.shadeTime)
-              .font(.mono(9, bold: true))
-              .foregroundStyle(BC.white)
-              .padding(.horizontal, 6).padding(.vertical, 2)
-              .background(BC.danger, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-          }
+          Text(car.site)
+          Text("·")
+          Text(car.displayLocationLabel)
         }
+          .font(.mono(10, bold: true))
+          .foregroundStyle(BC.muted)
+          .lineLimit(1)
         Text(secondary)
-          .font(.mono(11, bold: feedback != nil))
+          .font(.archivo(11.5, .bold))
           .foregroundStyle(secondaryColor)
           .lineLimit(1)
       }
 
-      Spacer(minLength: 4)
+      Spacer(minLength: 2)
 
-      VStack(alignment: .trailing, spacing: 2) {
-        Text(car.bid).font(.archivo(15, .extrabold)).foregroundStyle(BC.white)
-        Text(car.kindLabel).font(.mono(9)).foregroundStyle(BC.muted)
+      VStack(alignment: .trailing, spacing: 6) {
+        Text(car.bid).font(.archivo(15.5, .extrabold)).foregroundStyle(BC.white).lineLimit(1)
+        Text(car.shadeTime)
+          .font(.mono(9.5, bold: true))
+          .foregroundStyle(car.endsSoon ? BC.white : BC.star)
+          .padding(.horizontal, 7)
+          .frame(minHeight: 25)
+          .background(car.endsSoon ? BC.danger : BC.star.opacity(0.1), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        Text(car.kindLabel).font(.mono(9, bold: true)).foregroundStyle(BC.muted).lineLimit(1)
       }
     }
-    .padding(10)
+    .padding(11)
+    .frame(minHeight: 96)
     .background(isCurrent ? BC.accent.opacity(0.08) : BC.listRow, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     .overlay(
       RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -425,10 +478,15 @@ private struct ListRow: View {
   }
 
   private var secondary: String {
-    if let feedback { return feedback.action.label }
-    if let upside = car.upsideLabel, let location = car.displayLocation { return upside + " · " + location }
-    if car.hasMissingLocation { return "Location missing" }
-    return car.displayLocation ?? car.kindLabel
+    if let feedback {
+      switch feedback.action {
+      case .like: return "Liked"
+      case .star: return "Loved"
+      case .hide: return "Passed"
+      case .avoid: return "Never again"
+      }
+    }
+    return car.upsideLabel ?? car.kindLabel
   }
 
   private var secondaryColor: Color {

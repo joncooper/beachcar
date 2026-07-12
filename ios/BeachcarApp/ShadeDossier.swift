@@ -1,154 +1,149 @@
 import SwiftUI
 
-// Full detail for one car. A normal scroll view beneath a fixed header; closed by
-// "throwing" the handle/hero off-screen or double-tapping the body. Sections backed
-// by data we don't yet receive hide cleanly (see ShadeDossierData).
+// One listing is one vertically readable dossier. Horizontal movement belongs to
+// judgment; tapping the cover opens a separate photo-gallery mode.
 
-struct ShadeDossierOverlay: View {
+struct ShadeReviewPage: View {
   @ObservedObject var controller: ShadeController
   let car: AuctionListing
+  let listingIndex: Int
+  let totalListings: Int
   let sourceSummary: RunSourceSummary?
   let api: AuctionAPI
   let geo: FeedGeometry
   let onNote: (String) -> Void
-
-  private var dist: CGFloat {
-    if let fly = controller.dFly { return hypot(fly.width, fly.height) }
-    return hypot(controller.dThrow.width, controller.dThrow.height)
-  }
-  private var lifted: Bool { controller.dDragging || controller.dFly != nil }
-
-  private var offset: CGSize {
-    if let fly = controller.dFly { return fly }
-    if controller.dDragging { return controller.dThrow }
-    return .zero
-  }
-  private var rotation: Double {
-    if controller.dFly != nil { return controller.dFlyRotation }
-    if controller.dDragging { return Double(controller.dThrow.width) * 0.018 }
-    return 0
-  }
-  private var rootOpacity: Double {
-    Double(clamp(1 - dist / 1_250, controller.dFly == nil ? 0.5 : 0.14, 1))
-  }
-
-  private var throwGesture: some Gesture {
-    DragGesture(minimumDistance: 6)
-      .onChanged { controller.dossierDragChanged($0) }
-      .onEnded { controller.dossierDragEnded($0) }
-  }
-
-  private var bodyThrowGesture: some Gesture {
-    DragGesture(minimumDistance: 16)
-      .onChanged { controller.dossierBodyDragChanged($0) }
-      .onEnded { controller.dossierBodyDragEnded($0) }
-  }
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
-    if controller.dossierOpen || controller.dFly != nil {
-      VStack(spacing: 0) {
-        headerBar
-          .contentShape(Rectangle())
-          .gesture(throwGesture)
-        ScrollView {
-          VStack(spacing: 12) {
-            hero
-            quickFacts
-            sections
-            Color.clear.frame(height: 112 + geo.safeBottom)
-          }
+    ScrollViewReader { proxy in
+      ScrollView {
+        LazyVStack(spacing: 12) {
+          Color.clear.frame(height: 1).id("review-top")
+          hero
+          quickFacts
+          primaryAuctionLink
+          sections
+          Color.clear.frame(height: max(geo.safeBottom + 28, 44))
         }
-        .scrollIndicators(.hidden)
-        .simultaneousGesture(TapGesture(count: 2).onEnded { controller.throwClose(ux: 0, uy: -1, dx: 0) })
-        .simultaneousGesture(bodyThrowGesture)
       }
-      .frame(width: geo.width, height: geo.height)
-      .background(Color(hex: 0x0c0d10))
-      .clipShape(RoundedRectangle(cornerRadius: lifted ? 28 : 0, style: .continuous))
-      .shadow(color: lifted ? .black.opacity(0.8) : .clear, radius: 40, y: 20)
-      .rotationEffect(.degrees(rotation))
-      .offset(offset)
-      .opacity(rootOpacity)
-      .transition(.scale(scale: 0.96).combined(with: .opacity))
-      .overlay(alignment: .bottom) { actionRail }
-      .accessibilityElement(children: .contain)
+      .scrollIndicators(.hidden)
+      .onChange(of: controller.scrollResetID) { _, _ in
+        proxy.scrollTo("review-top", anchor: .top)
+      }
     }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(BC.panel)
+    .clipShape(RoundedRectangle(cornerRadius: controller.reviewIntent == .horizontal ? 24 : 0, style: .continuous))
+    .shadow(color: controller.reviewIntent == .horizontal ? .black.opacity(0.55) : .clear, radius: 24, y: 10)
+    .rotationEffect(.degrees(reduceMotion ? 0 : Double(controller.reviewOffset / max(geo.width, 1)) * 2.2))
+    .offset(x: controller.reviewOffset)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("shade-review-page")
+    .accessibilityAction(named: "Pass") { controller.doAction(.hide, advance: true) }
+    .accessibilityAction(named: "Never again") { controller.doAction(.avoid, advance: true) }
+    .accessibilityAction(named: "Like") { controller.doAction(.like, advance: true) }
+    .accessibilityAction(named: "Love it") { controller.doAction(.star, advance: true) }
   }
 
-  // MARK: header
-
-  private var headerBar: some View {
-    VStack(spacing: 0) {
-      Capsule().fill(Color.white.opacity(0.28)).frame(width: 42, height: 5)
-      HStack {
-        Text("FULL DOSSIER").font(.mono(10.5, bold: true)).tracking(1.4).foregroundStyle(BC.accent)
-        Spacer()
-        Text("throw · or double-tap to close").font(.mono(9.5)).foregroundStyle(BC.muted)
-        Button {
-          controller.closeDossier()
-        } label: {
-          Image(systemName: "xmark")
-            .font(.system(size: 12, weight: .black))
-            .foregroundStyle(BC.white)
-            .frame(width: 28, height: 28)
-            .background(Color.white.opacity(0.08), in: Circle())
-            .overlay(Circle().stroke(Color.white.opacity(0.16), lineWidth: 1))
+  private var primaryAuctionLink: some View {
+    Group {
+      if let url = URL(string: car.url) {
+        Link(destination: url) {
+          HStack(spacing: 10) {
+            Image(systemName: "arrow.up.right.square.fill")
+            Text("Open live auction")
+            Spacer()
+            Text(car.site).font(.mono(10, bold: true)).foregroundStyle(BC.accentInk.opacity(0.7))
+          }
+          .font(.archivo(14, .extrabold))
+          .foregroundStyle(BC.accentInk)
+          .frame(minHeight: 48)
+          .padding(.horizontal, 15)
+          .background(BC.accent, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Close dossier")
-        .accessibilityIdentifier("shade-dossier-close")
+        .accessibilityIdentifier("shade-dossier-open-listing")
       }
-      .padding(.horizontal, 18).padding(.top, 8).padding(.bottom, 10)
     }
-    .padding(.top, geo.safeTop + 12)
-    .frame(maxWidth: .infinity)
-    .background(Color(hex: 0x0c0d10))
+    .padding(.horizontal, 16)
   }
 
   // MARK: hero
 
   private var hero: some View {
-    ZStack(alignment: .bottomLeading) {
-      heroImage
-      .frame(height: 208)
+    VStack(alignment: .leading, spacing: 0) {
+      ZStack {
+        heroImage
+        LinearGradient(
+          colors: [.clear, Color.black.opacity(car.displayImages.isEmpty ? 0.1 : 0.5)],
+          startPoint: .top,
+          endPoint: .bottom
+        )
+      }
+      .frame(height: heroHeight)
       .frame(maxWidth: .infinity)
       .clipped()
+      .overlay(alignment: .topLeading) { heroBadges.padding(12) }
+      .overlay(alignment: .topTrailing) { countdownChip.padding(12) }
+      .overlay(alignment: .bottomTrailing) {
+        photoBadge.padding(12)
+      }
+      .contentShape(Rectangle())
+      .onTapGesture {
+        if !car.displayImages.isEmpty { controller.openGallery() }
+      }
 
-      LinearGradient(
-        stops: [.init(color: .black.opacity(0.1), location: 0), .init(color: .black.opacity(0), location: 0.38), .init(color: .black.opacity(0.86), location: 1)],
-        startPoint: .top, endPoint: .bottom
-      )
-
-      VStack(alignment: .leading, spacing: 5) {
-        Text(car.title).font(.archivo(23, .extrabold)).tracking(-0.4).foregroundStyle(BC.white)
+      VStack(alignment: .leading, spacing: 7) {
+        Text(car.title)
+          .font(.archivo(27, .extrabold))
+          .tracking(-0.5)
+          .foregroundStyle(BC.white)
           .fixedSize(horizontal: false, vertical: true)
         Text("\(Image(systemName: Icon.location)) \(car.displayLocationLabel) · \(car.site)")
-          .font(.mono(11)).foregroundStyle(BC.white.opacity(0.72))
+          .font(.mono(11, bold: true))
+          .foregroundStyle(BC.sub)
       }
-      .padding(14)
+      .padding(15)
     }
-    .frame(height: 208)
-    .overlay(alignment: .topLeading) {
-      HStack(spacing: 6) {
-        Text(car.kindLabel).font(.archivo(10.5, .extrabold)).foregroundStyle(BC.accent)
-          .padding(.horizontal, 9).padding(.vertical, 4)
-          .background(Color(hex: 0x080a0e).opacity(0.7), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        if car.isWildcard {
-          Text("Wildcard").font(.archivo(10.5, .extrabold)).foregroundStyle(BC.star)
-            .padding(.horizontal, 9).padding(.vertical, 4)
-            .background(Color(hex: 0x080a0e).opacity(0.7), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        }
-        if let sourceHealth = sourceSummary?.health(for: car) {
-          SourceHealthBadge(state: sourceHealth, compact: true)
-        }
-      }
-      .padding(12)
-    }
-    .overlay(alignment: .topTrailing) { countdownChip.padding(12) }
-    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    .background(BC.card)
+    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(BC.border, lineWidth: 1))
     .padding(.horizontal, 16)
-    .contentShape(Rectangle())
-    .highPriorityGesture(throwGesture)
+    .accessibilityIdentifier("shade-review-hero-\(car.id)")
+  }
+
+  private var heroHeight: CGFloat {
+    car.displayImages.isEmpty ? 126 : clamp(geo.width * 0.67, 230, 310)
+  }
+
+  private var heroBadges: some View {
+    HStack(spacing: 6) {
+      Text(car.kindLabel).font(.archivo(10.5, .extrabold)).foregroundStyle(BC.accent)
+        .padding(.horizontal, 9).padding(.vertical, 5)
+        .background(Color(hex: 0x080a0e).opacity(0.78), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+      if car.isWildcard {
+        Text("Wildcard").font(.archivo(10.5, .extrabold)).foregroundStyle(BC.star)
+          .padding(.horizontal, 9).padding(.vertical, 5)
+          .background(Color(hex: 0x080a0e).opacity(0.78), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+      }
+      if let sourceHealth = sourceSummary?.health(for: car) {
+        SourceHealthBadge(state: sourceHealth, compact: true)
+      }
+    }
+  }
+
+  private var photoBadge: some View {
+    let count = car.displayImages.count
+    return HStack(spacing: 6) {
+      Image(systemName: count == 0 ? "photo.badge.exclamationmark" : "photo.stack.fill")
+      Text(count == 0 ? "NO PHOTOS" : "\(count) PHOTO\(count == 1 ? "" : "S")")
+    }
+    .font(.mono(10, bold: true))
+    .foregroundStyle(count == 0 ? BC.muted : BC.white)
+    .padding(.horizontal, 10)
+    .frame(minHeight: 30)
+    .background(Color(hex: 0x080a0e).opacity(0.82), in: Capsule())
+    .overlay(Capsule().stroke(Color.white.opacity(0.14), lineWidth: 1))
+    .accessibilityLabel(count == 0 ? "No photos provided" : "\(count) photos, tap to open gallery")
   }
 
   @ViewBuilder
@@ -174,12 +169,11 @@ struct ShadeDossierOverlay: View {
         BC.imageBg
         VStack(spacing: 7) {
           Image(systemName: "photo.badge.exclamationmark")
-            .font(.system(size: 24, weight: .semibold))
-          Text("No listing image").font(.archivo(12, .bold))
+            .font(.system(size: 32, weight: .semibold))
         }
         .foregroundStyle(BC.muted)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("No listing image for \(car.title)")
+        .accessibilityLabel("No photos provided for \(car.title)")
         .accessibilityIdentifier("shade-dossier-no-image-\(car.id)")
       }
     }
@@ -198,7 +192,11 @@ struct ShadeDossierOverlay: View {
     VStack(alignment: .leading, spacing: 6) {
       HStack(spacing: 5) {
         Image(systemName: icon).font(.system(size: 10, weight: .bold))
-        Text(label.uppercased()).font(.mono(8.5, bold: true)).tracking(0.6)
+        Text(label.uppercased())
+          .font(.mono(8.5, bold: true))
+          .tracking(0.6)
+          .lineLimit(1)
+          .minimumScaleFactor(0.62)
       }
       .foregroundStyle(BC.muted)
       Text(value)
@@ -212,65 +210,6 @@ struct ShadeDossierOverlay: View {
     .padding(.vertical, 10)
     .background(BC.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(BC.border, lineWidth: 1))
-  }
-
-  private var actionRail: some View {
-    HStack(spacing: 7) {
-      actionButton(.hide)
-      actionButton(.avoid)
-      actionButton(.like)
-      actionButton(.star)
-      if let url = URL(string: car.url) {
-        Link(destination: url) {
-          VStack(spacing: 4) {
-            Image(systemName: "arrow.up.right.square.fill")
-              .font(.system(size: 15, weight: .bold))
-            Text("Open").font(.mono(8.5, bold: true))
-          }
-          .foregroundStyle(BC.accentInk)
-          .frame(maxWidth: .infinity, minHeight: 48)
-          .background(BC.accent, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-        }
-        .accessibilityIdentifier("shade-dossier-open-listing")
-        .accessibilityLabel("Open listing")
-      }
-    }
-    .padding(8)
-    .background(Color(hex: 0x080a0e).opacity(0.9), in: RoundedRectangle(cornerRadius: 19, style: .continuous))
-    .overlay(RoundedRectangle(cornerRadius: 19, style: .continuous).stroke(Color.white.opacity(0.12), lineWidth: 1))
-    .shadow(color: .black.opacity(0.45), radius: 18, y: 10)
-    .padding(.horizontal, 14)
-    .padding(.bottom, max(geo.safeBottom + 8, 16))
-  }
-
-  private func actionButton(_ action: FeedbackAction) -> some View {
-    Button {
-      controller.doAction(action, advance: false)
-      if action == .hide || action == .avoid {
-        controller.closeDossier()
-      }
-    } label: {
-      VStack(spacing: 4) {
-        Image(systemName: Icon.feedback(action))
-          .font(.system(size: 15, weight: .bold))
-        Text(actionShortLabel(action)).font(.mono(8.5, bold: true))
-      }
-      .foregroundStyle(Icon.color(for: action))
-      .frame(maxWidth: .infinity, minHeight: 48)
-      .background(Color.white.opacity(0.065), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-    }
-    .buttonStyle(.plain)
-    .accessibilityLabel(actionShortLabel(action))
-    .accessibilityIdentifier("shade-dossier-action-\(action.rawValue)")
-  }
-
-  private func actionShortLabel(_ action: FeedbackAction) -> String {
-    switch action {
-    case .hide: "Hide"
-    case .avoid: "Avoid"
-    case .like: "Like"
-    case .star: "Star"
-    }
   }
 
   private var countdownChip: some View {
@@ -288,6 +227,10 @@ struct ShadeDossierOverlay: View {
 
   @ViewBuilder
   private var sections: some View {
+    whySection
+    marketSection
+    watchoutsSection
+    biddingSection
     vehicleSection
     if let listing = car.dossier?.listing, !listing.isEmpty {
       DossierSection(glyph: Icon.listingBody, label: "FROM THE LISTING") {
@@ -321,11 +264,7 @@ struct ShadeDossierOverlay: View {
         }
       }
     }
-    whySection
-    marketSection
     beachFitSection
-    watchoutsSection
-    biddingSection
     commentsSection
     teachSection
   }
@@ -396,8 +335,8 @@ struct ShadeDossierOverlay: View {
       VStack(alignment: .leading, spacing: 16) {
         HStack(spacing: 8) {
           marketCol("Current", car.bid, BC.white)
-          marketCol("Fair hammer", car.fair ?? "—", BC.white)
-          marketCol("My stop", car.ceiling ?? "—", BC.danger)
+          marketCol("Fair hammer", conciseMarketValue(car.fair, removing: [" fair hammer", " fair"]), BC.white)
+          marketCol("My stop", conciseMarketValue(car.ceiling, removing: ["Stop around ", "Stop "]), BC.danger)
         }
         VStack(alignment: .leading, spacing: 0) {
           MeterScale().padding(.bottom, 7)
@@ -422,6 +361,14 @@ struct ShadeDossierOverlay: View {
       Text(value).font(.archivo(16.5, .extrabold)).tracking(-0.3).foregroundStyle(color).lineLimit(1).minimumScaleFactor(0.7)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private func conciseMarketValue(_ value: String?, removing phrases: [String]) -> String {
+    guard var result = value, !result.isEmpty else { return "—" }
+    for phrase in phrases {
+      result = result.replacingOccurrences(of: phrase, with: "", options: .caseInsensitive)
+    }
+    return result.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   @ViewBuilder
@@ -613,6 +560,101 @@ struct ShadeDossierOverlay: View {
   private func twoColumn<T, RowContent: View>(_ items: [T], @ViewBuilder row: @escaping (T) -> RowContent) -> some View {
     LazyVGrid(columns: [GridItem(.flexible(), alignment: .topLeading), GridItem(.flexible(), alignment: .topLeading)], alignment: .leading, spacing: 11) {
       ForEach(Array(items.enumerated()), id: \.offset) { _, item in row(item) }
+    }
+  }
+}
+
+// MARK: - Full-screen photo gallery
+
+struct ShadePhotoGallery: View {
+  @ObservedObject var controller: ShadeController
+  let car: AuctionListing
+  let api: AuctionAPI
+  @AccessibilityFocusState private var closeFocused: Bool
+
+  var body: some View {
+    ZStack {
+      Color.black.ignoresSafeArea()
+
+      TabView(selection: $controller.galleryIndex) {
+        ForEach(Array(car.displayImages.enumerated()), id: \.offset) { index, image in
+          ZoomableListingPhoto(url: api.resolvedImageURL(image, variant: .full))
+            .tag(index)
+        }
+      }
+      .tabViewStyle(.page(indexDisplayMode: .never))
+
+      VStack {
+        HStack {
+          VStack(alignment: .leading, spacing: 3) {
+            Text("PHOTO \(controller.galleryIndex + 1) OF \(max(car.displayImages.count, 1))")
+              .font(.mono(11, bold: true))
+              .tracking(1)
+            Text(car.title)
+              .font(.archivo(13, .semibold))
+              .lineLimit(1)
+          }
+          .foregroundStyle(BC.white)
+          Spacer()
+          Button(action: controller.closeGallery) {
+            Image(systemName: "xmark")
+              .font(.system(size: 15, weight: .black))
+              .foregroundStyle(BC.white)
+              .frame(width: 44, height: 44)
+              .background(Color.white.opacity(0.12), in: Circle())
+          }
+          .accessibilityLabel("Close photo gallery")
+          .accessibilityFocused($closeFocused)
+          .accessibilityIdentifier("shade-gallery-close")
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 10)
+        Spacer()
+        Text("Pinch or double-tap to zoom")
+          .font(.mono(10, bold: true))
+          .foregroundStyle(BC.white.opacity(0.55))
+          .padding(.horizontal, 12)
+          .frame(minHeight: 34)
+          .background(Color.black.opacity(0.58), in: Capsule())
+          .padding(.bottom, 18)
+      }
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityAddTraits(.isModal)
+    .onAppear { closeFocused = true }
+  }
+}
+
+private struct ZoomableListingPhoto: View {
+  let url: URL?
+  @State private var scale: CGFloat = 1
+  @State private var lastScale: CGFloat = 1
+
+  var body: some View {
+    CachedRemoteImage(url: url) { image in
+      image
+        .resizable()
+        .scaledToFit()
+        .scaleEffect(scale)
+        .gesture(
+          MagnificationGesture()
+            .onChanged { value in scale = clamp(lastScale * value, 1, 4) }
+            .onEnded { _ in lastScale = scale }
+        )
+        .onTapGesture(count: 2) {
+          withAnimation(.spring(response: 0.3, dampingFraction: 0.84)) {
+            scale = scale > 1 ? 1 : 2
+            lastScale = scale
+          }
+        }
+    } placeholder: {
+      ProgressView().tint(BC.white)
+    } failure: {
+      VStack(spacing: 10) {
+        Image(systemName: "photo.badge.exclamationmark").font(.system(size: 32))
+        Text("Photo unavailable").font(.archivo(14, .bold))
+      }
+      .foregroundStyle(BC.muted)
     }
   }
 }

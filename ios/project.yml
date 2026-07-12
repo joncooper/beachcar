@@ -54,3 +54,15 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         TEST_TARGET_NAME: Beachcar
         GENERATE_INFOPLIST_FILE: "YES"
+
+  BeachcarTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: BeachcarTests
+    dependencies:
+      - target: Beachcar
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.joncooper.beachcar.tests
+        GENERATE_INFOPLIST_FILE: "YES"

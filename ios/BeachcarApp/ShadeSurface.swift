@@ -1,7 +1,7 @@
 import SwiftUI
 
-// The Shade review surface: full-bleed feed + chrome with the judging overlay,
-// list pull-down, and dossier layered on top. Replaces the old deck/list/detail.
+// The Shade review surface: one vertically readable dossier at a time, with
+// horizontal judgment and separate list and photo-gallery modes.
 
 struct ShadeSurface: View {
   @ObservedObject var store: BeachcarStore
@@ -11,8 +11,9 @@ struct ShadeSurface: View {
   @StateObject private var controller = ShadeController()
   @AppStorage("shade.coachSeen.v1") private var coachSeen = false
   @State private var undoDismissTask: Task<Void, Never>?
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-  private var cars: [AuctionListing] { store.visibleListings }
+  private var cars: [AuctionListing] { store.run?.listings ?? store.visibleListings }
   private var currentCar: AuctionListing? { cars.indices.contains(controller.idx) ? cars[controller.idx] : nil }
 
   var body: some View {
@@ -34,7 +35,7 @@ struct ShadeSurface: View {
           ShadeLoadingView()
           statusNotices(geo, belowChrome: false)
         } else if cars.isEmpty {
-          ShadeEmptyView(hasRun: store.run != nil) {
+          ShadeEmptyView(hasRun: store.run != nil, error: store.errorMessage) {
             await store.load(tokenProvider: tokenProvider, cacheScope: cacheScope)
           }
           statusNotices(geo, belowChrome: false)
@@ -57,45 +58,69 @@ struct ShadeSurface: View {
   // MARK: layers
 
   private func feedLayer(_ geo: FeedGeometry) -> some View {
-    ZStack(alignment: .top) {
-      ShadeFeed(controller: controller, cars: cars, sourceSummary: store.run?.sourceSummary, api: store.api, geo: geo)
-      FeedChrome(controller: controller, cars: cars, geo: geo, onList: controller.openList)
-      statusNotices(geo)
-      if controller.showHint { coachMark(geo) }
+    VStack(spacing: 0) {
+      ReviewChrome(
+        index: controller.idx,
+        total: cars.count,
+        controller: controller,
+        safeTop: geo.safeTop
+      )
+      ZStack {
+        ShadeOverlay(controller: controller, geo: geo)
+        if controller.completionOpen {
+          ShadeCompletionView(
+            feedback: store.feedbackByKey,
+            total: cars.count,
+            onOpenList: controller.openList,
+            onReviewAgain: controller.reviewAgain
+          )
+          .transition(.opacity.combined(with: .scale(scale: 0.98)))
+        } else if let car = currentCar {
+          ShadeReviewPage(
+            controller: controller,
+            car: car,
+            listingIndex: controller.idx,
+            totalListings: cars.count,
+            sourceSummary: store.run?.sourceSummary,
+            api: store.api,
+            geo: geo
+          ) { note in
+            Task { _ = await store.submitPreferenceNote(note, listing: car, tokenProvider: tokenProvider) }
+          }
+          .id(car.key)
+          .transition(.opacity.combined(with: .scale(scale: 0.99)))
+        }
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .contentShape(Rectangle())
+      .simultaneousGesture(
+        DragGesture(minimumDistance: 8)
+          .onChanged { controller.reviewDragChanged($0, width: geo.width) }
+          .onEnded { controller.reviewDragEnded($0, width: geo.width, reduceMotion: reduceMotion) },
+        including: .all
+      )
     }
-    // .top alignment pins the oversized paging column to the top (no center shift);
-    // clip hides the off-screen panels.
     .frame(width: geo.width, height: geo.height, alignment: .top)
     .clipped()
-    .contentShape(Rectangle())
-    .simultaneousGesture(
-      DragGesture(minimumDistance: 6)
-        .onChanged { controller.dragChanged($0, geo: geo) }
-        .onEnded { controller.dragEnded($0, geo: geo) }
-    )
-    .simultaneousGesture(
-      SpatialTapGesture().onEnded { controller.feedTap(at: $0.location, geo: geo) }
-    )
-    // Keep child text/controls visible to the accessibility tree (and XCUITest)
-    // even though the container owns the feed gestures.
     .accessibilityElement(children: .contain)
+    .accessibilityHidden(controller.listOpen || controller.galleryOpen)
   }
 
   @ViewBuilder
   private func overlays(_ geo: FeedGeometry) -> some View {
-    ShadeOverlay(controller: controller, geo: geo)
+    statusNotices(geo)
 
     if let toast = controller.toast {
-      ShadeFlash(toast: toast).id(toast.id)
+      if !reduceMotion { ShadeFlash(toast: toast).id(toast.id) }
       ShadeToast(toast: toast).id(toast.id)
     }
-    if controller.burst > 0, let action = currentCar.flatMap({ store.feedbackByKey[$0.key]?.action }) {
+    if !reduceMotion, controller.burst > 0, let action = currentCar.flatMap({ store.feedbackByKey[$0.key]?.action }) {
       ShadeBurst(action: action).id(controller.burst)
     }
 
     ShadeListOverlay(
       controller: controller,
-      cars: controller.listIncludeHidden ? store.orderedListings(includeHidden: true) : cars,
+      cars: controller.listIncludeHidden ? store.orderedListings(includeHidden: true) : store.visibleListings,
       feedCars: cars,
       sourceSummary: store.run?.sourceSummary,
       feedbackByKey: store.feedbackByKey,
@@ -103,10 +128,10 @@ struct ShadeSurface: View {
       geo: geo
     )
 
-    if let car = currentCar {
-      ShadeDossierOverlay(controller: controller, car: car, sourceSummary: store.run?.sourceSummary, api: store.api, geo: geo) { note in
-        Task { _ = await store.submitPreferenceNote(note, listing: car, tokenProvider: tokenProvider) }
-      }
+    if controller.galleryOpen, let car = currentCar {
+      ShadePhotoGallery(controller: controller, car: car, api: store.api)
+        .transition(.opacity)
+        .zIndex(20)
     }
 
     if store.lastUndo != nil {
@@ -143,48 +168,37 @@ struct ShadeSurface: View {
   }
 
   private func statusNotices(_ geo: FeedGeometry, belowChrome: Bool = true) -> some View {
-    VStack(spacing: 6) {
-      if store.isUsingCachedRun {
-        statusNotice(
-          "Showing saved copy",
-          icon: "wifi.slash",
-          color: BC.star,
-          identifier: "shade-cached-banner"
-        )
-      }
-
-      if let error = store.errorMessage, !error.isEmpty {
-        statusNotice(
-          "Sync issue · \(error)",
-          icon: "exclamationmark.triangle.fill",
-          color: BC.danger,
-          identifier: "shade-error-banner"
-        )
-      }
-
-      let queuedCount = store.pendingPreferenceNotes.count
-      if queuedCount > 0 {
-        statusNotice(
-          "\(queuedCount) steering note\(queuedCount == 1 ? "" : "s") queued",
-          icon: "arrow.clockwise.circle.fill",
-          color: BC.sub,
-          identifier: "shade-queued-notes-banner"
-        )
-      }
-
-      if let status = store.agentRun?.status, status == .queued || status == .running || status == .failed {
-        statusNotice(
-          status == .failed ? "Run failed" : (status == .queued ? "Run queued" : "Workflow running"),
-          icon: status == .failed ? "exclamationmark.triangle.fill" : "arrow.triangle.2.circlepath",
-          color: status == .failed ? BC.danger : BC.star,
-          identifier: "shade-run-status-banner"
-        )
+    VStack {
+      if let summary = statusSummary {
+        statusNotice(summary.text, icon: summary.icon, color: summary.color, identifier: "shade-status-banner")
       }
     }
     .padding(.horizontal, 12)
     .padding(.top, geo.safeTop + (belowChrome ? geo.chromeHeight + 8 : 16))
     .frame(maxHeight: .infinity, alignment: .top)
     .allowsHitTesting(false)
+  }
+
+  private var statusSummary: (text: String, icon: String, color: Color)? {
+    let queued = store.pendingPreferenceNotes.count
+    let cachedTail = store.isUsingCachedRun ? " · saved copy" : ""
+    let queuedTail = queued > 0 ? " · \(queued) note\(queued == 1 ? "" : "s") queued" : ""
+    if let error = store.errorMessage, !error.isEmpty {
+      return ("Sync issue\(cachedTail)\(queuedTail) · \(error)", "exclamationmark.triangle.fill", BC.danger)
+    }
+    if store.agentRun?.status == .failed {
+      return ("Run failed\(cachedTail)\(queuedTail)", "exclamationmark.triangle.fill", BC.danger)
+    }
+    if store.isUsingCachedRun {
+      return ("Offline · showing saved copy\(queuedTail)", "wifi.slash", BC.star)
+    }
+    if queued > 0 {
+      return ("\(queued) steering note\(queued == 1 ? "" : "s") queued", "arrow.clockwise.circle.fill", BC.sub)
+    }
+    if let status = store.agentRun?.status, status == .queued || status == .running {
+      return (status == .queued ? "Next run queued" : "Building the next shortlist", "arrow.triangle.2.circlepath", BC.star)
+    }
+    return nil
   }
 
   private func statusNotice(_ text: String, icon: String, color: Color, identifier: String) -> some View {
@@ -211,34 +225,37 @@ struct ShadeSurface: View {
   private func configure() {
     syncCars()
     controller.currentCarInfo = { [weak store] in
-      guard let list = store?.visibleListings, list.indices.contains(controller.idx) else { return nil }
+      guard let store else { return nil }
+      let list = store.run?.listings ?? store.visibleListings
+      guard list.indices.contains(controller.idx) else { return nil }
       let car = list[controller.idx]
       return (car.key, max(car.displayImages.count, 1))
     }
     controller.persist = { [weak store] action in
       guard let store else { return }
-      let list = store.visibleListings
+      let list = store.run?.listings ?? store.visibleListings
       guard list.indices.contains(controller.idx) else { return }
       let car = list[controller.idx]
       Task { await store.mark(action, listing: car, tokenProvider: tokenProvider) }
       coachSeen = true
     }
     controller.showHint = !coachSeen
-    if !coachSeen { controller.startHintTimer() }
 
     #if DEBUG
     // Debug-only hook to launch straight into an overlay for visual QA, e.g.
-    // `--ui-testing --shade-open list|dossier`. No effect in release builds.
+    // `--ui-testing --shade-open list|gallery|swipe`. No effect in release builds.
     if AppEnv.isUITesting {
       let args = ProcessInfo.processInfo.arguments
       if let i = args.firstIndex(of: "--shade-open"), args.indices.contains(i + 1) {
         switch args[i + 1] {
         case "list": controller.listOpen = true
-        case "dossier": controller.dossierOpen = true
-        case "shade":
-          controller.mode = .shade
-          controller.shadeAction = .like
-          controller.shade = 0.7
+        case "gallery": controller.openGallery()
+        case "swipe", "shade":
+          controller.reviewRawOffset = geoPreviewWidth * 0.4
+          controller.reviewOffset = geoPreviewWidth * 0.34
+          controller.reviewIntent = .horizontal
+          controller.reviewStage = .primary
+          controller.reviewAction = .like
           controller.showHint = false
         default: break
         }
@@ -248,13 +265,15 @@ struct ShadeSurface: View {
   }
 
   private func syncCars() {
-    controller.carCount = cars.count
+    controller.configureReview(keys: cars.map(\.key), reviewed: Set(store.feedbackByKey.keys))
     if cars.isEmpty {
       controller.idx = 0
     } else if controller.idx >= cars.count {
       controller.idx = cars.count - 1
     }
   }
+
+  private var geoPreviewWidth: CGFloat { 390 }
 
   private func scheduleUndoDismiss(_ listingKey: String?) {
     undoDismissTask?.cancel()
@@ -268,6 +287,143 @@ struct ShadeSurface: View {
         }
       }
     }
+  }
+}
+
+// MARK: - Review chrome / completion
+
+private struct ReviewChrome: View {
+  let index: Int
+  let total: Int
+  @ObservedObject var controller: ShadeController
+  let safeTop: CGFloat
+
+  var body: some View {
+    VStack(spacing: 8) {
+      HStack(spacing: 10) {
+        Text("Beachcar")
+          .font(.archivo(22, .black))
+          .foregroundStyle(BC.white)
+          .lineLimit(1)
+          .minimumScaleFactor(0.7)
+        Spacer()
+        Button(action: controller.openList) {
+          Image(systemName: Icon.list)
+            .font(.system(size: 15, weight: .bold))
+            .foregroundStyle(BC.white)
+            .frame(width: 44, height: 44)
+            .background(BC.faint, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(BC.border, lineWidth: 1))
+        }
+        .accessibilityLabel("Open today's finds")
+        .accessibilityIdentifier("shade-list-button")
+
+        Text("FIND \(min(index + 1, max(total, 1))) OF \(max(total, 1))")
+          .font(.mono(10.5, bold: true))
+          .tracking(0.7)
+          .foregroundStyle(BC.sub)
+          .accessibilityIdentifier("shade-find-counter")
+          .accessibilityLabel("Find \(min(index + 1, max(total, 1))) of \(max(total, 1))")
+
+        Menu {
+          Button("Pass", systemImage: Icon.hide) { controller.doAction(.hide, advance: true) }
+          Button("Never again", systemImage: Icon.avoid) { controller.doAction(.avoid, advance: true) }
+          Button("Like", systemImage: Icon.like) { controller.doAction(.like, advance: true) }
+          Button("Love it", systemImage: Icon.star) { controller.doAction(.star, advance: true) }
+        } label: {
+          Image(systemName: "ellipsis")
+            .font(.system(size: 15, weight: .black))
+            .foregroundStyle(BC.white)
+            .frame(width: 44, height: 44)
+            .background(BC.faint, in: Circle())
+        }
+        .accessibilityLabel("More review actions")
+        .accessibilityIdentifier("shade-review-actions")
+      }
+
+      if controller.showHint {
+        HStack(spacing: 8) {
+          Image(systemName: "arrow.left.and.right")
+          Text("Swipe to judge · scroll to read")
+        }
+        .font(.mono(10, bold: true))
+        .foregroundStyle(BC.accent)
+        .frame(minHeight: 28)
+        .padding(.horizontal, 11)
+        .background(BC.accent.opacity(0.1), in: Capsule())
+        .overlay(Capsule().stroke(BC.accent.opacity(0.24), lineWidth: 1))
+        .transition(.opacity.combined(with: .move(edge: .top)))
+      }
+    }
+    .padding(.horizontal, 14)
+    .padding(.top, safeTop + 4)
+    .padding(.bottom, 8)
+    .background(BC.bg)
+  }
+}
+
+private struct ShadeCompletionView: View {
+  let feedback: [String: FeedbackRecord]
+  let total: Int
+  let onOpenList: () -> Void
+  let onReviewAgain: () -> Void
+
+  private func count(_ action: FeedbackAction) -> Int {
+    feedback.values.filter { $0.action == action }.count
+  }
+
+  var body: some View {
+    VStack(spacing: 22) {
+      ZStack {
+        Circle().fill(BC.accent.opacity(0.12)).frame(width: 104, height: 104)
+        Image(systemName: "checkmark.seal.fill")
+          .font(.system(size: 48, weight: .bold))
+          .foregroundStyle(BC.accent)
+      }
+      VStack(spacing: 8) {
+        Text("You’re caught up")
+          .font(.archivo(32, .black))
+          .foregroundStyle(BC.white)
+          .accessibilityIdentifier("shade-completion")
+        Text("Today’s \(total) find\(total == 1 ? "" : "s") are reviewed. Your choices will shape the next shortlist.")
+          .font(.archivo(15, .medium))
+          .foregroundStyle(BC.sub)
+          .multilineTextAlignment(.center)
+          .lineSpacing(3)
+      }
+      HStack(spacing: 8) {
+        completionCount("Passed", count(.hide), .hide)
+        completionCount("Never", count(.avoid), .avoid)
+        completionCount("Liked", count(.like), .like)
+        completionCount("Loved", count(.star), .star)
+      }
+      Button(action: onOpenList) {
+        Label("Open today’s finds", systemImage: Icon.list)
+          .font(.archivo(15, .extrabold))
+          .foregroundStyle(BC.accentInk)
+          .frame(maxWidth: .infinity, minHeight: 50)
+          .background(BC.accent, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+      }
+      .buttonStyle(.plain)
+      .accessibilityIdentifier("shade-completion-open-list")
+      Button("Review from the beginning", action: onReviewAgain)
+        .font(.archivo(13, .bold))
+        .foregroundStyle(BC.sub)
+        .frame(minHeight: 44)
+    }
+    .padding(24)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(BC.panel)
+  }
+
+  private func completionCount(_ label: String, _ value: Int, _ action: FeedbackAction) -> some View {
+    VStack(spacing: 6) {
+      Image(systemName: Icon.feedback(action)).foregroundStyle(Icon.color(for: action))
+      Text("\(value)").font(.archivo(19, .black)).foregroundStyle(BC.white)
+      Text(label).font(.mono(8.5, bold: true)).foregroundStyle(BC.muted)
+    }
+    .frame(maxWidth: .infinity, minHeight: 76)
+    .background(BC.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
   }
 }
 
@@ -285,14 +441,17 @@ private struct ShadeLoadingView: View {
 
 private struct ShadeEmptyView: View {
   let hasRun: Bool
+  let error: String?
   let reload: () async -> Void
+
+  private var hasLoadFailure: Bool { !hasRun && !(error ?? "").isEmpty }
 
   var body: some View {
     VStack(spacing: 14) {
       Image(systemName: "car.side.lock").font(.system(size: 42, weight: .semibold)).foregroundStyle(BC.muted)
-      Text(hasRun ? "No cars to review" : "No run yet")
+      Text(hasLoadFailure ? "Couldn’t load today’s finds" : (hasRun ? "No cars to review" : "No run yet"))
         .font(.archivo(22, .extrabold)).foregroundStyle(BC.white)
-      Text(hasRun ? "Today's shortlist is empty." : "Pull to refresh, or check back after the next daily run.")
+      Text(hasLoadFailure ? "Check your connection and try again." : (hasRun ? "Today's shortlist is empty." : "The next daily shortlist hasn’t been published yet."))
         .font(.archivo(14)).foregroundStyle(BC.sub).multilineTextAlignment(.center)
       Button { Task { await reload() } } label: {
         Label("Refresh", systemImage: "arrow.clockwise")

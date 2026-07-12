@@ -535,12 +535,13 @@ struct PulsingDot: View {
   let color: Color
   var size: CGFloat = 5
   @State private var on = false
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   var body: some View {
     Circle()
       .fill(color)
       .frame(width: size, height: size)
       .opacity(on ? 1 : 0.4)
-      .animation(AppEnv.isUITesting ? nil : .easeInOut(duration: 1.1).repeatForever(autoreverses: true), value: on)
+      .animation(AppEnv.isUITesting || reduceMotion ? nil : .easeInOut(duration: 1.1).repeatForever(autoreverses: true), value: on)
       .onAppear { on = true }
   }
 }

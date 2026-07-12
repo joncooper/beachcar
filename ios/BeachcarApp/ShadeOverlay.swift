@@ -1,155 +1,64 @@
 import SwiftUI
 
-// The signature judging overlay: a tray drops from the top carrying four actions,
-// the user's horizontal position selects one, and a center ring fills as they pull
-// past the commit threshold.
+// Horizontal judgment underlay for the scrolling dossier. The first gate records
+// a light preference; the resistant second gate records the stronger signal.
 
 struct ShadeOverlay: View {
   @ObservedObject var controller: ShadeController
   let geo: FeedGeometry
 
-  private var sh: CGFloat { controller.shade }
-  private var active: Bool { controller.mode == .shade }
-  private var th: CGFloat { controller.commitThreshold }
-  private var armed: Bool { sh >= th }
-  private var prog: CGFloat { clamp(sh / th, 0, 1) }
-  private var action: FeedbackAction? { controller.shadeAction }
-
   var body: some View {
-    if sh > 0.01 || active {
-      ZStack {
-        // Dim
-        Color(hex: 0x05060a).opacity(Double(sh) * 0.66)
-
-        // Armed radial vignette
-        if let action {
-          RadialGradient(
-            colors: [Icon.color(for: action).opacity(0), Icon.color(for: action).opacity(0.36)],
-            center: UnitPoint(x: 0.5, y: 0.46), startRadius: geo.width * 0.45, endRadius: geo.width * 0.95
-          )
-          .opacity(armed ? 1 : 0)
-          .animation(.easeOut(duration: 0.14), value: armed)
+    let action = controller.reviewAction
+    let color = action.map(Icon.color(for:)) ?? BC.card
+    ZStack {
+      color.opacity(action == nil ? 0.12 : 0.28)
+      if let action {
+        HStack {
+          if controller.reviewOffset > 0 { actionMark(action); Spacer() }
+          else { Spacer(); actionMark(action) }
         }
-
-        // Center commit ring
-        if sh > 0.1, let action {
-          centerRing(action)
-            .frame(maxHeight: .infinity, alignment: .center)
-            .offset(y: -geo.height * 0.05)
-            .opacity(Double(min(1, sh * 1.4)))
+        .padding(.horizontal, 30)
+      } else if controller.showHint {
+        HStack {
+          edgeCue(.hide)
+          Spacer()
+          edgeCue(.like)
         }
-
-        // Tray
-        tray
-          .frame(maxHeight: .infinity, alignment: .top)
+        .padding(.horizontal, 8)
       }
-      .ignoresSafeArea()
-      .allowsHitTesting(false)
     }
+    .frame(width: geo.width)
+    .allowsHitTesting(false)
   }
 
-  // MARK: ring
-
-  private func centerRing(_ action: FeedbackAction) -> some View {
-    let color = Icon.color(for: action)
-    let armInk = action == .like ? BC.accentInk : Color(hex: 0x15120a)
-    return VStack(spacing: 13) {
-      ZStack {
-        Circle()
-          .fill(AngularGradient(
-            stops: [
-              .init(color: color, location: 0),
-              .init(color: color, location: prog),
-              .init(color: Color.white.opacity(0.13), location: min(prog + 0.0001, 1)),
-              .init(color: Color.white.opacity(0.13), location: 1),
-            ],
-            center: .center
-          ))
-          .rotationEffect(.degrees(-90))
-          .shadow(color: armed ? color.opacity(0.6) : .clear, radius: 14)
-
-        Circle()
-          .fill(armed ? color : Color(hex: 0x0f1117).opacity(0.94))
-          .padding(8)
-          .overlay(
-            Image(systemName: Icon.feedback(action))
-              .font(.system(size: 40, weight: .bold))
-              .foregroundStyle(armed ? armInk : color)
-          )
-          .shadow(color: armed ? color.opacity(0.8) : .clear, radius: 25, y: 12)
-      }
-      .frame(width: 120, height: 120)
-      .scaleEffect(0.8 + sh * 0.26)
-
+  private func actionMark(_ action: FeedbackAction) -> some View {
+    VStack(spacing: 9) {
+      Image(systemName: Icon.feedback(action))
+        .font(.system(size: 34, weight: .black))
       Text(label(action).uppercased())
-        .font(.archivo(23, .extrabold))
-        .tracking(2)
-        .foregroundStyle(BC.white)
-      Text(armed ? "release to \(label(action).lowercased())" : "keep pulling to commit")
-        .font(.mono(11))
-        .tracking(0.3)
-        .foregroundStyle(armed ? BC.white : BC.white.opacity(0.55))
+        .font(.archivo(18, .black))
+        .tracking(1.2)
+      Text(controller.reviewStage == .strong ? "release to commit" : "keep going for the stronger signal")
+        .font(.mono(10, bold: true))
+        .foregroundStyle(BC.white.opacity(0.66))
     }
+    .foregroundStyle(Icon.color(for: action))
+    .frame(width: 150)
   }
 
-  // MARK: tray
-
-  private var tray: some View {
-    let trayY = -164 + sh * 164
-    return VStack(spacing: 14) {
-      Text("SLIDE TO CHOOSE · PULL TO COMMIT")
-        .font(.mono(9.5))
-        .tracking(1.6)
-        .foregroundStyle(BC.white.opacity(0.5))
-      HStack(spacing: 0) {
-        ForEach(controller.trayActions, id: \.self) { k in
-          trayAction(k)
-            .frame(maxWidth: .infinity)
-        }
-      }
-      .padding(.horizontal, 8)
-    }
-    .padding(.top, 62 + geo.safeTop)
-    .padding(.bottom, 20)
-    .frame(maxWidth: .infinity)
-    .background(
-      LinearGradient(
-        stops: [.init(color: Color(hex: 0x0a0c10), location: 0.72), .init(color: Color(hex: 0x0a0c10).opacity(0), location: 1)],
-        startPoint: .top, endPoint: .bottom
-      )
-    )
-    .offset(y: trayY)
-  }
-
-  private func trayAction(_ k: FeedbackAction) -> some View {
-    let color = Icon.color(for: k)
-    let on = controller.shadeAction == k && sh > 0.32
-    let ink = k == .like ? BC.accentInk : Color(hex: 0x15120a)
-    return VStack(spacing: 7) {
-      Image(systemName: Icon.feedback(k))
-        .font(.system(size: 22, weight: .semibold))
-        .foregroundStyle(on ? ink : color)
-        .frame(width: 56, height: 56)
-        .background(on ? color : Color.white.opacity(0.07), in: Circle())
-        .overlay(Circle().stroke(on ? color : Color.white.opacity(0.14), lineWidth: 1.5))
-        .shadow(color: on ? color.opacity(0.75) : .clear, radius: 15, y: 8)
-        .scaleEffect(on ? 1.16 : 1)
-        .animation(.easeOut(duration: 0.14), value: on)
-      if controller.trayLabels {
-        Text(label(k))
-          .font(.mono(10))
-          .foregroundStyle(on ? BC.white : BC.white.opacity(0.5))
-      }
-    }
-    .opacity(sh > 0.18 ? 1 : Double(sh * 5))
+  private func edgeCue(_ action: FeedbackAction) -> some View {
+    Image(systemName: action == .hide ? "chevron.left" : "chevron.right")
+      .font(.system(size: 12, weight: .black))
+      .foregroundStyle(Icon.color(for: action).opacity(0.45))
+      .frame(width: 24, height: 72)
   }
 
   private func label(_ action: FeedbackAction) -> String {
     switch action {
     case .like: "Like"
-    case .star: "Star"
-    case .hide: "Hide"
-    case .avoid: "Avoid"
+    case .star: "Love it"
+    case .hide: "Pass"
+    case .avoid: "Never again"
     }
   }
 }
@@ -162,9 +71,9 @@ struct ShadeToast: View {
   private var label: String {
     switch toast.action {
     case .like: "Liked"
-    case .star: "Starred"
-    case .hide: "Hidden"
-    case .avoid: "Avoiding similar"
+    case .star: "Loved"
+    case .hide: "Passed"
+    case .avoid: "Never again"
     }
   }
 

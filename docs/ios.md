@@ -4,15 +4,18 @@ Beachcar includes a native SwiftUI app in `ios/` for an iPhone-first review loop
 
 ## UX Model
 
-- Vertical scroll pages through vehicles.
-- Horizontal swipes inside the photo carousel move between photos.
-- Horizontal swipes on the lower listing card save feedback:
-  - Right past the commit mark: `like`
-  - Left past the commit mark: `hide`
-  - Far right plus a brief hold: `star`
-  - Far left plus a brief hold: `avoid`
-- Tapping the card flips into a richer detail/dossier side.
-- The detail side includes voice/text feedback that posts preference notes to the Worker for the next AI run.
+- One listing is one vertically scrolling dossier. Reading never changes the current listing.
+- A horizontal swipe anywhere on the dossier records feedback and advances to the next unreviewed find:
+  - Right past the first gate: Like (`like` in the API)
+  - Far right past the second gate: Love it (`star` in the API)
+  - Left past the first gate: Pass (`hide` in the API)
+  - Far left past the second gate: Never again (`avoid` in the API)
+- Distance, underlay labels, color, and two haptic gates make the stronger actions deliberate. Flick velocity can commit a primary action but cannot accidentally commit a strong action.
+- Tapping the cover opens a separate full-screen, horizontally paged photo gallery. Pinch or double-tap zooms the current photo.
+- `FIND x OF y` always counts listings; `PHOTO x OF y` appears only in the gallery. No-image listings use a compact fallback rather than an empty hero.
+- Today's Finds provides search, judgment and lane filters, sorting, source health, and direct navigation without changing the review order.
+- After every listing has a judgment, a completion summary replaces the dossier and keeps Today's Finds available.
+- The dossier includes voice/text feedback that posts preference notes to the Worker for the next AI run.
 
 ## Auth
 
@@ -30,7 +33,7 @@ The native app checks `/api/me` after sign-in:
 
 - `invited` users see an invite-code gate.
 - `active` users without completed onboarding see the preferences setup screen.
-- active users with completed onboarding enter the existing review deck.
+- active users with completed onboarding enter the scrolling review surface.
 - `disabled` users are blocked before deck load.
 
 ## Run Status

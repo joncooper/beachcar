@@ -11,7 +11,7 @@ Beachcar includes a native SwiftUI app in `ios/` for an iPhone-first review loop
   - Left past the first gate: Pass (`hide` in the API)
   - Far left past the second gate: Never again (`avoid` in the API)
 - Distance, underlay labels, color, and two haptic gates make the stronger actions deliberate. Flick velocity can commit a primary action but cannot accidentally commit a strong action.
-- Tapping the cover opens a separate full-screen, horizontally paged photo gallery. Pinch or double-tap zooms the current photo.
+- Tapping the cover opens a separate full-screen, horizontally paged photo gallery. Pinch or double-tap zooms the current photo; a decisive swipe up or down dismisses the gallery. A bottom safe-area control provides an explicit tap and VoiceOver fallback without competing with system chrome.
 - `FIND x OF y` always counts listings; `PHOTO x OF y` appears only in the gallery. No-image listings use a compact fallback rather than an empty hero.
 - Today's Finds provides search, judgment and lane filters, sorting, source health, and direct navigation without changing the review order.
 - After every listing has a judgment, a completion summary replaces the dossier and keeps Today's Finds available.

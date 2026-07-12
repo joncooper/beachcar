@@ -42,12 +42,42 @@ final class ReviewSwipeDecisionTests: XCTestCase {
     XCTAssertGreaterThan(ReviewSwipeDecision.displayOffset(for: 300, primary: primary), primary)
   }
 
+  func testGalleryDismissAcceptsDecisiveVerticalSwipesInEitherDirection() {
+    XCTAssertTrue(galleryDismisses(y: 130, predictedY: 150))
+    XCTAssertTrue(galleryDismisses(y: -130, predictedY: -150))
+    XCTAssertTrue(galleryDismisses(y: 58, predictedY: 240))
+    XCTAssertTrue(galleryDismisses(y: -58, predictedY: -240))
+  }
+
+  func testGalleryDismissRejectsShortOrHorizontalSwipes() {
+    XCTAssertFalse(galleryDismisses(x: 8, y: 38, predictedY: 80))
+    XCTAssertFalse(galleryDismisses(x: 190, y: 70, predictedX: 240, predictedY: 120))
+    XCTAssertEqual(
+      GalleryDismissDecision.displayOffset(for: CGSize(width: 160, height: 50)),
+      0,
+      accuracy: 0.01
+    )
+  }
+
   private func action(_ translation: CGFloat) -> FeedbackAction? {
     ReviewSwipeDecision.action(
       translation: translation,
       predicted: translation,
       velocity: 0,
       width: 390
+    )
+  }
+
+  private func galleryDismisses(
+    x: CGFloat = 0,
+    y: CGFloat,
+    predictedX: CGFloat = 0,
+    predictedY: CGFloat
+  ) -> Bool {
+    GalleryDismissDecision.shouldDismiss(
+      translation: CGSize(width: x, height: y),
+      predictedEndTranslation: CGSize(width: predictedX, height: predictedY),
+      height: 844
     )
   }
 }

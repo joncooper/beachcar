@@ -33,7 +33,7 @@ This is an end-to-end agentic product—not a chat wrapper. It schedules work, u
 
 <p align="center"><sub>Real captures from the current SwiftUI app running in the iPhone simulator; listing media was loaded from the project's live-source research output.</sub></p>
 
-The interaction model is intentionally fast and physical. Swipe right to **Like**, farther right to **Love it**; swipe left to **Pass**, farther left for **Never again**. Scroll down to read the full dossier. Tap a photo to enter a separate zoomable gallery. Those four gestures do more than organize the current deck—they become preference memory for the next research run.
+The interaction model is intentionally fast and physical. Swipe right to **Like**, farther right to **Love it**; swipe left to **Pass**, farther left for **Never again**. Scroll down to read the full dossier. Tap a photo to enter a separate zoomable gallery, then swipe decisively up or down to return. Those judgment gestures do more than organize the current deck—they become preference memory for the next research run.
 
 ## Why I built it
 
@@ -102,7 +102,7 @@ Beachcar spans the product surface, agent runtime, data plane, authentication, o
 | **Identity + privacy** | Invite-only Clerk access, user-scoped reads and writes, hashed automation tokens, OAuth metadata, export, and deletion. |
 | **Operations** | Guarded D1 migrations, private recovery artifacts, staged container rollout, strict configuration checks, production smoke tests, and managed-path verification. |
 
-The current verification suite includes **151 Vitest tests** across the web/Worker surface and **22 native tests**: 17 end-to-end XCUITests plus five gesture-model unit tests.
+The current verification suite includes **151 Vitest tests** across the web/Worker surface and **25 native tests**: 18 end-to-end XCUITests plus seven gesture-model unit tests.
 
 ## A typical daily run
 

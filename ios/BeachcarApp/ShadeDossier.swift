@@ -570,7 +570,13 @@ struct ShadePhotoGallery: View {
   @ObservedObject var controller: ShadeController
   let car: AuctionListing
   let api: AuctionAPI
+  let safeTop: CGFloat
+  let safeBottom: CGFloat
+  let height: CGFloat
   @AccessibilityFocusState private var closeFocused: Bool
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var dismissOffset: CGFloat = 0
+  @State private var crossedDismissThreshold = false
 
   var body: some View {
     ZStack {
@@ -596,32 +602,87 @@ struct ShadePhotoGallery: View {
           }
           .foregroundStyle(BC.white)
           Spacer()
-          Button(action: controller.closeGallery) {
-            Image(systemName: "xmark")
-              .font(.system(size: 15, weight: .black))
-              .foregroundStyle(BC.white)
-              .frame(width: 44, height: 44)
-              .background(Color.white.opacity(0.12), in: Circle())
-          }
-          .accessibilityLabel("Close photo gallery")
-          .accessibilityFocused($closeFocused)
-          .accessibilityIdentifier("shade-gallery-close")
         }
         .padding(.horizontal, 18)
-        .padding(.top, 10)
+        .padding(.top, safeTop + 10)
         Spacer()
-        Text("Pinch or double-tap to zoom")
-          .font(.mono(10, bold: true))
-          .foregroundStyle(BC.white.opacity(0.55))
-          .padding(.horizontal, 12)
-          .frame(minHeight: 34)
-          .background(Color.black.opacity(0.58), in: Capsule())
-          .padding(.bottom, 18)
+        galleryExitControl
+          .padding(.bottom, safeBottom + 14)
       }
     }
+    .offset(y: dismissOffset)
+    .scaleEffect(reduceMotion ? 1 : 1 - min(abs(dismissOffset) / 4_800, 0.025))
+    .simultaneousGesture(dismissGesture, including: .all)
     .accessibilityElement(children: .contain)
     .accessibilityAddTraits(.isModal)
+    .accessibilityAction(.escape, closeGallery)
     .onAppear { closeFocused = true }
+  }
+
+  private var galleryExitControl: some View {
+    Button(action: closeGallery) {
+      VStack(spacing: 3) {
+        Label("Swipe up or down to close", systemImage: "arrow.up.and.down")
+          .font(.mono(10, bold: true))
+          .tracking(0.35)
+        Text("Pinch or double-tap to zoom")
+          .font(.archivo(11, .semibold))
+          .foregroundStyle(BC.white.opacity(0.58))
+      }
+      .foregroundStyle(BC.white)
+      .padding(.horizontal, 15)
+      .frame(minHeight: 48)
+      .background(Color.black.opacity(0.68), in: Capsule())
+      .overlay(Capsule().stroke(Color.white.opacity(0.14), lineWidth: 1))
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel("Close photo gallery")
+    .accessibilityHint("Swipe quickly up or down anywhere on the photo, or double tap this button.")
+    .accessibilityFocused($closeFocused)
+    .accessibilityIdentifier("shade-gallery-close")
+  }
+
+  private var dismissGesture: some Gesture {
+    DragGesture(minimumDistance: 16, coordinateSpace: .global)
+      .onChanged { value in
+        dismissOffset = GalleryDismissDecision.displayOffset(for: value.translation)
+        let shouldDismiss = GalleryDismissDecision.shouldDismiss(
+          translation: value.translation,
+          predictedEndTranslation: value.predictedEndTranslation,
+          height: height
+        )
+        if shouldDismiss && !crossedDismissThreshold {
+          UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 0.7)
+        }
+        crossedDismissThreshold = shouldDismiss
+      }
+      .onEnded { value in
+        let shouldDismiss = GalleryDismissDecision.shouldDismiss(
+          translation: value.translation,
+          predictedEndTranslation: value.predictedEndTranslation,
+          height: height
+        )
+        crossedDismissThreshold = false
+        if shouldDismiss {
+          let projectedY = value.predictedEndTranslation.height
+          let directionSource = projectedY == 0 ? value.translation.height : projectedY
+          let direction: CGFloat = directionSource < 0 ? -1 : 1
+          withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+            dismissOffset = direction * clamp(height * 0.18, 130, 190)
+            controller.closeGallery()
+          }
+        } else {
+          withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.82)) {
+            dismissOffset = 0
+          }
+        }
+      }
+  }
+
+  private func closeGallery() {
+    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+      controller.closeGallery()
+    }
   }
 }
 

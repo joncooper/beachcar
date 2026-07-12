@@ -129,7 +129,14 @@ struct ShadeSurface: View {
     )
 
     if controller.galleryOpen, let car = currentCar {
-      ShadePhotoGallery(controller: controller, car: car, api: store.api)
+      ShadePhotoGallery(
+        controller: controller,
+        car: car,
+        api: store.api,
+        safeTop: geo.safeTop,
+        safeBottom: geo.safeBottom,
+        height: geo.height
+      )
         .transition(.opacity)
         .zIndex(20)
     }

@@ -78,6 +78,22 @@ final class BeachcarUITests: XCTestCase {
     XCTAssertTrue(waitForFind(1, of: 3, timeout: 5))
   }
 
+  func testPhotoGalleryDismissesWithDecisiveVerticalSwipes() throws {
+    launch(scenario: "active")
+    _ = shadeSurface()
+    identified("shade-review-hero-ui-test-samurai").tap()
+    XCTAssertTrue(text(containing: "PHOTO 1 OF 2").waitForExistence(timeout: 8))
+    XCTAssertTrue(text(containing: "Swipe up or down to close").exists)
+
+    app.swipeDown(velocity: .fast)
+    XCTAssertTrue(waitForFind(1, of: 3, timeout: 5))
+
+    identified("shade-review-hero-ui-test-samurai").tap()
+    XCTAssertTrue(text(containing: "PHOTO 1 OF 2").waitForExistence(timeout: 8))
+    app.swipeUp(velocity: .fast)
+    XCTAssertTrue(waitForFind(1, of: 3, timeout: 5))
+  }
+
   func testMissingPhotoAndLocationRemainReviewable() throws {
     launch(scenario: "active")
     openList()

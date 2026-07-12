@@ -632,6 +632,36 @@ enum ReviewSwipeDecision {
   }
 }
 
+enum GalleryDismissDecision {
+  static func distance(for height: CGFloat) -> CGFloat {
+    clamp(height * 0.13, 96, 132)
+  }
+
+  static func displayOffset(for translation: CGSize) -> CGFloat {
+    guard isVerticallyDominant(translation) else { return 0 }
+    return clamp(translation.height * 0.36, -120, 120)
+  }
+
+  static func shouldDismiss(
+    translation: CGSize,
+    predictedEndTranslation: CGSize,
+    height: CGFloat
+  ) -> Bool {
+    let actualY = abs(translation.height)
+    guard actualY >= 44, isVerticallyDominant(translation) else { return false }
+
+    let threshold = distance(for: height)
+    if actualY >= threshold { return true }
+
+    return isVerticallyDominant(predictedEndTranslation)
+      && abs(predictedEndTranslation.height) >= threshold * 1.8
+  }
+
+  private static func isVerticallyDominant(_ translation: CGSize) -> Bool {
+    abs(translation.height) > max(abs(translation.width) * 1.25, 20)
+  }
+}
+
 extension Animation {
   static let feedSpring = Animation.timingCurve(0.2, 0.9, 0.24, 1, duration: 0.52)
   static let photoSpring = Animation.timingCurve(0.2, 0.9, 0.24, 1, duration: 0.42)

@@ -9,6 +9,10 @@ type UnknownRecord = Record<string, unknown>;
 
 type RenameFile = (oldPath: string, newPath: string) => Promise<void>;
 
+export function beachcarUserIdForEmail(email: string): string {
+  return `email:${email.trim().toLowerCase()}`;
+}
+
 export async function atomicReplacePrivateFile(
   path: string,
   contents: string,

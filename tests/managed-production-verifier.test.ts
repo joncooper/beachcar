@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_TRUSTED_LEGACY_TICKET_ORIGIN,
   atomicReplacePrivateFile,
+  beachcarUserIdForEmail,
   evaluateManagedAiProof,
   evaluateRunProvenance,
   evaluateSourceProof,
@@ -91,6 +92,10 @@ describe("managed verifier schedule proof", () => {
 });
 
 describe("managed verifier ticket and target gates", () => {
+  it("keeps Beachcar email ids distinct from Clerk subject ids", () => {
+    expect(beachcarUserIdForEmail(" Pilot@Example.COM ")).toBe("email:pilot@example.com");
+  });
+
   it("extracts only the trusted legacy ticket and redeems it on the current production origin", () => {
     const result = prepareTicketRedemption({
       storedSignInUrl: `${DEFAULT_TRUSTED_LEGACY_TICKET_ORIGIN}/?__clerk_ticket=ticket-fixture-secret`,
@@ -319,7 +324,9 @@ describe("managed verifier executable lifecycle invariants", () => {
     expect(source.indexOf('"/api/admin/runtime"'))
       .toBeLessThan(source.indexOf("await markTicketConsumed()"));
     expect(source).toContain('aiProofMode: requireAiGatewayFlag ? "ai-gateway" : requireHeuristicFlag ? "heuristic" : "auto-preflight"');
-    expect(source).toContain("entry?.id === expectedClerkUserId");
+    expect(source).toContain("entry?.id === expectedBeachcarUserId");
+    expect(source).toContain("jwtSubject(initialToken) === expectedClerkUserId");
+    expect(source).toContain("meResult.body?.id === expectedBeachcarUserId");
     expect(source.indexOf("const preflight = await runPublicPreflight()"))
       .toBeLessThan(source.indexOf("await markTicketConsumed()"));
     expect(source.indexOf("await markTicketConsumed()"))

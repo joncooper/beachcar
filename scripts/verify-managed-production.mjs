@@ -9,6 +9,7 @@ import {
   DEFAULT_TRUSTED_LEGACY_TICKET_ORIGIN,
   SOURCE_QUALITY_PILOT_SOURCES,
   atomicReplacePrivateFile,
+  beachcarUserIdForEmail,
   enabledSourceNames,
   evaluateManagedAiProof,
   evaluateRunProvenance,
@@ -63,6 +64,7 @@ const publishToken = value("PUBLISH_TOKEN");
 const publishableKey = value("VITE_CLERK_PUBLISHABLE_KEY");
 const expectedPilotEmail = normalizeEmail(value("BEACHCAR_EXPECTED_PILOT_EMAIL") || value("CLERK_DEV_EMAIL"));
 const expectedClerkUserId = value("CLERK_DEV_USER_ID");
+const expectedBeachcarUserId = beachcarUserIdForEmail(expectedPilotEmail);
 const trustedLegacyOrigin = value("BEACHCAR_TRUSTED_LEGACY_TICKET_ORIGIN") || DEFAULT_TRUSTED_LEGACY_TICKET_ORIGIN;
 
 if (!storedSignInUrl) fail("Missing CLERK_DEV_APP_SIGN_IN_URL in .env.local.");
@@ -158,6 +160,7 @@ try {
 
   let meResult = await authorizedJson(page, "/api/me");
   addCheck("Signed-in API accepts the Clerk session", meResult.response.ok && Boolean(meResult.body?.id), `HTTP ${meResult.response.status}`);
+  addCheck("Signed-in API maps the Clerk subject to the exact Beachcar pilot", meResult.body?.id === expectedBeachcarUserId, "stable email-scoped user id");
   addCheck("Signed-in pilot email matches the protected ticket", normalizeEmail(meResult.body?.email) === expectedPilotEmail, expectedPilotEmail);
   addCheck("Pilot user is active", meResult.body?.status === "active", meResult.body?.status || "missing status");
   addCheck("Pilot onboarding is complete", meResult.body?.onboarding?.completed === true, meResult.body?.onboarding?.completed ? "complete" : "incomplete");
@@ -423,10 +426,10 @@ async function runPublicPreflight() {
   const users = Array.isArray(adminUsers.body) ? adminUsers.body : [];
   const pilot =
     users.find(
-      (entry) => normalizeEmail(entry?.email) === expectedPilotEmail && entry?.id === expectedClerkUserId,
+      (entry) => normalizeEmail(entry?.email) === expectedPilotEmail && entry?.id === expectedBeachcarUserId,
     ) || null;
   addCheck(
-    "Admin preflight found the exact protected Clerk pilot identity",
+    "Admin preflight found the exact stable Beachcar pilot identity",
     adminUsers.response.ok && Boolean(pilot),
     pilot ? `${expectedPilotEmail}; exact user id` : `HTTP ${adminUsers.response.status}; email/user id mismatch or missing`,
   );

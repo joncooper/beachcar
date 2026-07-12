@@ -339,6 +339,12 @@ describe("Cloudflare Worker rollback gate", () => {
 });
 
 describe("rollout script invariants", () => {
+  it("applies the credential-safe referrer policy to Worker static assets", () => {
+    const headers = readFileSync(resolve("public/_headers"), "utf8");
+    expect(headers).toContain("/*");
+    expect(headers).toContain("Referrer-Policy: no-referrer");
+  });
+
   it("captures recovery state before migration and deploys supplied secrets atomically", () => {
     const source = readFileSync(resolve("scripts/run-remote-rollout.mjs"), "utf8");
     expect(source).not.toContain('"secret", "bulk"');

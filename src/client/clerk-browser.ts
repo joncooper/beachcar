@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 
-const clerkBrowserVersion = "6.10.4";
+// Clerk's supported loader follows the clerk-js major channel so the hosted
+// browser bundle is decoupled from the @clerk/react wrapper version.
+const clerkBrowserMajorVersion = "6";
 
 type ClerkSession = {
   getToken: (options?: Record<string, unknown>) => Promise<string | null>;
@@ -218,11 +220,10 @@ function loadClerkScript(publishableKey: string): Promise<void> {
     });
   }
 
-  const frontendApi = frontendApiFromPublishableKey(publishableKey);
   const script = document.createElement("script");
   script.async = true;
   script.crossOrigin = "anonymous";
-  script.src = `https://${frontendApi}/npm/@clerk/clerk-js@${clerkBrowserVersion}/dist/clerk.browser.js`;
+  script.src = clerkBrowserScriptUrl(publishableKey);
   script.setAttribute("data-clerk-js-script", "true");
   script.setAttribute("data-clerk-publishable-key", publishableKey);
 
@@ -233,8 +234,13 @@ function loadClerkScript(publishableKey: string): Promise<void> {
   });
 }
 
+function clerkBrowserScriptUrl(publishableKey: string): string {
+  const frontendApi = frontendApiFromPublishableKey(publishableKey);
+  return `https://${frontendApi}/npm/@clerk/clerk-js@${clerkBrowserMajorVersion}/dist/clerk.browser.js`;
+}
+
 function frontendApiFromPublishableKey(publishableKey: string): string {
   const encoded = publishableKey.replace(/^pk_(test|live)_/, "");
-  const decoded = window.atob(encoded);
+  const decoded = globalThis.atob(encoded);
   return decoded.replace(/\$$/, "");
 }

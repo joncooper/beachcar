@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   SOURCE_QUALITY_V1_MIGRATION,
+  PRODUCT_EVENTS_V1_MIGRATION,
   collectWorkerSecrets,
   collectRolloutWorkerSecrets,
   evaluateCloudflareAccountGate,
@@ -99,7 +100,7 @@ if (command === "whoami --json") {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
-  });
+  }, 15_000);
 });
 
 describe("Cloudflare rollout D1 identity gate", () => {
@@ -174,7 +175,7 @@ if (command === "whoami --json") {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
-  });
+  }, 15_000);
 });
 
 describe("Cloudflare rollout secret and verifier handling", () => {
@@ -266,9 +267,11 @@ describe("Cloudflare rollout secret and verifier handling", () => {
 });
 
 describe("Cloudflare rollout D1 gates", () => {
-  it("accepts only no pending migrations or exactly Source Quality migration 0011", () => {
+  it("accepts only no pending migrations or the reviewed 0011/0012 migrations", () => {
     expect(isSafeSourceQualityMigrationSet("✅ No migrations to apply!\n")).toBe(true);
     expect(isSafeSourceQualityMigrationSet(`Migrations to be applied:\n${SOURCE_QUALITY_V1_MIGRATION}\n`)).toBe(true);
+    expect(isSafeSourceQualityMigrationSet(`Migrations to be applied:\n${PRODUCT_EVENTS_V1_MIGRATION}\n`)).toBe(true);
+    expect(isSafeSourceQualityMigrationSet(`${SOURCE_QUALITY_V1_MIGRATION}\n${PRODUCT_EVENTS_V1_MIGRATION}\n`)).toBe(true);
     expect(isSafeSourceQualityMigrationSet(`0005_multi_user_beta.sql\n${SOURCE_QUALITY_V1_MIGRATION}\n`)).toBe(false);
     expect(isSafeSourceQualityMigrationSet("unexpected output")).toBe(false);
     expect(pendingD1MigrationFiles(`| ${SOURCE_QUALITY_V1_MIGRATION} |`)).toEqual([SOURCE_QUALITY_V1_MIGRATION]);
@@ -278,14 +281,25 @@ describe("Cloudflare rollout D1 gates", () => {
     const gate = evaluateSourceQualitySchemaGate({
       columns: d1Json({ found_columns: 12 }),
       indexes: d1Json({ found_indexes: 3 }),
+      productColumns: d1Json({ found_product_columns: 9 }),
+      productIndexes: d1Json({ found_product_indexes: 3 }),
       quickCheck: d1Json({ quick_check: "ok" }),
     });
-    expect(gate).toEqual({ columnCount: 12, indexCount: 3, quickCheck: "ok", ok: true });
+    expect(gate).toEqual({
+      columnCount: 12,
+      indexCount: 3,
+      productColumnCount: 9,
+      productIndexCount: 3,
+      quickCheck: "ok",
+      ok: true,
+    });
 
     expect(
       evaluateSourceQualitySchemaGate({
         columns: d1Json({ found_columns: 11 }),
         indexes: d1Json({ found_indexes: 3 }),
+        productColumns: d1Json({ found_product_columns: 9 }),
+        productIndexes: d1Json({ found_product_indexes: 3 }),
         quickCheck: d1Json({ quick_check: "ok" }),
       }).ok,
     ).toBe(false);

@@ -55,7 +55,17 @@ The native app checks `/api/me` after sign-in:
 
 ## Beta Interaction Tuning
 
-The proposed real-device telemetry, Tweaks menu, privacy boundary, metrics, and rollout sequence are documented in [`ios-beta-tuning-plan.md`](ios-beta-tuning-plan.md). Product-interaction diagnostics stay separate from auction preference memory.
+Phase 5 is implemented as a reversible beta calibration loop:
+
+- **Tweaks** appears below **Gestures** in Debug and TestFlight builds, with Quick, Balanced, and Deliberate presets.
+- Advanced controls tune primary and strong swipe gates, gallery dismissal distance, haptic style, and coaching mode within bounded ranges.
+- A non-destructive practice card previews the draft profile; live review behavior changes only after **Apply**.
+- The one-time diagnostics disclosure requires an explicit share/private choice and names the data that is never collected.
+- Consented outcome events queue locally, upload in authenticated batches, and expire from D1 after 90 days. Product diagnostics never enter auction preference memory.
+- Direct product feedback stays local when diagnostics are private and remains available in the user-initiated diagnostic snapshot.
+- A server-side safeguard can temporarily force the effective profile back to Balanced without erasing the user's saved profile.
+
+The event contract, privacy boundary, owner aggregate, evaluation metrics, and TestFlight rollout are documented in [`ios-beta-tuning-plan.md`](ios-beta-tuning-plan.md).
 
 Clerk quickstart prerequisites:
 

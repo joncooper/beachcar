@@ -913,6 +913,47 @@ img {
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
+.beta-calibration-panel {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(45, 118, 101, 0.13), transparent 38%),
+    rgba(255, 255, 255, 0.88);
+}
+
+.beta-cohort-table {
+  display: grid;
+  gap: 8px;
+}
+
+.beta-cohort-table article {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.2fr) repeat(4, minmax(100px, 1fr));
+  align-items: stretch;
+  gap: 8px;
+  border: 1px solid rgba(20, 32, 28, 0.1);
+  border-radius: 12px;
+  background: rgba(248, 250, 247, 0.78);
+  padding: 10px;
+}
+
+.beta-cohort-table article > div:first-child {
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  padding: 0 4px;
+}
+
+.beta-cohort-table article > div:first-child strong {
+  color: #14201c;
+  font-size: 0.92rem;
+  text-transform: capitalize;
+}
+
+.beta-cohort-table article > div:first-child small {
+  color: #65736d;
+  font-size: 0.75rem;
+  font-weight: 750;
+}
+
 .invite-result {
   display: grid;
   gap: 4px;
@@ -2609,6 +2650,14 @@ h2 {
   .source-cache-metrics,
   .admin-table article {
     grid-template-columns: 1fr;
+  }
+
+  .beta-cohort-table article {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .beta-cohort-table article > div:first-child {
+    grid-column: 1 / -1;
   }
 
   .admin-header {

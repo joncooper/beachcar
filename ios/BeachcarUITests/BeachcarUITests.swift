@@ -82,6 +82,34 @@ final class BeachcarUITests: XCTestCase {
     XCTAssertTrue(app.buttons["shade-replay-gesture-hints"].exists)
   }
 
+  func testBetaTweaksPracticesThenAppliesQuickFeel() throws {
+    launch(scenario: "active", coachStage: "mastered")
+    _ = shadeSurface()
+    app.buttons["shade-review-actions"].tap()
+    let tweaks = app.buttons["Tweaks"]
+    XCTAssertTrue(tweaks.waitForExistence(timeout: 5))
+    tweaks.tap()
+
+    XCTAssertTrue(identified("shade-tweaks-sheet").waitForExistence(timeout: 5))
+    XCTAssertTrue(identified("shade-tuning-practice-card").exists)
+    identified("shade-tuning-preset-quick").tap()
+    let apply = app.buttons["shade-tuning-apply"]
+    XCTAssertTrue(apply.waitForExistence(timeout: 5))
+    XCTAssertTrue(apply.isEnabled)
+    apply.tap()
+    XCTAssertFalse(apply.isEnabled)
+  }
+
+  func testBetaDiagnosticsDisclosureMakesPrivacyChoiceExplicit() throws {
+    launch(scenario: "active", betaDiagnostics: "undecided")
+    XCTAssertTrue(identified("shade-beta-diagnostics-disclosure").waitForExistence(timeout: 8))
+    XCTAssertTrue(text(containing: "No titles, URLs, photos, auction notes").exists)
+    let keepPrivate = app.buttons["shade-beta-diagnostics-private"]
+    XCTAssertTrue(keepPrivate.waitForExistence(timeout: 3))
+    keepPrivate.tap()
+    XCTAssertTrue(waitForFind(1, of: 3, timeout: 5))
+  }
+
   func testVerticalScrollRevealsDeepDossierWithoutJudging() throws {
     launch(scenario: "active")
     _ = shadeSurface()
@@ -309,12 +337,18 @@ final class BeachcarUITests: XCTestCase {
     app.descendants(matching: .any).matching(identifier: identifier).firstMatch
   }
 
-  private func launch(scenario: String? = nil, coachStage: String? = nil, galleryCoach: String? = nil) {
+  private func launch(
+    scenario: String? = nil,
+    coachStage: String? = nil,
+    galleryCoach: String? = nil,
+    betaDiagnostics: String? = nil
+  ) {
     app = XCUIApplication()
     app.launchArguments = ["--ui-testing"]
     if let scenario { app.launchArguments += ["--ui-testing-scenario", scenario] }
     if let coachStage { app.launchArguments += ["--coach-stage", coachStage] }
     if let galleryCoach { app.launchArguments += ["--gallery-coach", galleryCoach] }
+    if let betaDiagnostics { app.launchArguments += ["--beta-diagnostics", betaDiagnostics] }
     app.launch()
   }
 }

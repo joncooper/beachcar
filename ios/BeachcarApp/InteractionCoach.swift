@@ -37,6 +37,7 @@ final class InteractionCoach: ObservableObject {
 
   @Published private(set) var state: InteractionCoachState
   @Published private(set) var sessionCueAppeared = false
+  @Published private(set) var sessionGalleryDismissals = 0
 
   private let defaults: UserDefaults
   private var sessionStarted = false
@@ -68,7 +69,16 @@ final class InteractionCoach: ObservableObject {
 
   func recordGalleryDismissal(at date: Date = Date()) {
     state.recordGalleryDismissal(at: date)
+    sessionGalleryDismissals += 1
     persist()
+  }
+
+  func showsGalleryGuidance(for mode: InteractionCoachingMode) -> Bool {
+    switch mode {
+    case .adaptive: state.showsGalleryGuidance
+    case .subtleEverySession: sessionGalleryDismissals == 0
+    case .alwaysExplain: true
+    }
   }
 
   func recordInteraction(at date: Date = Date()) {
@@ -80,6 +90,7 @@ final class InteractionCoach: ObservableObject {
     state.primaryJudgments = 0
     state.strongJudgments = 0
     state.galleryDismissals = 0
+    sessionGalleryDismissals = 0
     sessionCueAppeared = true
     persist()
   }

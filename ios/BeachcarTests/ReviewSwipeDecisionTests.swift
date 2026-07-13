@@ -148,6 +148,111 @@ final class ReviewSwipeDecisionTests: XCTestCase {
     )
   }
 
+  func testNamedTuningPresetsChangeRealGestureGatesAndResistance() {
+    XCTAssertEqual(ReviewSwipeDecision.primaryDistance(for: 390, profile: .quick), 109.2, accuracy: 0.01)
+    XCTAssertEqual(ReviewSwipeDecision.primaryDistance(for: 390, profile: .deliberate), 148.2, accuracy: 0.01)
+    XCTAssertEqual(ReviewSwipeDecision.strongDistance(for: 390, profile: .quick), 249.6, accuracy: 0.01)
+    XCTAssertEqual(ReviewSwipeDecision.strongDistance(for: 390, profile: .deliberate), 312, accuracy: 0.01)
+    XCTAssertGreaterThan(
+      ReviewSwipeDecision.displayOffset(for: 300, primary: 120, profile: .quick),
+      ReviewSwipeDecision.displayOffset(for: 300, primary: 120, profile: .deliberate)
+    )
+    XCTAssertEqual(GalleryDismissDecision.distance(for: 844, profile: .quick), 84.4, accuracy: 0.01)
+    XCTAssertEqual(GalleryDismissDecision.distance(for: 844, profile: .balanced), 109.72, accuracy: 0.01)
+    XCTAssertEqual(GalleryDismissDecision.distance(for: 844, profile: .deliberate), 135.04, accuracy: 0.01)
+    XCTAssertEqual(GalleryDismissDecision.distance(for: 667, profile: .balanced), 96, accuracy: 0.01)
+    XCTAssertEqual(GalleryDismissDecision.distance(for: 667, profile: .quick), 72, accuracy: 0.01)
+  }
+
+  @MainActor
+  func testTuningPersistsCustomValuesAndHonorsRemoteBalancedSafeguard() {
+    let suiteName = "InteractionTuningTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    var custom = InteractionTuningProfile.quick
+    custom.primaryCommitFraction = 0.31
+    custom.preset = .custom
+
+    let tuning = InteractionTuning(defaults: defaults)
+    tuning.apply(custom)
+    XCTAssertEqual(tuning.selectedProfile.preset, .custom)
+    XCTAssertEqual(tuning.selectedProfile.primaryCommitFraction, 0.31, accuracy: 0.001)
+
+    let restored = InteractionTuning(defaults: defaults)
+    XCTAssertEqual(restored.selectedProfile, tuning.selectedProfile)
+    restored.applyRemotePolicy(forceBalanced: true)
+    XCTAssertEqual(restored.effectiveProfile, .balanced)
+    XCTAssertEqual(restored.selectedProfile.preset, .custom)
+  }
+
+  @MainActor
+  func testProductDiagnosticsRequireConsentAndOptOutClearsQueuedEvents() {
+    let suiteName = "ProductTelemetryTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let telemetry = ProductTelemetry(defaults: defaults)
+
+    telemetry.record(.reviewSessionStarted, properties: ["coachingStage": "new", "tuningPreset": "balanced"], tuning: .balanced)
+    XCTAssertTrue(telemetry.queuedEvents.isEmpty)
+
+    telemetry.setConsent(.enabled)
+    telemetry.record(.reviewSessionStarted, properties: ["coachingStage": "new", "tuningPreset": "balanced"], tuning: .balanced)
+    XCTAssertEqual(telemetry.queuedEvents.count, 1)
+
+    telemetry.setConsent(.disabled)
+    XCTAssertTrue(telemetry.queuedEvents.isEmpty)
+    XCTAssertEqual(defaults.string(forKey: ProductTelemetry.consentKey), ProductDiagnosticsConsent.disabled.rawValue)
+  }
+
+  @MainActor
+  func testProductDiagnosticsAndTuningAreIsolatedBySignedInUser() {
+    let suiteName = "ProductScopeTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    let userA = ProductTelemetry(defaults: defaults, storageScope: "user-a")
+    userA.setConsent(.enabled)
+    userA.record(.reviewSessionStarted, properties: ["coachingStage": "new", "tuningPreset": "quick"], tuning: .quick)
+    let tuningA = InteractionTuning(defaults: defaults, storageScope: "user-a")
+    tuningA.apply(.quick)
+
+    let userB = ProductTelemetry(defaults: defaults, storageScope: "user-b")
+    let tuningB = InteractionTuning(defaults: defaults, storageScope: "user-b")
+    XCTAssertEqual(userB.consent, .undecided)
+    XCTAssertTrue(userB.queuedEvents.isEmpty)
+    XCTAssertEqual(tuningB.selectedProfile, .balanced)
+    XCTAssertEqual(InteractionTuning(defaults: defaults, storageScope: "user-a").selectedProfile, .quick)
+  }
+
+  @MainActor
+  func testProductFeedbackRemainsLocalWhenDiagnosticsArePrivate() {
+    let suiteName = "ProductFeedbackTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let telemetry = ProductTelemetry(defaults: defaults)
+    telemetry.setConsent(.disabled)
+    telemetry.submitFeedback(reasons: [.tooEasy], comment: "A little abrupt", tuning: .quick)
+
+    XCTAssertTrue(telemetry.queuedEvents.isEmpty)
+    XCTAssertEqual(telemetry.localFeedback.first?.reasons, [.tooEasy])
+    XCTAssertEqual(telemetry.localFeedback.first?.comment, "A little abrupt")
+  }
+
+  @MainActor
+  func testGalleryCoachingRespectsAdaptiveSessionAndAlwaysModes() {
+    let suiteName = "GalleryCoachingTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let coach = InteractionCoach(defaults: defaults)
+
+    XCTAssertTrue(coach.showsGalleryGuidance(for: .adaptive))
+    XCTAssertTrue(coach.showsGalleryGuidance(for: .subtleEverySession))
+    coach.recordGalleryDismissal()
+    XCTAssertFalse(coach.showsGalleryGuidance(for: .adaptive))
+    XCTAssertFalse(coach.showsGalleryGuidance(for: .subtleEverySession))
+    XCTAssertTrue(coach.showsGalleryGuidance(for: .alwaysExplain))
+  }
+
   private func action(_ translation: CGFloat) -> FeedbackAction? {
     ReviewSwipeDecision.action(
       translation: translation,

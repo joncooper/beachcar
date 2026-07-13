@@ -10,12 +10,29 @@ struct ShadeSurface: View {
 
   @StateObject private var controller = ShadeController()
   @StateObject private var interactionCoach = InteractionCoach()
+  @StateObject private var interactionTuning: InteractionTuning
+  @StateObject private var productTelemetry: ProductTelemetry
   @State private var undoDismissTask: Task<Void, Never>?
+  @State private var diagnosticsDisclosureOpen = false
+  @State private var didRecordSession = false
+  @State private var didRecordReviewCoachImpression = false
   @Namespace private var photoNamespace
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   private var cars: [AuctionListing] { store.run?.listings ?? store.visibleListings }
   private var currentCar: AuctionListing? { cars.indices.contains(controller.idx) ? cars[controller.idx] : nil }
+
+  init(
+    store: BeachcarStore,
+    tokenProvider: @escaping AuctionAPI.TokenProvider,
+    cacheScope: String? = nil
+  ) {
+    self.store = store
+    self.tokenProvider = tokenProvider
+    self.cacheScope = cacheScope
+    _interactionTuning = StateObject(wrappedValue: InteractionTuning(storageScope: cacheScope))
+    _productTelemetry = StateObject(wrappedValue: ProductTelemetry(storageScope: cacheScope))
+  }
 
   var body: some View {
     GeometryReader { proxy in
@@ -51,14 +68,58 @@ struct ShadeSurface: View {
       .accessibilityIdentifier("shade-surface")
     }
     .onAppear { configure() }
-    .onChange(of: cars.map(\.key)) { _, _ in syncCars() }
+    .onChange(of: cars.map(\.key)) { _, _ in
+      syncCars()
+      flushTelemetry()
+    }
     .onChange(of: store.lastUndo?.listingKey) { _, listingKey in scheduleUndoDismiss(listingKey) }
     .onChange(of: reduceMotion) { _, value in controller.updateReduceMotion(value) }
+    .onChange(of: interactionTuning.effectiveProfile) { _, profile in
+      controller.configureTuning(profile)
+      controller.updateCoachStage(interactionTuning.coachStage(for: interactionCoach.state.reviewStage))
+    }
     .sheet(isPresented: $controller.gesturesHelpOpen) {
       GestureHelpSheet {
         interactionCoach.replayHints()
-        controller.configureCoach(stage: .new, reduceMotion: reduceMotion)
+        controller.configureCoach(
+          stage: interactionTuning.coachStage(for: .new),
+          reduceMotion: reduceMotion
+        )
+        productTelemetry.record(
+          .coachDismissed,
+          properties: ["method": "replay", "surface": "gestures_help"],
+          tuning: interactionTuning.effectiveProfile
+        )
+        flushTelemetry()
       }
+    }
+    .sheet(isPresented: $controller.tweaksOpen) {
+      BetaTuningSheet(
+        tuning: interactionTuning,
+        telemetry: productTelemetry,
+        coachState: interactionCoach.state,
+        onNeedsFlush: flushTelemetry
+      )
+    }
+    .sheet(isPresented: $diagnosticsDisclosureOpen) {
+      BetaDiagnosticsDisclosure(
+        onShare: {
+          productTelemetry.setConsent(.enabled)
+          diagnosticsDisclosureOpen = false
+          recordSessionIfNeeded()
+          flushTelemetry()
+        },
+        onKeepPrivate: {
+          productTelemetry.setConsent(.disabled)
+          diagnosticsDisclosureOpen = false
+        }
+      )
+    }
+    .task(id: productTelemetry.shouldPresentDisclosure) {
+      guard productTelemetry.shouldPresentDisclosure else { return }
+      try? await Task.sleep(for: .seconds(0.75))
+      guard !Task.isCancelled, productTelemetry.shouldPresentDisclosure else { return }
+      diagnosticsDisclosureOpen = true
     }
     .onDisappear {
       undoDismissTask?.cancel()
@@ -149,6 +210,28 @@ struct ShadeSurface: View {
         safeBottom: geo.safeBottom,
         height: geo.height,
         coach: interactionCoach,
+        tuning: interactionTuning.effectiveProfile,
+        onDismissed: { method, attempts, zoomed in
+          productTelemetry.recordGalleryDismissed(
+            method: method,
+            attempts: attempts,
+            zoomed: zoomed,
+            tuning: interactionTuning.effectiveProfile
+          )
+          flushTelemetry()
+        },
+        onCoachImpression: {
+          productTelemetry.record(
+            .coachImpression,
+            properties: [
+              "hintVersion": String(interactionCoach.state.hintVersion),
+              "surface": "gallery",
+              "coachingMode": interactionTuning.effectiveProfile.coaching.rawValue,
+            ],
+            tuning: interactionTuning.effectiveProfile
+          )
+          flushTelemetry()
+        },
         photoNamespace: photoNamespace
       )
         .transition(.opacity)
@@ -159,6 +242,7 @@ struct ShadeSurface: View {
       VStack {
         Spacer()
         UndoBar(label: "Saved feedback", undoLabel: "Undo") {
+          recordUndo()
           Task { await store.undo(tokenProvider: tokenProvider) }
         }
         .padding(.horizontal, 16)
@@ -225,6 +309,7 @@ struct ShadeSurface: View {
 
   private func configure() {
     syncCars()
+    controller.configureTuning(interactionTuning.effectiveProfile)
     controller.currentCarInfo = { [weak store] in
       guard let store else { return nil }
       let list = store.run?.listings ?? store.visibleListings
@@ -241,16 +326,52 @@ struct ShadeSurface: View {
     }
     controller.onSwipeCompleted = { action in
       interactionCoach.recordReview(action)
-      controller.updateCoachStage(interactionCoach.state.reviewStage)
+      controller.updateCoachStage(interactionTuning.coachStage(for: interactionCoach.state.reviewStage))
     }
-    controller.onCoachInteraction = { interactionCoach.recordInteraction() }
+    controller.onReviewDragEnded = { outcome in
+      productTelemetry.record(
+        .reviewDragEnded,
+        properties: [
+          "direction": outcome.direction,
+          "maximumGate": reviewStageLabel(outcome.maximumStage),
+          "committed": outcome.action == nil ? "false" : "true",
+          "action": outcome.action?.rawValue ?? "",
+          "durationBucket": ProductTelemetry.durationBucket(outcome.duration),
+          "tuningPreset": interactionTuning.effectiveProfile.preset.rawValue,
+        ],
+        tuning: interactionTuning.effectiveProfile
+      )
+      flushTelemetry()
+    }
+    controller.onGalleryOpened = { photoCount, rememberedIndex in
+      productTelemetry.recordGalleryOpened(
+        photoCount: photoCount,
+        rememberedIndex: rememberedIndex,
+        tuning: interactionTuning.effectiveProfile
+      )
+      flushTelemetry()
+    }
+    controller.onCoachInteraction = {
+      interactionCoach.recordInteraction()
+      productTelemetry.record(
+        .coachDismissed,
+        properties: ["method": "interaction", "surface": "review"],
+        tuning: interactionTuning.effectiveProfile
+      )
+      flushTelemetry()
+    }
     interactionCoach.beginSession()
 
     let debugStage = debugCoachStage
     controller.configureCoach(
-      stage: debugStage ?? interactionCoach.state.reviewStage,
+      stage: debugStage ?? interactionTuning.coachStage(for: interactionCoach.state.reviewStage),
       reduceMotion: reduceMotion
     )
+    recordSessionIfNeeded()
+    flushTelemetry()
+    if !AppEnv.isUITesting {
+      Task { await refreshRemoteTuningPolicy() }
+    }
 
     #if DEBUG
     // Debug-only hook to launch straight into an overlay for visual QA, e.g.
@@ -262,6 +383,7 @@ struct ShadeSurface: View {
         case "list": controller.listOpen = true
         case "gallery": controller.openGallery()
         case "gestures": controller.gesturesHelpOpen = true
+        case "tweaks": controller.tweaksOpen = true
         case "swipe", "shade":
           controller.reviewRawOffset = geoPreviewWidth * 0.4
           controller.reviewOffset = geoPreviewWidth * 0.34
@@ -316,6 +438,83 @@ struct ShadeSurface: View {
       }
     }
   }
+
+  private func recordSessionIfNeeded() {
+    guard currentCar != nil, !didRecordSession, productTelemetry.consent == .enabled else { return }
+    didRecordSession = true
+    productTelemetry.record(
+      .reviewSessionStarted,
+      properties: [
+        "coachingStage": reviewCoachStageLabel(interactionCoach.state.reviewStage),
+        "tuningPreset": interactionTuning.effectiveProfile.preset.rawValue,
+      ],
+      tuning: interactionTuning.effectiveProfile
+    )
+  }
+
+  private func recordReviewCoachImpressionIfNeeded() {
+    guard currentCar != nil,
+          controller.coachStage != .mastered,
+          !didRecordReviewCoachImpression,
+          productTelemetry.consent == .enabled else { return }
+    didRecordReviewCoachImpression = true
+    productTelemetry.record(
+      .coachImpression,
+      properties: [
+        "hintVersion": String(interactionCoach.state.hintVersion),
+        "surface": "review",
+        "coachingMode": interactionTuning.effectiveProfile.coaching.rawValue,
+      ],
+      tuning: interactionTuning.effectiveProfile
+    )
+  }
+
+  private func recordUndo() {
+    guard let undo = store.lastUndo else { return }
+    productTelemetry.record(
+      .reviewUndo,
+      properties: [
+        "priorAction": store.feedbackByKey[undo.listingKey]?.action.rawValue ?? "unknown",
+        "secondsBucket": ProductTelemetry.secondsBucket(Date().timeIntervalSince(undo.createdAt)),
+        "tuningPreset": interactionTuning.effectiveProfile.preset.rawValue,
+      ],
+      tuning: interactionTuning.effectiveProfile
+    )
+    flushTelemetry()
+  }
+
+  private func flushTelemetry() {
+    recordSessionIfNeeded()
+    recordReviewCoachImpressionIfNeeded()
+    Task { await productTelemetry.flush(api: store.api, tokenProvider: tokenProvider) }
+  }
+
+  private func refreshRemoteTuningPolicy() async {
+    do {
+      let token = try await tokenProvider()
+      let config = try await store.api.productTuningConfig(authToken: token)
+      interactionTuning.applyRemotePolicy(forceBalanced: config.forceBalanced)
+    } catch {
+      // The last known local profile remains usable offline.
+    }
+  }
+
+  private func reviewStageLabel(_ stage: ReviewSwipeStage) -> String {
+    switch stage {
+    case .resting: "resting"
+    case .preview: "preview"
+    case .primary: "primary"
+    case .strong: "strong"
+    }
+  }
+
+  private func reviewCoachStageLabel(_ stage: ReviewCoachStage) -> String {
+    switch stage {
+    case .new: "new"
+    case .primaryLearned: "primary_learned"
+    case .mastered: "mastered"
+    }
+  }
 }
 
 // MARK: - Review chrome / completion
@@ -360,6 +559,9 @@ private struct ReviewChrome: View {
           Button("Love it", systemImage: Icon.star) { controller.doAction(.star, advance: true) }
           Divider()
           Button("Gestures", systemImage: "hand.draw") { controller.gesturesHelpOpen = true }
+          if AppConfig.isBetaBuild {
+            Button("Tweaks", systemImage: "slider.horizontal.3") { controller.tweaksOpen = true }
+          }
         } label: {
           Image(systemName: "ellipsis")
             .font(.system(size: 15, weight: .black))

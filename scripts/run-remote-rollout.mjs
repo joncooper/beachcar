@@ -366,7 +366,9 @@ function cloudflareAuthHeaders(auth) {
 async function verifyRemoteSourceQualitySchema() {
   const columnsSql = `SELECT COUNT(*) AS found_columns FROM pragma_table_info('source_items') WHERE name IN ('bid_num','location','location_city','location_region','location_country','ends_at','no_reserve','last_detail_at','detail_status','detail_error','is_live','dossier_json')`;
   const indexesSql = `SELECT COUNT(*) AS found_indexes FROM sqlite_master WHERE type = 'index' AND name IN ('idx_source_items_source_live_ends','idx_source_items_source_bid','idx_source_items_source_location')`;
-  const [columns, indexes, quickCheck] = await Promise.all([
+  const productColumnsSql = `SELECT COUNT(*) AS found_product_columns FROM pragma_table_info('product_events') WHERE name IN ('id','user_id','session_id','event_name','properties_json','client_created_at','received_at','app_build','tuning_version')`;
+  const productIndexesSql = `SELECT COUNT(*) AS found_product_indexes FROM sqlite_master WHERE type = 'index' AND name IN ('idx_product_events_user_received','idx_product_events_name_received','idx_product_events_received')`;
+  const [columns, indexes, productColumns, productIndexes, quickCheck] = await Promise.all([
     run(["bunx", "wrangler", "d1", "execute", d1Name, "--remote", "--json", "--command", columnsSql], {
       env,
       label: "Verify Source Quality v1 D1 columns",
@@ -375,6 +377,16 @@ async function verifyRemoteSourceQualitySchema() {
     run(["bunx", "wrangler", "d1", "execute", d1Name, "--remote", "--json", "--command", indexesSql], {
       env,
       label: "Verify Source Quality v1 D1 indexes",
+      quiet: true,
+    }),
+    run(["bunx", "wrangler", "d1", "execute", d1Name, "--remote", "--json", "--command", productColumnsSql], {
+      env,
+      label: "Verify product-events D1 columns",
+      quiet: true,
+    }),
+    run(["bunx", "wrangler", "d1", "execute", d1Name, "--remote", "--json", "--command", productIndexesSql], {
+      env,
+      label: "Verify product-events D1 indexes",
       quiet: true,
     }),
     run(["bunx", "wrangler", "d1", "execute", d1Name, "--remote", "--json", "--command", "PRAGMA quick_check"], {
@@ -386,14 +398,16 @@ async function verifyRemoteSourceQualitySchema() {
   const gate = evaluateSourceQualitySchemaGate({
     columns: columns.stdout,
     indexes: indexes.stdout,
+    productColumns: productColumns.stdout,
+    productIndexes: productIndexes.stdout,
     quickCheck: quickCheck.stdout,
   });
   if (!gate.ok) {
     throw new Error(
-      `Post-migration D1 gate failed: expected 12 Source Quality columns, 3 indexes, and quick_check=ok; found ${gate.columnCount} columns, ${gate.indexCount} indexes, quick_check=${gate.quickCheck || "unreadable"}. The Worker was not deployed.`,
+      `Post-migration D1 gate failed: expected 12 Source Quality columns, 3 Source Quality indexes, 9 product-event columns, 3 product-event indexes, and quick_check=ok; found ${gate.columnCount}, ${gate.indexCount}, ${gate.productColumnCount}, ${gate.productIndexCount}, quick_check=${gate.quickCheck || "unreadable"}. The Worker was not deployed.`,
     );
   }
-  console.log("\nD1 post-migration gate passed: 12 Source Quality columns, 3 indexes, quick_check=ok.");
+  console.log("\nD1 post-migration gate passed: Source Quality and product-event schemas present, quick_check=ok.");
 }
 
 async function writeProtectedSecretsFile(secrets) {
@@ -419,7 +433,7 @@ function assertExpectedPendingMigrations(output) {
   const pending = pendingD1MigrationFiles(output);
   const detail = pending.length ? pending.join(", ") : "unrecognized migration-list output";
   throw new Error(
-    `Remote migration gate expected no pending migration or exactly 0011_source_cache_listing_fields.sql; found ${detail}.`,
+    `Remote migration gate expected no pending migration or only the reviewed 0011/0012 migrations; found ${detail}.`,
   );
 }
 

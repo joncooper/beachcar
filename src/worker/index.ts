@@ -5,6 +5,7 @@ import { AuthError, isBootstrapOwnerId, primaryBootstrapOwnerId, requirePublishe
 import {
   acceptInvite,
   createAutomationToken,
+  createProductEvents,
   claimAgentRun,
   claimNextAgentRun,
   claimRunnerTask,
@@ -19,6 +20,7 @@ import {
   getAiUsageEvents,
   getAiUsageSummary,
   getAdminOpsSummary,
+  getProductEventSummary,
   getAgentRunById,
   getAutomationEvents,
   getFeedback,
@@ -44,6 +46,8 @@ import {
   recordAiUsageEvent,
   recordAutomationEvent,
   createPreferenceEvent,
+  ProductEventValidationError,
+  pruneProductEvents,
   revokeAutomationToken,
   revokeOAuthAccessTokenById,
   RunnerTaskTransitionError,
@@ -104,6 +108,15 @@ export default {
 
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(refreshScheduledSourceCaches(env, event.cron));
+    ctx.waitUntil(
+      pruneProductEvents(env.DB).catch((error) => {
+        console.error(JSON.stringify({
+          level: "error",
+          message: error instanceof Error ? error.message : String(error),
+          operation: "product_events.prune",
+        }));
+      }),
+    );
   },
 };
 
@@ -212,6 +225,13 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url:
 
   if (request.method === "GET" && url.pathname === "/api/account/export") {
     return jsonResponse(await exportAccount(env.DB, scope));
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/product-tuning-config") {
+    return jsonResponse({
+      betaEnabled: true,
+      forceBalanced: env.PRODUCT_TUNING_FORCE_BALANCED?.trim().toLowerCase() === "true",
+    });
   }
 
   if (request.method === "GET" && url.pathname === "/api/ai-usage") {
@@ -364,6 +384,16 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url:
     return jsonResponse(await createPreferenceEvent(env.DB, scope, body), { status: 201 });
   }
 
+  if (request.method === "POST" && url.pathname === "/api/product-events/batch") {
+    const body = await readJson<unknown>(request);
+    try {
+      return jsonResponse(await createProductEvents(env.DB, authUser.id, body), { status: 201 });
+    } catch (error) {
+      if (error instanceof ProductEventValidationError) return errorResponse(error.message, 400);
+      throw error;
+    }
+  }
+
   const feedbackMatch = url.pathname.match(/^\/api\/feedback\/([^/]+)$/);
   if (feedbackMatch && request.method === "PUT") {
     const body = await readJson<{ action: unknown; note?: unknown; tags?: unknown }>(request);
@@ -398,6 +428,10 @@ async function handleAdmin(request: Request, env: Env, ctx: ExecutionContext, ur
 
   if (request.method === "GET" && url.pathname === "/api/admin/ops-summary") {
     return jsonResponse(await getAdminOpsSummary(env.DB));
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/admin/product-events/summary") {
+    return jsonResponse(await getProductEventSummary(env.DB, daysFromUrl(url, 30)));
   }
 
   if (request.method === "GET" && url.pathname === "/api/admin/source-cache/status") {
@@ -782,6 +816,11 @@ function beachcarAgentName(userId: string): string {
 function limitFromUrl(url: URL, fallback: number): number {
   const parsed = Number(url.searchParams.get("limit") || "");
   return Number.isFinite(parsed) && parsed > 0 ? Math.min(500, Math.floor(parsed)) : fallback;
+}
+
+function daysFromUrl(url: URL, fallback: number): number {
+  const parsed = Number(url.searchParams.get("days") || "");
+  return Number.isFinite(parsed) && parsed > 0 ? Math.min(90, Math.floor(parsed)) : fallback;
 }
 
 async function refreshScheduledSourceCaches(env: Env, cron: string): Promise<void> {

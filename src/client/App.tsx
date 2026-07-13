@@ -37,6 +37,7 @@ import {
   getAutomationStatus,
   getAdminSourceCacheStatus,
   getAdminOpsSummary,
+  getAdminProductEventSummary,
   getLatestAgentRun,
   getLatestRun,
   getMe,
@@ -68,6 +69,7 @@ import type {
   InvitePayload,
   Lane,
   OAuthAccessTokenRecord,
+  ProductEventSummary,
   RunPayload,
   SourceCacheAdminStatus,
   SourceSetting,
@@ -3061,6 +3063,7 @@ function AdminConsole(props: { demo: boolean }) {
   );
   const [sourceCache, setSourceCache] = useState<SourceCacheAdminStatus | null>(props.demo ? demoSourceCacheStatus() : null);
   const [opsSummary, setOpsSummary] = useState<AdminOpsSummary | null>(props.demo ? demoAdminOpsSummary() : null);
+  const [productSummary, setProductSummary] = useState<ProductEventSummary | null>(props.demo ? demoProductEventSummary() : null);
   const [status, setStatus] = useState<string | null>(props.demo ? "Demo data shown. Use /?admin=1 locally for live admin calls." : null);
   const [pending, setPending] = useState(false);
 
@@ -3072,9 +3075,14 @@ function AdminConsole(props: { demo: boolean }) {
     }
     setPending(true);
     try {
-      const [nextUsers, nextOps] = await Promise.all([listAdminUsers(token.trim()), getAdminOpsSummary(token.trim())]);
+      const [nextUsers, nextOps, nextProductSummary] = await Promise.all([
+        listAdminUsers(token.trim()),
+        getAdminOpsSummary(token.trim()),
+        getAdminProductEventSummary(token.trim()),
+      ]);
       setUsers(nextUsers);
       setOpsSummary(nextOps);
+      setProductSummary(nextProductSummary);
       setStatus("Users refreshed.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not load users");
@@ -3095,6 +3103,23 @@ function AdminConsole(props: { demo: boolean }) {
       setStatus("Ops summary refreshed.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not load ops summary");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function refreshProductSummary(token = publishToken) {
+    if (props.demo) return;
+    if (!token.trim()) {
+      setStatus("Enter the publish token first.");
+      return;
+    }
+    setPending(true);
+    try {
+      setProductSummary(await getAdminProductEventSummary(token.trim()));
+      setStatus("Beta interaction summary refreshed.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not load beta interaction summary");
     } finally {
       setPending(false);
     }
@@ -3197,6 +3222,49 @@ function AdminConsole(props: { demo: boolean }) {
             <small>{invite.email}</small>
           </div>
         ) : null}
+      </section>
+
+      <section className="admin-panel beta-calibration-panel">
+        <div className="setup-section-title">
+          <span>Beta interaction calibration</span>
+          <small>{productSummary ? `${productSummary.windowDays} days · updated ${shortDateTime(productSummary.generatedAt)}` : "not loaded"}</small>
+        </div>
+        <p className="admin-status">
+          Aggregated product diagnostics only. Auction titles, URLs, photos, preference notes, coordinates, and touch paths are never collected.
+        </p>
+        <div className="source-cache-metrics">
+          <Metric label="Events" value={productSummary ? String(productSummary.total) : "not loaded"} />
+          <Metric label="Testers" value={productSummary ? String(productSummary.users) : "not loaded"} />
+          <Metric label="Sessions" value={productSummary ? String(productSummary.sessions) : "not loaded"} />
+          <Metric label="Cohorts" value={productSummary ? String(new Set(productSummary.aggregates.map((entry) => entry.tuningPreset)).size) : "not loaded"} />
+        </div>
+        <div className="beta-cohort-table" aria-label="Gesture outcomes by tuning preset">
+          {productSummary?.reviewOutcomes.map((review) => {
+            const gallery = productSummary.galleryOutcomes.find((entry) => entry.tuningPreset === review.tuningPreset);
+            const commitRate = review.total > 0 ? Math.round((review.committed / review.total) * 100) : 0;
+            const firstAttemptRate = gallery && gallery.gesture > 0 ? Math.round((gallery.firstAttemptGesture / gallery.gesture) * 100) : null;
+            return (
+              <article key={review.tuningPreset}>
+                <div>
+                  <strong>{review.tuningPreset}</strong>
+                  <small>{review.total} review drags</small>
+                </div>
+                <Metric label="Committed" value={`${commitRate}%`} />
+                <Metric label="Cancelled" value={String(review.cancelled)} />
+                <Metric label="Gallery first try" value={firstAttemptRate === null ? "no data" : `${firstAttemptRate}%`} />
+                <Metric label="Gallery exits" value={gallery ? `${gallery.gesture} gesture / ${gallery.control} control` : "no data"} />
+              </article>
+            );
+          })}
+          {productSummary && productSummary.reviewOutcomes.length === 0 ? <p className="setup-muted">No consented review sessions yet.</p> : null}
+          {!productSummary ? <p className="setup-muted">Load the summary to compare Balanced, Quick, and Deliberate cohorts.</p> : null}
+        </div>
+        <div className="admin-actions">
+          <button disabled={pending || props.demo} type="button" onClick={() => void refreshProductSummary()}>
+            <RefreshCw size={16} aria-hidden="true" />
+            <span>Refresh calibration</span>
+          </button>
+        </div>
       </section>
 
       <section className="admin-panel">
@@ -3336,6 +3404,30 @@ function demoAdminOpsSummary(): AdminOpsSummary {
     },
     aiUsage: { dailySpendMicros: 184000, monthlySpendMicros: 482000, dailyEvents: 7, monthlyEvents: 19 },
     sourceCache: demoSourceCacheStatus(),
+  };
+}
+
+function demoProductEventSummary(): ProductEventSummary {
+  return {
+    generatedAt: "2026-07-13T11:00:00.000Z",
+    windowDays: 30,
+    total: 186,
+    users: 5,
+    sessions: 17,
+    aggregates: [
+      { eventName: "review_drag_ended", tuningPreset: "balanced", count: 62 },
+      { eventName: "review_drag_ended", tuningPreset: "quick", count: 48 },
+      { eventName: "gallery_dismissed", tuningPreset: "balanced", count: 14 },
+      { eventName: "gallery_dismissed", tuningPreset: "quick", count: 11 },
+    ],
+    reviewOutcomes: [
+      { tuningPreset: "balanced", total: 62, committed: 49, cancelled: 13 },
+      { tuningPreset: "quick", total: 48, committed: 42, cancelled: 6 },
+    ],
+    galleryOutcomes: [
+      { tuningPreset: "balanced", total: 14, gesture: 11, control: 3, firstAttemptGesture: 8 },
+      { tuningPreset: "quick", total: 11, gesture: 10, control: 1, firstAttemptGesture: 9 },
+    ],
   };
 }
 

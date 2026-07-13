@@ -79,6 +79,19 @@ struct AuctionAPI {
     )
   }
 
+  func postProductEvents(_ events: [QueuedProductEvent], authToken: String?) async throws -> ProductEventBatchResponse {
+    try await request(
+      path: "/api/product-events/batch",
+      method: "POST",
+      body: ProductEventBatchRequest(events: events),
+      authToken: authToken
+    )
+  }
+
+  func productTuningConfig(authToken: String?) async throws -> ProductTuningConfig {
+    try await request(path: "/api/product-tuning-config", authToken: authToken)
+  }
+
   func resolvedImageURL(_ value: String, variant: ImageVariant? = nil) -> URL? {
     let url: URL?
     if value.hasPrefix("/") {

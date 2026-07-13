@@ -586,6 +586,9 @@ struct ShadePhotoGallery: View {
   let safeBottom: CGFloat
   let height: CGFloat
   @ObservedObject var coach: InteractionCoach
+  let tuning: InteractionTuningProfile
+  let onDismissed: (_ method: String, _ attempts: Int, _ zoomed: Bool) -> Void
+  let onCoachImpression: () -> Void
   let photoNamespace: Namespace.ID
   @AccessibilityFocusState private var closeFocused: Bool
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -596,6 +599,7 @@ struct ShadePhotoGallery: View {
   @State private var zoomedPhoto: Int?
   @State private var isClosing = false
   @State private var exitTask: Task<Void, Never>?
+  @State private var dismissAttempts = 0
 
   var body: some View {
     ZStack {
@@ -614,6 +618,7 @@ struct ShadePhotoGallery: View {
     .onAppear {
       closeFocused = true
       controller.selectGalleryPhoto(controller.galleryIndex, for: car.key, count: car.displayImages.count)
+      if showsGalleryGuidance { onCoachImpression() }
       #if DEBUG
       if AppEnv.isUITesting, ProcessInfo.processInfo.arguments.contains("--gallery-drag-preview") {
         dismissOffset = 118
@@ -684,7 +689,7 @@ struct ShadePhotoGallery: View {
   private var galleryExitControl: some View {
     Button(action: closeUsingControl) {
       Group {
-        if coach.state.showsGalleryGuidance {
+        if showsGalleryGuidance {
           VStack(spacing: 3) {
             Label("Swipe up or down to close", systemImage: "arrow.up.and.down")
               .font(.mono(10, bold: true))
@@ -716,14 +721,15 @@ struct ShadePhotoGallery: View {
     DragGesture(minimumDistance: 16, coordinateSpace: .global)
       .onChanged { value in
         guard !selectedPhotoIsZoomed, !isClosing else { return }
-        dismissOffset = GalleryDismissDecision.displayOffset(for: value.translation, height: height)
+        dismissOffset = GalleryDismissDecision.displayOffset(for: value.translation, height: height, profile: tuning)
         let shouldDismiss = GalleryDismissDecision.shouldDismiss(
           translation: value.translation,
           predictedEndTranslation: value.predictedEndTranslation,
-          height: height
+          height: height,
+          profile: tuning
         )
         if shouldDismiss && !crossedDismissThreshold {
-          UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 0.7)
+          InteractionHaptics.fire(.galleryGate, style: tuning.haptics)
         }
         crossedDismissThreshold = shouldDismiss
       }
@@ -733,10 +739,12 @@ struct ShadePhotoGallery: View {
           dismissOffset = 0
           return
         }
+        dismissAttempts += 1
         let shouldDismiss = GalleryDismissDecision.shouldDismiss(
           translation: value.translation,
           predictedEndTranslation: value.predictedEndTranslation,
-          height: height
+          height: height,
+          profile: tuning
         )
         crossedDismissThreshold = false
         if shouldDismiss {
@@ -753,6 +761,7 @@ struct ShadePhotoGallery: View {
   }
 
   private var selectedPhotoIsZoomed: Bool { zoomedPhoto == controller.galleryIndex }
+  private var showsGalleryGuidance: Bool { coach.showsGalleryGuidance(for: tuning.coaching) }
   private var effectiveChromeVisible: Bool { chromeVisible || voiceOverEnabled }
   private var dismissProgress: CGFloat { GalleryDismissDecision.progress(offset: dismissOffset, height: height) }
   private var backdropOpacity: Double { Double(1 - dismissProgress * 0.78) }
@@ -768,6 +777,7 @@ struct ShadePhotoGallery: View {
 
   private func dismissByGesture(direction: CGFloat) {
     isClosing = true
+    onDismissed("vertical_gesture", dismissAttempts, selectedPhotoIsZoomed)
     coach.recordGalleryDismissal()
     guard !reduceMotion else {
       controller.closeGallery()
@@ -785,6 +795,7 @@ struct ShadePhotoGallery: View {
   }
 
   private func closeUsingControl() {
+    onDismissed("control", dismissAttempts, selectedPhotoIsZoomed)
     withAnimation(reduceMotion ? nil : .galleryTransition) { controller.closeGallery() }
   }
 

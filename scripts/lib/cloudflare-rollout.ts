@@ -1,5 +1,6 @@
 export const REQUIRED_WORKER_SECRET_NAMES = ["PUBLISH_TOKEN", "CLERK_SECRET_KEY", "CLERK_JWT_ISSUER"] as const;
 export const SOURCE_QUALITY_V1_MIGRATION = "0011_source_cache_listing_fields.sql";
+export const PRODUCT_EVENTS_V1_MIGRATION = "0012_product_events.sql";
 
 export const WORKER_SECRET_NAMES = [
   ...REQUIRED_WORKER_SECRET_NAMES,
@@ -12,6 +13,7 @@ export const WORKER_SECRET_NAMES = [
   "BEACHCAR_RUNNER_MODE",
   "BEACHCAR_CODEX_MODEL",
   "OPENAI_API_KEY",
+  "PRODUCT_TUNING_FORCE_BALANCED",
 ] as const;
 
 type Environment = Record<string, string | undefined>;
@@ -216,23 +218,35 @@ export function pendingD1MigrationFiles(output: string): string[] {
 export function isSafeSourceQualityMigrationSet(output: string): boolean {
   const pending = pendingD1MigrationFiles(output);
   if (pending.length === 0) return /No migrations to apply!/i.test(output);
-  return pending.length === 1 && pending[0] === SOURCE_QUALITY_V1_MIGRATION;
+  const allowed = new Set([SOURCE_QUALITY_V1_MIGRATION, PRODUCT_EVENTS_V1_MIGRATION]);
+  return pending.every((migration) => allowed.has(migration));
 }
 
 export function evaluateSourceQualitySchemaGate(outputs: {
   columns: string;
   indexes: string;
+  productColumns: string;
+  productIndexes: string;
   quickCheck: string;
-}): { columnCount: number; indexCount: number; quickCheck: string; ok: boolean } {
+}): { columnCount: number; indexCount: number; productColumnCount: number; productIndexCount: number; quickCheck: string; ok: boolean } {
   const columnCount = numericResult(outputs.columns, "found_columns");
   const indexCount = numericResult(outputs.indexes, "found_indexes");
+  const productColumnCount = numericResult(outputs.productColumns, "found_product_columns");
+  const productIndexCount = numericResult(outputs.productIndexes, "found_product_indexes");
   const quickRows = d1RowsFromJson(outputs.quickCheck);
   const quickCheck = clean(quickRows[0]?.quick_check || quickRows[0]?.integrity_check);
   return {
     columnCount,
     indexCount,
+    productColumnCount,
+    productIndexCount,
     quickCheck,
-    ok: columnCount === 12 && indexCount === 3 && quickCheck.toLowerCase() === "ok",
+    ok:
+      columnCount === 12 &&
+      indexCount === 3 &&
+      productColumnCount === 9 &&
+      productIndexCount === 3 &&
+      quickCheck.toLowerCase() === "ok",
   };
 }
 

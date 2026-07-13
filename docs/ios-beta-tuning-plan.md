@@ -1,6 +1,18 @@
-# iOS Beta Tuning Plan
+# iOS Beta Tuning System
 
-Phase 5 should use a hybrid loop: sparse behavioral telemetry tells us where friction exists, while a beta-only **Tweaks** surface lets people say how the interaction should feel. Neither signal is sufficient alone. Telemetry can show a cancelled swipe but not whether it felt cautious or frustrating; sliders can capture preference but not accidental behavior.
+Phase 5 now uses a hybrid loop: sparse behavioral telemetry tells us where friction exists, while a beta-only **Tweaks** surface lets people say how the interaction should feel. Neither signal is sufficient alone. Telemetry can show a cancelled swipe but not whether it felt cautious or frustrating; controls can capture preference but not accidental behavior.
+
+## Implementation status
+
+The full calibration foundation is built:
+
+- `InteractionTuningProfile` is versioned and persisted locally. Quick, Balanced, Deliberate, and Custom profiles drive the real review and gallery decisions.
+- `BetaTuningSheet` includes a non-destructive review/photo practice card, bounded advanced controls, direct reason feedback, reset, explicit consent, and a local diagnostic snapshot.
+- `ProductTelemetry` stores no events before consent, queues at most 200 bounded outcomes locally, uploads authenticated batches of 40, and clears the queue on opt-out.
+- `0012_product_events.sql` creates a product-only D1 stream. `/api/product-events/batch` validates an event/property allowlist, derives the user from auth, and deduplicates retry ids.
+- Account export and deletion include product events. Scheduled maintenance and ingestion both enforce the 90-day retention limit.
+- `/api/admin/product-events/summary` and the web admin calibration panel compare committed/cancelled review gestures and gallery exit success by tuning cohort without exposing raw user payloads.
+- `/api/product-tuning-config` provides a remote Balanced safeguard while preserving the user's selected profile.
 
 ## Product boundary
 
@@ -10,9 +22,9 @@ Interaction tuning must stay separate from auction taste.
 - Product feedback ("swipes feel too sensitive", gallery dismissal attempts, hint usefulness) belongs to a separate product-learning stream.
 - The existing `preference_events` table should **not** be reused. Those records are exported as taste memory and currently accept only `voice_note`, `text_note`, and `viewed`.
 
-## Recommended beta experience
+## Beta experience
 
-Add **Tweaks** below **Gestures** in the overflow menu for Debug and TestFlight builds. Lead with three human presets rather than raw numbers:
+**Tweaks** appears below **Gestures** in the overflow menu for Debug and TestFlight builds. It leads with three human presets rather than raw numbers:
 
 | Preset | Review feel | Gallery feel |
 | --- | --- | --- |
@@ -20,7 +32,7 @@ Add **Tweaks** below **Gestures** in the overflow menu for Debug and TestFlight 
 | **Balanced** | Current production defaults | Current production defaults |
 | **Deliberate** | More travel before committing and firmer strong resistance | More intentional dismissal |
 
-An Advanced disclosure can expose bounded controls:
+An Advanced disclosure exposes bounded controls:
 
 - Swipe commitment: roughly 28–38% of screen width; current default is 32%.
 - Strong commitment: roughly 64–80%; current default is 72%.
@@ -28,9 +40,9 @@ An Advanced disclosure can expose bounded controls:
 - Haptics: Off, Soft, Standard, or Strong.
 - Coaching: Adaptive, Subtle every session, or Always explain.
 
-The sheet should include a non-destructive practice card, Restore Defaults, and **Share diagnostic snapshot**. Changes should apply to the practice card first and only affect the live review loop after the user taps Apply. Store a versioned local `InteractionTuningProfile`; attach its version and preset name to beta events so outcomes can be compared correctly.
+The sheet includes a non-destructive practice card, Restore Defaults, and **Share diagnostic snapshot**. Changes apply to the practice card first and affect the live review loop only after the user taps Apply. The profile version and preset name accompany beta events so outcomes remain comparable.
 
-The same surface should ask directly:
+The same surface asks directly:
 
 - Too easy to trigger
 - Takes too much effort
@@ -58,7 +70,7 @@ Record completed interaction outcomes, not raw touch streams:
 | `tuning_changed` | from/to preset and changed control names |
 | `experience_feedback_submitted` | fixed reason codes plus optional bounded comment |
 
-Do not transmit listing titles, URLs, photos, notes, exact coordinates, complete drag paths, or unbounded device metadata. The server should derive the signed-in user id. VoiceOver or Reduce Motion state should be collected only if it is necessary for an accessibility-specific question and the beta disclosure says so.
+Do not transmit listing titles, URLs, photos, auction preference notes, exact coordinates, complete drag paths, or unbounded device metadata. The server derives the signed-in user id. VoiceOver or Reduce Motion state is not currently collected; a future accessibility-specific study must name that field in the beta disclosure first.
 
 ## Storage and API
 
@@ -77,9 +89,9 @@ product_events
   tuning_version
 ```
 
-Add `POST /api/product-events/batch` with an allowlisted schema, a maximum batch size, strict property-size limits, and normal signed-in authorization. Queue events locally, send opportunistically, and discard after successful upload. Retain raw beta events for 90 days, then keep only aggregate conclusions. Include these rows in account export and deletion from the first migration.
+`POST /api/product-events/batch` uses an allowlisted schema, a maximum batch size, strict property-size limits, idempotent event ids, and normal signed-in authorization. Events queue locally, upload opportunistically, and disappear after successful processing. Raw beta events are deleted after 90 days; account export and deletion cover them from the first migration.
 
-The app should present a one-time beta disclosure with **Share beta diagnostics** enabled by explicit choice. The Tweaks menu and local diagnostic export work even when sharing is off.
+The app presents a one-time beta disclosure and records nothing until the person explicitly chooses **Share beta diagnostics**. The Tweaks menu, local product feedback, and diagnostic export still work when sharing is off.
 
 ## How to choose defaults
 
@@ -95,12 +107,12 @@ Evaluate by app build and tuning preset:
 
 Use real-device sessions for haptics; simulator results are not evidence for haptic intensity. Promote a new default only when behavior and direct feedback agree. Keep accessibility cohorts out of blanket threshold changes unless the change is explicitly designed and tested for them.
 
-## Build sequence
+## Rollout sequence
 
-1. Add `InteractionTuningProfile`, the local practice-card Tweaks sheet, presets, reset, and diagnostic export. No network dependency.
-2. Add the consent disclosure, event queue, D1 migration, batch endpoint, export/delete coverage, and an owner-only aggregate view.
+1. ✅ Add `InteractionTuningProfile`, the local practice-card Tweaks sheet, presets, reset, and diagnostic export.
+2. ✅ Add the consent disclosure, event queue, D1 migration, batch endpoint, export/delete coverage, retention, remote safeguard, and owner-only aggregate view.
 3. Run one TestFlight cycle with unchanged Balanced defaults and observe the baseline.
 4. Invite testers to choose Quick or Deliberate, collect fixed reason codes, and compare cohorts.
-5. Adjust defaults only after real-device haptic review and at least one full beta cycle; keep the remote kill switch able to return everyone to Balanced.
+5. Adjust defaults only after real-device haptic review and at least one full beta cycle; keep the remote safeguard able to return everyone to Balanced.
 
 This makes phase 5 a reversible calibration system rather than a collection of magic numbers.

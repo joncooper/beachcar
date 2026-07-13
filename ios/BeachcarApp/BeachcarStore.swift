@@ -134,7 +134,7 @@ final class BeachcarStore: ObservableObject {
       updatedAt: Date().ISO8601Format()
     )
     feedbackByKey[listing.key] = optimistic
-    lastUndo = UndoState(listingKey: listing.key, previous: previous)
+    lastUndo = UndoState(listingKey: listing.key, previous: previous, createdAt: Date())
     if offlineMode {
       errorMessage = nil
       return
@@ -329,6 +329,7 @@ final class BeachcarStore: ObservableObject {
 struct UndoState {
   let listingKey: String
   let previous: FeedbackRecord?
+  let createdAt: Date
 }
 
 extension BeachcarStore {

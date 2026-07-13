@@ -12,6 +12,13 @@ enum ReviewSwipeIntent { case undecided, vertical, horizontal }
 
 enum ReviewSwipeStage: Equatable { case resting, preview, primary, strong }
 
+struct ReviewDragOutcome {
+  let direction: String
+  let maximumStage: ReviewSwipeStage
+  let action: FeedbackAction?
+  let duration: TimeInterval
+}
+
 enum ReviewCoachStage: Equatable {
   case new
   case primaryLearned
@@ -68,17 +75,21 @@ final class ShadeController: ObservableObject {
   @Published var galleryOpen = false
   @Published var galleryIndex = 0
   @Published var gesturesHelpOpen = false
+  @Published var tweaksOpen = false
   @Published var scrollResetID = 0
 
   // Config (design defaults)
   var commitThreshold: CGFloat = 0.6
   var celebrate = true
   var trayLabels = true
+  private(set) var tuningProfile = InteractionTuningProfile.balanced
 
   /// Persist a judgement for the current car. Set by the host view.
   var persist: ((FeedbackAction) -> Void)?
   /// Records gesture learning separately from menu and accessibility actions.
   var onSwipeCompleted: ((FeedbackAction) -> Void)?
+  var onReviewDragEnded: ((ReviewDragOutcome) -> Void)?
+  var onGalleryOpened: ((Int, Int) -> Void)?
   var onCoachInteraction: (() -> Void)?
   var carCount = 0
 
@@ -94,6 +105,8 @@ final class ShadeController: ObservableObject {
   private var reviewedKeys: Set<String> = []
   private var crossedPrimary = false
   private var crossedStrong = false
+  private var reviewDragStartedAt: Date?
+  private var maximumReviewStage: ReviewSwipeStage = .resting
 
   let trayActions: [FeedbackAction] = [.hide, .avoid, .like, .star]
 
@@ -130,6 +143,10 @@ final class ShadeController: ObservableObject {
 
   func updateCoachStage(_ stage: ReviewCoachStage) { coachStage = stage }
 
+  func configureTuning(_ profile: InteractionTuningProfile) {
+    tuningProfile = profile.normalized()
+  }
+
   func updateReduceMotion(_ reduceMotion: Bool) {
     guard reduceMotion else { return }
     coachTask?.cancel()
@@ -138,6 +155,10 @@ final class ShadeController: ObservableObject {
 
   func noteCoachInteraction() {
     guard showHint || coachOffset != 0 else { return }
+    if tuningProfile.coaching == .alwaysExplain {
+      onCoachInteraction?()
+      return
+    }
     coachTask?.cancel()
     coachOffset = 0
     showHint = false
@@ -184,9 +205,10 @@ final class ShadeController: ObservableObject {
     }
 
     guard reviewIntent == .horizontal else { return }
+    if reviewDragStartedAt == nil { reviewDragStartedAt = Date() }
     reviewRawOffset = dx
-    let primary = ReviewSwipeDecision.primaryDistance(for: width)
-    reviewOffset = ReviewSwipeDecision.displayOffset(for: dx, primary: primary)
+    let primary = ReviewSwipeDecision.primaryDistance(for: width, profile: tuningProfile)
+    reviewOffset = ReviewSwipeDecision.displayOffset(for: dx, primary: primary, profile: tuningProfile)
     updateReviewStage(width: width)
   }
 
@@ -200,15 +222,23 @@ final class ShadeController: ObservableObject {
       translation: reviewRawOffset,
       predicted: value.predictedEndTranslation.width,
       velocity: value.velocity.width,
-      width: width
+      width: width,
+      profile: tuningProfile
     )
+    let outcome = ReviewDragOutcome(
+      direction: reviewRawOffset < 0 ? "left" : "right",
+      maximumStage: maximumReviewStage,
+      action: action,
+      duration: Date().timeIntervalSince(reviewDragStartedAt ?? Date())
+    )
+    onReviewDragEnded?(outcome)
     guard let action else {
       resetReviewDrag(animated: true)
       return
     }
 
     onSwipeCompleted?(action)
-    UIImpactFeedbackGenerator(style: action == .star || action == .avoid ? .heavy : .medium).impactOccurred()
+    InteractionHaptics.fire(.committed(strong: action == .star || action == .avoid), style: tuningProfile.haptics)
     let direction: CGFloat = reviewRawOffset < 0 ? -1 : 1
     let animation = reduceMotion ? Animation.easeOut(duration: 0.14) : .timingCurve(0.2, 0.9, 0.24, 1, duration: 0.28)
     withAnimation(animation) { reviewOffset = direction * (width + 80) }
@@ -217,20 +247,21 @@ final class ShadeController: ObservableObject {
 
   private func updateReviewStage(width: CGFloat) {
     let distance = abs(reviewRawOffset)
-    let primary = ReviewSwipeDecision.primaryDistance(for: width)
-    let strong = ReviewSwipeDecision.strongDistance(for: width)
+    let primary = ReviewSwipeDecision.primaryDistance(for: width, profile: tuningProfile)
+    let strong = ReviewSwipeDecision.strongDistance(for: width, profile: tuningProfile)
     let stage: ReviewSwipeStage = distance >= strong ? .strong : (distance >= primary ? .primary : .preview)
     reviewStage = stage
+    if reviewStageRank(stage) > reviewStageRank(maximumReviewStage) { maximumReviewStage = stage }
     reviewAction = ReviewSwipeDecision.previewAction(offset: reviewRawOffset, strong: stage == .strong)
 
     if distance >= primary, !crossedPrimary {
-      UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.5)
+      InteractionHaptics.fire(.primaryGate, style: tuningProfile.haptics)
       crossedPrimary = true
     } else if distance < primary {
       crossedPrimary = false
     }
     if distance >= strong, !crossedStrong {
-      UIImpactFeedbackGenerator(style: .heavy).impactOccurred(intensity: 0.78)
+      InteractionHaptics.fire(.strongGate, style: tuningProfile.haptics)
       crossedStrong = true
     } else if distance < strong {
       crossedStrong = false
@@ -241,6 +272,7 @@ final class ShadeController: ObservableObject {
     let remembered = currentCarInfo?().map { photo(for: $0.key) } ?? 0
     galleryIndex = max(index ?? remembered, 0)
     galleryOpen = true
+    onGalleryOpened?(currentCarInfo?()?.count ?? 0, galleryIndex)
     noteCoachInteraction()
   }
 
@@ -280,9 +312,20 @@ final class ShadeController: ObservableObject {
       self.reviewAction = nil
       self.crossedPrimary = false
       self.crossedStrong = false
+      self.reviewDragStartedAt = nil
+      self.maximumReviewStage = .resting
     }
     if animated { withAnimation(.spring(response: 0.3, dampingFraction: 0.84), reset) }
     else { reset() }
+  }
+
+  private func reviewStageRank(_ stage: ReviewSwipeStage) -> Int {
+    switch stage {
+    case .resting: 0
+    case .preview: 1
+    case .primary: 2
+    case .strong: 3
+    }
   }
 
   // MARK: feed drag
@@ -655,18 +698,36 @@ struct FeedGeometry {
 func clamp<T: Comparable>(_ v: T, _ lo: T, _ hi: T) -> T { min(hi, max(lo, v)) }
 
 enum ReviewSwipeDecision {
-  static func primaryDistance(for width: CGFloat) -> CGFloat {
-    clamp(width * 0.32, 118, 160)
+  static func primaryDistance(
+    for width: CGFloat,
+    profile: InteractionTuningProfile = .balanced
+  ) -> CGFloat {
+    if profile.preset == .balanced { return clamp(width * 0.32, 118, 160) }
+    return clamp(width * profile.primaryCommitFraction, 96, 170)
   }
 
-  static func strongDistance(for width: CGFloat) -> CGFloat {
-    clamp(width * 0.72, 270, 340)
+  static func strongDistance(
+    for width: CGFloat,
+    profile: InteractionTuningProfile = .balanced
+  ) -> CGFloat {
+    if profile.preset == .balanced { return clamp(width * 0.72, 270, 340) }
+    return clamp(width * profile.strongCommitFraction, 210, 380)
   }
 
-  static func displayOffset(for raw: CGFloat, primary: CGFloat) -> CGFloat {
+  static func displayOffset(
+    for raw: CGFloat,
+    primary: CGFloat,
+    profile: InteractionTuningProfile = .balanced
+  ) -> CGFloat {
     let distance = abs(raw)
     guard distance > primary else { return raw }
-    let resisted = primary + (distance - primary) * 0.72
+    let resistanceFactor: CGFloat = switch profile.preset {
+    case .quick: 0.82
+    case .balanced: 0.72
+    case .deliberate: 0.62
+    case .custom: clamp(0.82 - CGFloat((profile.strongCommitFraction - 0.64) / 0.16) * 0.2, 0.62, 0.82)
+    }
+    let resisted = primary + (distance - primary) * resistanceFactor
     return raw < 0 ? -resisted : resisted
   }
 
@@ -680,11 +741,12 @@ enum ReviewSwipeDecision {
     translation: CGFloat,
     predicted: CGFloat,
     velocity: CGFloat,
-    width: CGFloat
+    width: CGFloat,
+    profile: InteractionTuningProfile = .balanced
   ) -> FeedbackAction? {
     let distance = abs(translation)
-    let primary = primaryDistance(for: width)
-    let strong = strongDistance(for: width)
+    let primary = primaryDistance(for: width, profile: profile)
+    let strong = strongDistance(for: width, profile: profile)
     if distance >= strong { return translation > 0 ? .star : .avoid }
 
     let predictedPrimary = abs(predicted) >= primary && abs(translation) >= width * 0.18 && abs(velocity) >= 700
@@ -714,11 +776,19 @@ enum ReviewCoachPolicy {
 }
 
 enum GalleryDismissDecision {
-  static func distance(for height: CGFloat) -> CGFloat {
-    clamp(height * 0.13, 96, 132)
+  static func distance(
+    for height: CGFloat,
+    profile: InteractionTuningProfile = .balanced
+  ) -> CGFloat {
+    if profile.preset == .balanced { return clamp(height * 0.13, 96, 132) }
+    return clamp(height * profile.galleryDismissFraction, 72, 150)
   }
 
-  static func displayOffset(for translation: CGSize, height: CGFloat = 844) -> CGFloat {
+  static func displayOffset(
+    for translation: CGSize,
+    height: CGFloat = 844,
+    profile: InteractionTuningProfile = .balanced
+  ) -> CGFloat {
     guard isVerticallyDominant(translation) else { return 0 }
     let limit = min(height * 0.28, 240)
     return clamp(translation.height * 0.52, -limit, limit)
@@ -732,12 +802,13 @@ enum GalleryDismissDecision {
   static func shouldDismiss(
     translation: CGSize,
     predictedEndTranslation: CGSize,
-    height: CGFloat
+    height: CGFloat,
+    profile: InteractionTuningProfile = .balanced
   ) -> Bool {
     let actualY = abs(translation.height)
     guard actualY >= 44, isVerticallyDominant(translation) else { return false }
 
-    let threshold = distance(for: height)
+    let threshold = distance(for: height, profile: profile)
     if actualY >= threshold { return true }
 
     return isVerticallyDominant(predictedEndTranslation)

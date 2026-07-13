@@ -65,6 +65,7 @@ check("Remote MCP automation migration is present", migrationFiles.includes("000
 check("Source cache migration is present", migrationFiles.includes("0009_source_cache.sql"), "Add/apply 0009_source_cache.sql.");
 check("MCP OAuth migration is present", migrationFiles.includes("0010_mcp_oauth.sql"), "Add/apply 0010_mcp_oauth.sql.");
 check("Source Quality v1 cache migration is present", migrationFiles.includes("0011_source_cache_listing_fields.sql"), "Add/apply 0011_source_cache_listing_fields.sql.");
+check("Product diagnostics migration is present", migrationFiles.includes("0012_product_events.sql"), "Add/apply 0012_product_events.sql.");
 check("Preflight script is available", !!packageJson?.scripts?.preflight, "Add bun run preflight.");
 check("Local Worker preflight script is available", !!packageJson?.scripts?.["preflight:local"], "Add bun run preflight:local.");
 check("Full preflight script is available", !!packageJson?.scripts?.["preflight:full"], "Add bun run preflight:full.");

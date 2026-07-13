@@ -17,6 +17,9 @@ import type {
   ImportPayload,
   OAuthAccessTokenRecord,
   PreferenceEvent,
+  ProductEventBatchResult,
+  ProductEventRecord,
+  ProductEventSummary,
   RunPayload,
   RunRunnerTaskSummary,
   RunSourceSummary,
@@ -245,6 +248,18 @@ interface PreferenceEventRow {
   transcript: string | null;
   tags_json: string;
   created_at: string;
+}
+
+interface ProductEventRow {
+  id: string;
+  user_id: string;
+  session_id: string;
+  event_name: string;
+  properties_json: string;
+  client_created_at: string;
+  received_at: string;
+  app_build: string;
+  tuning_version: number;
 }
 
 interface RunRow {
@@ -2263,8 +2278,253 @@ export async function getRunById(db: D1Database, scope: UserScope, id: string): 
   return runPayloadFromRow(db, scope, run);
 }
 
+const productEventProperties = {
+  review_session_started: ["coachingStage", "tuningPreset"],
+  review_drag_ended: ["direction", "maximumGate", "committed", "action", "durationBucket", "tuningPreset"],
+  review_undo: ["priorAction", "secondsBucket", "tuningPreset"],
+  coach_impression: ["hintVersion", "surface", "coachingMode"],
+  coach_dismissed: ["method", "surface"],
+  gallery_opened: ["photoCountBucket", "rememberedIndex", "tuningPreset"],
+  gallery_dismissed: ["method", "attemptCountBucket", "zoomed", "tuningPreset"],
+  gallery_reopened: ["secondsBucket", "tuningPreset"],
+  tuning_changed: ["fromPreset", "toPreset", "changedControls"],
+  experience_feedback_submitted: ["reasonCodes", "hasComment", "comment", "tuningPreset"],
+} as const satisfies Record<string, readonly string[]>;
+
+type ProductEventName = keyof typeof productEventProperties;
+
+interface NormalizedProductEvent {
+  id: string;
+  sessionId: string;
+  eventName: ProductEventName;
+  properties: Record<string, string>;
+  clientCreatedAt: string;
+  appBuild: string;
+  tuningVersion: number;
+}
+
+export class ProductEventValidationError extends Error {}
+
+export async function createProductEvents(
+  db: D1Database,
+  userId: string,
+  input: unknown,
+): Promise<ProductEventBatchResult> {
+  const value = recordValue(input);
+  if (!Array.isArray(value.events) || value.events.length === 0 || value.events.length > 40) {
+    throw new ProductEventValidationError("Product event batch must contain between 1 and 40 events");
+  }
+  const events = value.events.map(normalizeProductEvent);
+
+  // Raw beta diagnostics expire after 90 days. Opportunistic cleanup keeps the
+  // invariant true even if scheduled work is paused during a small beta.
+  await pruneProductEvents(db);
+
+  let accepted = 0;
+  for (const event of events) {
+    const result = await db
+      .prepare(
+        `INSERT OR IGNORE INTO product_events
+          (id, user_id, session_id, event_name, properties_json, client_created_at, app_build, tuning_version)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        event.id,
+        userId,
+        event.sessionId,
+        event.eventName,
+        JSON.stringify(event.properties),
+        event.clientCreatedAt,
+        event.appBuild,
+        event.tuningVersion,
+      )
+      .run();
+    accepted += Number(result.meta?.changes || 0);
+  }
+  return { accepted, processed: events.length };
+}
+
+export async function pruneProductEvents(db: D1Database): Promise<number> {
+  const result = await db.prepare("DELETE FROM product_events WHERE received_at < datetime('now', '-90 days')").run();
+  return Number(result.meta?.changes || 0);
+}
+
+export async function getProductEvents(db: D1Database, userId: string, limit?: number): Promise<ProductEventRecord[]> {
+  const query = limit === undefined
+    ? db.prepare("SELECT * FROM product_events WHERE user_id = ? ORDER BY received_at DESC").bind(userId)
+    : db
+        .prepare("SELECT * FROM product_events WHERE user_id = ? ORDER BY received_at DESC LIMIT ?")
+        .bind(userId, clampInteger(limit, 1, 5_000));
+  const { results } = await query.all<ProductEventRow>();
+  return results.map(productEventFromRow);
+}
+
+export async function getProductEventSummary(db: D1Database, windowDays = 30): Promise<ProductEventSummary> {
+  const safeWindowDays = clampInteger(windowDays, 1, 90);
+  const since = `-${safeWindowDays} days`;
+  const [totals, aggregateResult, reviewResult, galleryResult] = await Promise.all([
+    db
+      .prepare(
+        `SELECT COUNT(*) AS total,
+                COUNT(DISTINCT user_id) AS users,
+                COUNT(DISTINCT session_id) AS sessions
+         FROM product_events
+         WHERE received_at >= datetime('now', ?)`,
+      )
+      .bind(since)
+      .first<{ total: number; users: number; sessions: number }>(),
+    db
+      .prepare(
+      `SELECT event_name,
+              COALESCE(json_extract(properties_json, '$.tuningPreset'), 'unknown') AS tuning_preset,
+              COUNT(*) AS count
+       FROM product_events
+       WHERE received_at >= datetime('now', ?)
+       GROUP BY event_name, tuning_preset
+       ORDER BY event_name, tuning_preset`,
+      )
+      .bind(since)
+      .all<{ event_name: string; tuning_preset: string; count: number }>(),
+    db
+      .prepare(
+        `SELECT COALESCE(json_extract(properties_json, '$.tuningPreset'), 'unknown') AS tuning_preset,
+                COUNT(*) AS total,
+                SUM(CASE WHEN json_extract(properties_json, '$.committed') = 'true' THEN 1 ELSE 0 END) AS committed,
+                SUM(CASE WHEN json_extract(properties_json, '$.committed') = 'false' THEN 1 ELSE 0 END) AS cancelled
+         FROM product_events
+         WHERE event_name = 'review_drag_ended' AND received_at >= datetime('now', ?)
+         GROUP BY tuning_preset
+         ORDER BY tuning_preset`,
+      )
+      .bind(since)
+      .all<{ tuning_preset: string; total: number; committed: number; cancelled: number }>(),
+    db
+      .prepare(
+        `SELECT COALESCE(json_extract(properties_json, '$.tuningPreset'), 'unknown') AS tuning_preset,
+                COUNT(*) AS total,
+                SUM(CASE WHEN json_extract(properties_json, '$.method') = 'vertical_gesture' THEN 1 ELSE 0 END) AS gesture,
+                SUM(CASE WHEN json_extract(properties_json, '$.method') = 'control' THEN 1 ELSE 0 END) AS control,
+                SUM(CASE WHEN json_extract(properties_json, '$.method') = 'vertical_gesture'
+                              AND json_extract(properties_json, '$.attemptCountBucket') = 'one' THEN 1 ELSE 0 END) AS first_attempt_gesture
+         FROM product_events
+         WHERE event_name = 'gallery_dismissed' AND received_at >= datetime('now', ?)
+         GROUP BY tuning_preset
+         ORDER BY tuning_preset`,
+      )
+      .bind(since)
+      .all<{ tuning_preset: string; total: number; gesture: number; control: number; first_attempt_gesture: number }>(),
+  ]);
+  const aggregates = aggregateResult.results.map((row) => ({
+    eventName: row.event_name,
+    tuningPreset: row.tuning_preset,
+    count: Number(row.count || 0),
+  }));
+  return {
+    generatedAt: new Date().toISOString(),
+    windowDays: safeWindowDays,
+    total: Number(totals?.total || 0),
+    users: Number(totals?.users || 0),
+    sessions: Number(totals?.sessions || 0),
+    aggregates,
+    reviewOutcomes: reviewResult.results.map((row) => ({
+      tuningPreset: row.tuning_preset,
+      total: Number(row.total || 0),
+      committed: Number(row.committed || 0),
+      cancelled: Number(row.cancelled || 0),
+    })),
+    galleryOutcomes: galleryResult.results.map((row) => ({
+      tuningPreset: row.tuning_preset,
+      total: Number(row.total || 0),
+      gesture: Number(row.gesture || 0),
+      control: Number(row.control || 0),
+      firstAttemptGesture: Number(row.first_attempt_gesture || 0),
+    })),
+  };
+}
+
+function normalizeProductEvent(input: unknown, index: number): NormalizedProductEvent {
+  const value = recordValue(input, `Event ${index + 1} must be an object`);
+  const id = boundedProductString(value.id, "id", 64);
+  const sessionId = boundedProductString(value.sessionId, "sessionId", 64);
+  const rawName = boundedProductString(value.eventName, "eventName", 64);
+  if (!(rawName in productEventProperties)) {
+    throw new ProductEventValidationError(`Unsupported product event: ${rawName}`);
+  }
+  const eventName = rawName as ProductEventName;
+  const properties = normalizeProductProperties(value.properties, eventName);
+  const clientCreatedAt = boundedProductString(value.clientCreatedAt, "clientCreatedAt", 40);
+  const createdAt = Date.parse(clientCreatedAt);
+  const now = Date.now();
+  if (!Number.isFinite(createdAt) || createdAt < now - 91 * 86_400_000 || createdAt > now + 86_400_000) {
+    throw new ProductEventValidationError("clientCreatedAt must be a recent ISO-8601 timestamp");
+  }
+  const appBuild = boundedProductString(value.appBuild, "appBuild", 40);
+  const tuningVersion = Number(value.tuningVersion);
+  if (!Number.isInteger(tuningVersion) || tuningVersion < 1 || tuningVersion > 100) {
+    throw new ProductEventValidationError("tuningVersion must be an integer between 1 and 100");
+  }
+  return { id, sessionId, eventName, properties, clientCreatedAt, appBuild, tuningVersion };
+}
+
+function normalizeProductProperties(input: unknown, eventName: ProductEventName): Record<string, string> {
+  const value = recordValue(input, "Product event properties must be an object");
+  const allowed = new Set<string>(productEventProperties[eventName]);
+  const output: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (!allowed.has(key)) throw new ProductEventValidationError(`${key} is not allowed for ${eventName}`);
+    if (typeof raw !== "string") throw new ProductEventValidationError(`${key} must be a string`);
+    const maxLength = key === "comment" ? 240 : 120;
+    if (raw.length > maxLength) throw new ProductEventValidationError(`${key} is too long`);
+    output[key] = raw;
+  }
+  if (Object.keys(output).length > 8 || JSON.stringify(output).length > 2_048) {
+    throw new ProductEventValidationError("Product event properties are too large");
+  }
+  return output;
+}
+
+function recordValue(input: unknown, message = "Product event batch must be an object"): Record<string, unknown> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new ProductEventValidationError(message);
+  return input as Record<string, unknown>;
+}
+
+function boundedProductString(input: unknown, field: string, maxLength: number): string {
+  if (typeof input !== "string" || !input.trim() || input.length > maxLength) {
+    throw new ProductEventValidationError(`${field} must be a non-empty string of at most ${maxLength} characters`);
+  }
+  return input;
+}
+
+function clampInteger(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, Math.trunc(value)));
+}
+
+function productEventFromRow(row: ProductEventRow): ProductEventRecord {
+  let properties: Record<string, string> = {};
+  try {
+    const decoded = JSON.parse(row.properties_json) as unknown;
+    if (decoded && typeof decoded === "object" && !Array.isArray(decoded)) {
+      properties = Object.fromEntries(
+        Object.entries(decoded as Record<string, unknown>).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+      );
+    }
+  } catch {
+    properties = {};
+  }
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    eventName: row.event_name,
+    properties,
+    clientCreatedAt: row.client_created_at,
+    receivedAt: row.received_at,
+    appBuild: row.app_build,
+    tuningVersion: row.tuning_version,
+  };
+}
+
 export async function exportAccount(db: D1Database, scope: UserScope): Promise<AccountExport> {
-  const [user, feedback, runs, agentRuns, aiUsageEvents, runnerTasks, automationTokens, oauthAccessTokens, automationEvents] = await Promise.all([
+  const [user, feedback, runs, agentRuns, aiUsageEvents, runnerTasks, automationTokens, oauthAccessTokens, automationEvents, productEvents] = await Promise.all([
     getUserPayload(db, scope.userId),
     exportFeedback(db, scope),
     getRuns(db, scope),
@@ -2274,6 +2534,7 @@ export async function exportAccount(db: D1Database, scope: UserScope): Promise<A
     listAutomationTokens(db, scope.userId, 100),
     listOAuthAccessTokens(db, scope.userId, 500),
     getAutomationEvents(db, scope.userId, 500),
+    getProductEvents(db, scope.userId),
   ]);
   return {
     version: 1,
@@ -2288,6 +2549,7 @@ export async function exportAccount(db: D1Database, scope: UserScope): Promise<A
     automationTokens,
     oauthAccessTokens,
     automationEvents,
+    productEvents,
   };
 }
 
@@ -2301,6 +2563,7 @@ export async function deleteAccountData(db: D1Database, userId: string): Promise
     runnerTasks: await countRows(db, "SELECT COUNT(*) AS count FROM runner_tasks WHERE user_id = ?", userId),
     feedback: await countRows(db, "SELECT COUNT(*) AS count FROM feedback WHERE user_id = ?", userId),
     preferenceEvents: await countRows(db, "SELECT COUNT(*) AS count FROM preference_events WHERE user_id = ?", userId),
+    productEvents: await countRows(db, "SELECT COUNT(*) AS count FROM product_events WHERE user_id = ?", userId),
     runs: await countRows(db, "SELECT COUNT(*) AS count FROM runs WHERE user_id = ?", userId),
     agentRuns: await countRows(db, "SELECT COUNT(*) AS count FROM agent_runs WHERE user_id = ?", userId),
     automationTokens: await countRows(db, "SELECT COUNT(*) AS count FROM automation_tokens WHERE user_id = ?", userId),
@@ -2317,6 +2580,7 @@ export async function deleteAccountData(db: D1Database, userId: string): Promise
   await db.prepare("DELETE FROM runs WHERE user_id = ?").bind(userId).run();
   await db.prepare("DELETE FROM feedback WHERE user_id = ?").bind(userId).run();
   await db.prepare("DELETE FROM preference_events WHERE user_id = ?").bind(userId).run();
+  await db.prepare("DELETE FROM product_events WHERE user_id = ?").bind(userId).run();
   await db.prepare("DELETE FROM ai_usage_events WHERE user_id = ?").bind(userId).run();
   await db.prepare("DELETE FROM runner_tasks WHERE user_id = ?").bind(userId).run();
   await db.prepare("DELETE FROM source_settings WHERE user_id = ?").bind(userId).run();

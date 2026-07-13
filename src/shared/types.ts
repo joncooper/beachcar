@@ -549,6 +549,51 @@ export interface AccountExport {
   automationTokens: AutomationTokenRecord[];
   oauthAccessTokens: OAuthAccessTokenRecord[];
   automationEvents: AutomationEventRecord[];
+  productEvents: ProductEventRecord[];
+}
+
+export interface ProductEventRecord {
+  id: string;
+  sessionId: string;
+  eventName: string;
+  properties: Record<string, string>;
+  clientCreatedAt: string;
+  receivedAt: string;
+  appBuild: string;
+  tuningVersion: number;
+}
+
+export interface ProductEventBatchResult {
+  accepted: number;
+  processed: number;
+}
+
+export interface ProductEventAggregate {
+  eventName: string;
+  tuningPreset: string;
+  count: number;
+}
+
+export interface ProductEventSummary {
+  generatedAt: string;
+  windowDays: number;
+  total: number;
+  users: number;
+  sessions: number;
+  aggregates: ProductEventAggregate[];
+  reviewOutcomes: Array<{
+    tuningPreset: string;
+    total: number;
+    committed: number;
+    cancelled: number;
+  }>;
+  galleryOutcomes: Array<{
+    tuningPreset: string;
+    total: number;
+    gesture: number;
+    control: number;
+    firstAttemptGesture: number;
+  }>;
 }
 
 export interface AccountDeletionResult {
@@ -563,6 +608,7 @@ export interface AccountDeletionResult {
     runnerTasks: number;
     feedback: number;
     preferenceEvents: number;
+    productEvents: number;
     runs: number;
     agentRuns: number;
     automationTokens: number;

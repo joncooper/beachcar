@@ -15,4 +15,5 @@ interface Env {
   BEACHCAR_RUNNER_MODE?: string;
   BEACHCAR_CODEX_MODEL?: string;
   OPENAI_API_KEY?: string;
+  PRODUCT_TUNING_FORCE_BALANCED?: string;
 }

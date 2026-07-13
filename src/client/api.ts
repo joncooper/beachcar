@@ -15,6 +15,7 @@ import type {
   FeedbackRecord,
   InvitePayload,
   PreferenceEvent,
+  ProductEventSummary,
   RunPayload,
   SourceCacheAdminStatus,
   SourceCacheIngestResult,
@@ -210,6 +211,13 @@ export async function listAdminUsers(publishToken: string): Promise<AdminUserSum
 
 export async function getAdminOpsSummary(publishToken: string): Promise<AdminOpsSummary> {
   return requestJson<AdminOpsSummary>("/api/admin/ops-summary", {
+    headers: { "X-Publish-Token": publishToken },
+    skipUserToken: true,
+  });
+}
+
+export async function getAdminProductEventSummary(publishToken: string, days = 30): Promise<ProductEventSummary> {
+  return requestJson<ProductEventSummary>(`/api/admin/product-events/summary?days=${encodeURIComponent(days)}`, {
     headers: { "X-Publish-Token": publishToken },
     skipUserToken: true,
   });

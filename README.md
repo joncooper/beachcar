@@ -95,14 +95,14 @@ Beachcar spans the product surface, agent runtime, data plane, authentication, o
 
 | Surface | Implementation |
 | --- | --- |
-| **Native app** | SwiftUI, Clerk authentication, offline run cache, progressive gesture coaching, bounded zoom/pan, matched photo transitions, image prefetching, accessibility-aware layouts, and internal TestFlight distribution. |
-| **Web app** | Mobile-first React PWA for onboarding, review, preferences, run history, status, account controls, and administration. |
+| **Native app** | SwiftUI, Clerk authentication, offline run cache, progressive gesture coaching, bounded zoom/pan, matched photo transitions, beta gesture calibration, privacy-gated diagnostics, accessibility-aware layouts, and internal TestFlight distribution. |
+| **Web app** | Mobile-first React PWA for onboarding, review, preferences, run history, status, account controls, administration, and aggregated beta calibration analysis. |
 | **Agent runtime** | Cloudflare Agents + Durable Objects for per-user state, Workflows for durable orchestration, and Containers for browser/Codex-backed jobs. |
 | **Data + media** | D1 for user-scoped product and run state; R2 plus Cloudflare Images for cached `thumb`, `deck`, and `full` photo variants. |
-| **Identity + privacy** | Invite-only Clerk access, user-scoped reads and writes, hashed automation tokens, OAuth metadata, export, and deletion. |
+| **Identity + privacy** | Invite-only Clerk access, user-scoped reads and writes, hashed automation tokens, OAuth metadata, export and deletion, plus an explicit boundary between auction-taste memory and short-lived product diagnostics. |
 | **Operations** | Guarded D1 migrations, private recovery artifacts, staged container rollout, strict configuration checks, production smoke tests, and managed-path verification. |
 
-The current verification suite includes **151 Vitest tests** across the web/Worker surface and **36 native tests**: 22 end-to-end XCUITests plus 14 gesture, coaching, persistence, and gallery-policy unit tests.
+The current verification suite includes **154 Vitest tests** across the web/Worker surface and **44 native tests**: 24 end-to-end XCUITests plus 20 gesture, coaching, tuning, privacy, persistence, and gallery-policy unit tests.
 
 ## A typical daily run
 
@@ -140,7 +140,7 @@ flowchart TB
     end
 
     subgraph storage["Cloudflare data plane"]
-        D1[("D1<br/>users · runs · listings · memory")]
+        D1[("D1<br/>users · runs · listings · memory · beta diagnostics")]
         R2[("R2<br/>private image cache")]
         IMAGES["Image transforms<br/>thumb · deck · full"]
     end

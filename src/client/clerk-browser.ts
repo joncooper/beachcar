@@ -39,8 +39,6 @@ export type BrowserClerk = {
   openSignIn: (options?: Record<string, unknown>) => void;
   setActive?: (options: { session: string }) => Promise<void>;
   signOut: (options?: Record<string, unknown>) => Promise<void>;
-  mountUserButton?: (node: HTMLElement, props?: Record<string, unknown>) => void;
-  unmountUserButton?: (node: HTMLElement) => void;
   mountPricingTable?: (node: HTMLDivElement, props?: Record<string, unknown>) => void;
   unmountPricingTable?: (node: HTMLDivElement) => void;
 };

@@ -12,4 +12,11 @@ describe("Clerk browser loader", () => {
     expect(source).not.toContain("clerk.authenticateWithRedirect({");
     expect(source).not.toContain('const clerkBrowserVersion = "6.10.4";');
   });
+
+  it("does not mount optional Clerk UI from the core-only browser bundle", async () => {
+    const appSource = await readFile(resolve("src/client/App.tsx"), "utf8");
+
+    expect(appSource).not.toContain("mountUserButton");
+    expect(appSource).toContain('className="mini-signout"');
+  });
 });

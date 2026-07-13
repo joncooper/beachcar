@@ -4003,24 +4003,11 @@ function ClerkPricingSheet(props: { clerk: BrowserClerk | null; onClose: () => v
 }
 
 function ClerkUserButton(props: { clerk: BrowserClerk | null }) {
-  const ref = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!props.clerk?.mountUserButton || !ref.current) return;
-    const node = ref.current;
-    props.clerk.mountUserButton(node, { afterSignOutUrl: "/" });
-    return () => props.clerk?.unmountUserButton?.(node);
-  }, [props.clerk]);
-
-  if (!props.clerk?.mountUserButton) {
-    return (
-      <button className="mini-signout" type="button" onClick={() => void props.clerk?.signOut({ redirectUrl: "/" })}>
-        Sign out
-      </button>
-    );
-  }
-
-  return <div className="clerk-user-button" ref={ref} />;
+  return (
+    <button className="mini-signout" type="button" onClick={() => void props.clerk?.signOut({ redirectUrl: "/" })}>
+      Sign out
+    </button>
+  );
 }
 
 function Stat(props: { icon: ReactNode; label: string; value: string }) {

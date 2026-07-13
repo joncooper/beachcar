@@ -42,6 +42,35 @@ final class ReviewSwipeDecisionTests: XCTestCase {
     XCTAssertGreaterThan(ReviewSwipeDecision.displayOffset(for: 300, primary: primary), primary)
   }
 
+  func testCoachProgressesFromNewThroughPrimaryToMastered() {
+    XCTAssertEqual(ReviewCoachPolicy.stage(primaryLearned: false, strongLearned: false), .new)
+    XCTAssertEqual(ReviewCoachPolicy.stage(primaryLearned: true, strongLearned: false), .primaryLearned)
+    XCTAssertEqual(ReviewCoachPolicy.stage(primaryLearned: true, strongLearned: true), .mastered)
+  }
+
+  func testGhostNudgeOnlyRunsForMotionEnabledNewUsersBeforeInteraction() {
+    XCTAssertTrue(ReviewCoachPolicy.shouldGhost(stage: .new, reduceMotion: false, sessionInteracted: false))
+    XCTAssertFalse(ReviewCoachPolicy.shouldGhost(stage: .new, reduceMotion: true, sessionInteracted: false))
+    XCTAssertFalse(ReviewCoachPolicy.shouldGhost(stage: .new, reduceMotion: false, sessionInteracted: true))
+    XCTAssertFalse(ReviewCoachPolicy.shouldGhost(stage: .primaryLearned, reduceMotion: false, sessionInteracted: false))
+  }
+
+  func testStrongCoachNamesDirectionalOutcomeThenPhasesOut() {
+    XCTAssertEqual(
+      ReviewCoachPolicy.prompt(for: .like, reviewStage: .primary, coachStage: .new),
+      "Keep going for Love it"
+    )
+    XCTAssertEqual(
+      ReviewCoachPolicy.prompt(for: .hide, reviewStage: .primary, coachStage: .primaryLearned),
+      "Keep going for Never again"
+    )
+    XCTAssertEqual(
+      ReviewCoachPolicy.prompt(for: .star, reviewStage: .strong, coachStage: .primaryLearned),
+      "Release to commit"
+    )
+    XCTAssertNil(ReviewCoachPolicy.prompt(for: .like, reviewStage: .primary, coachStage: .mastered))
+  }
+
   func testGalleryDismissAcceptsDecisiveVerticalSwipesInEitherDirection() {
     XCTAssertTrue(galleryDismisses(y: 130, predictedY: 150))
     XCTAssertTrue(galleryDismisses(y: -130, predictedY: -150))

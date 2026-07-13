@@ -12,6 +12,12 @@ enum ReviewSwipeIntent { case undecided, vertical, horizontal }
 
 enum ReviewSwipeStage: Equatable { case resting, preview, primary, strong }
 
+enum ReviewCoachStage: Equatable {
+  case new
+  case primaryLearned
+  case mastered
+}
+
 struct ToastState: Equatable {
   let action: FeedbackAction
   let id: Int
@@ -48,6 +54,8 @@ final class ShadeController: ObservableObject {
   @Published var toast: ToastState?
   @Published var burst = 0
   @Published var showHint = true
+  @Published var coachStage: ReviewCoachStage = .new
+  @Published var coachOffset: CGFloat = 0
   @Published var note = ""
 
   // Scrolling dossier review
@@ -68,11 +76,13 @@ final class ShadeController: ObservableObject {
 
   /// Persist a judgement for the current car. Set by the host view.
   var persist: ((FeedbackAction) -> Void)?
+  /// Records gesture learning separately from menu and accessibility actions.
+  var onSwipeCompleted: ((FeedbackAction) -> Void)?
   var carCount = 0
 
   private var toastWork: DispatchWorkItem?
   private var advanceWork: DispatchWorkItem?
-  private var hintWork: DispatchWorkItem?
+  private var coachTask: Task<Void, Never>?
   private var flyWork: DispatchWorkItem?
   private var dossierTapWork: DispatchWorkItem?
   private var lastTap: Date = .distantPast
@@ -87,13 +97,55 @@ final class ShadeController: ObservableObject {
 
   // MARK: lifecycle
 
-  func startHintTimer() {
-    let work = DispatchWorkItem { [weak self] in
-      guard let self, self.showHint else { return }
-      withAnimation(.easeOut(duration: 0.3)) { self.showHint = false }
+  func configureCoach(primaryLearned: Bool, strongLearned: Bool, reduceMotion: Bool) {
+    coachTask?.cancel()
+    coachStage = ReviewCoachPolicy.stage(primaryLearned: primaryLearned, strongLearned: strongLearned)
+    coachOffset = 0
+    showHint = true
+
+    guard ReviewCoachPolicy.shouldGhost(stage: coachStage, reduceMotion: reduceMotion, sessionInteracted: false),
+          !AppEnv.isUITesting else { return }
+
+    coachTask = Task { [weak self] in
+      do {
+        try await Task.sleep(for: .seconds(1.5))
+        guard let self, self.showHint else { return }
+        withAnimation(.easeInOut(duration: 0.34)) { self.coachOffset = 44 }
+        try await Task.sleep(for: .seconds(0.5))
+        guard self.showHint else { return }
+        withAnimation(.easeInOut(duration: 0.3)) { self.coachOffset = 0 }
+        try await Task.sleep(for: .seconds(0.28))
+        guard self.showHint else { return }
+        withAnimation(.easeInOut(duration: 0.34)) { self.coachOffset = -44 }
+        try await Task.sleep(for: .seconds(0.5))
+        guard self.showHint else { return }
+        withAnimation(.easeInOut(duration: 0.3)) { self.coachOffset = 0 }
+      } catch {
+        return
+      }
     }
-    hintWork = work
-    DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: work)
+  }
+
+  func updateCoachLearning(primaryLearned: Bool, strongLearned: Bool) {
+    coachStage = ReviewCoachPolicy.stage(primaryLearned: primaryLearned, strongLearned: strongLearned)
+  }
+
+  func updateReduceMotion(_ reduceMotion: Bool) {
+    guard reduceMotion else { return }
+    coachTask?.cancel()
+    coachOffset = 0
+  }
+
+  func noteCoachInteraction() {
+    guard showHint || coachOffset != 0 else { return }
+    coachTask?.cancel()
+    coachOffset = 0
+    showHint = false
+  }
+
+  func endCoachSession() {
+    coachTask?.cancel()
+    coachOffset = 0
   }
 
   func photo(for key: String) -> Int { photoIndex[key] ?? 0 }
@@ -118,6 +170,7 @@ final class ShadeController: ObservableObject {
 
   func reviewDragChanged(_ value: DragGesture.Value, width: CGFloat) {
     guard !listOpen, !galleryOpen, !completionOpen else { return }
+    noteCoachInteraction()
     let dx = value.translation.width
     let dy = value.translation.height
 
@@ -153,6 +206,7 @@ final class ShadeController: ObservableObject {
       return
     }
 
+    onSwipeCompleted?(action)
     UIImpactFeedbackGenerator(style: action == .star || action == .avoid ? .heavy : .medium).impactOccurred()
     let direction: CGFloat = reviewRawOffset < 0 ? -1 : 1
     let animation = reduceMotion ? Animation.easeOut(duration: 0.14) : .timingCurve(0.2, 0.9, 0.24, 1, duration: 0.28)
@@ -185,7 +239,7 @@ final class ShadeController: ObservableObject {
   func openGallery(at index: Int = 0) {
     galleryIndex = max(index, 0)
     galleryOpen = true
-    showHint = false
+    noteCoachInteraction()
   }
 
   func closeGallery() { galleryOpen = false }
@@ -371,7 +425,7 @@ final class ShadeController: ObservableObject {
   func doAction(_ action: FeedbackAction, advance: Bool) {
     if let key = currentCarInfo?()?.key { reviewedKeys.insert(key) }
     persist?(action)
-    if showHint { showHint = false }
+    noteCoachInteraction()
     let id = (toast?.id ?? 0) + 1
     withAnimation(.spring(duration: 0.3)) { toast = ToastState(action: action, id: id) }
     if celebrate, action == .like || action == .star { burst += 1 }
@@ -400,7 +454,7 @@ final class ShadeController: ObservableObject {
     dThrow = .zero
     dDragging = false
     dossierBodyThrowing = false
-    showHint = false
+    noteCoachInteraction()
     withAnimation(.spring(duration: 0.3)) { dossierOpen = true }
   }
 
@@ -561,7 +615,7 @@ final class ShadeController: ObservableObject {
   // MARK: list
 
   func openList() {
-    showHint = false
+    noteCoachInteraction()
     withAnimation(.overlaySpring) {
       listOpen = true
       listPull = 0
@@ -629,6 +683,32 @@ enum ReviewSwipeDecision {
     let predictedPrimary = abs(predicted) >= primary && abs(translation) >= width * 0.18 && abs(velocity) >= 700
     if distance >= primary || predictedPrimary { return translation > 0 ? .like : .hide }
     return nil
+  }
+}
+
+enum ReviewCoachPolicy {
+  static func stage(primaryLearned: Bool, strongLearned: Bool) -> ReviewCoachStage {
+    if strongLearned { return .mastered }
+    if primaryLearned { return .primaryLearned }
+    return .new
+  }
+
+  static func shouldGhost(stage: ReviewCoachStage, reduceMotion: Bool, sessionInteracted: Bool) -> Bool {
+    stage == .new && !reduceMotion && !sessionInteracted
+  }
+
+  static func prompt(
+    for action: FeedbackAction,
+    reviewStage: ReviewSwipeStage,
+    coachStage: ReviewCoachStage
+  ) -> String? {
+    if reviewStage == .strong { return "Release to commit" }
+    guard reviewStage == .primary, coachStage != .mastered else { return nil }
+    switch action {
+    case .like: return "Keep going for Love it"
+    case .hide: return "Keep going for Never again"
+    case .star, .avoid: return nil
+    }
   }
 }
 

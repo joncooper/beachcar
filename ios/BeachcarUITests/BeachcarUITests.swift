@@ -56,6 +56,21 @@ final class BeachcarUITests: XCTestCase {
     XCTAssertTrue(text(containing: "Open live auction").exists)
   }
 
+  func testDirectionalSwipeCoachTeachesBothActionsThenYieldsToInteraction() throws {
+    launch(scenario: "active", coachStage: "new")
+    _ = shadeSurface()
+    let coach = identified("shade-swipe-coach")
+    XCTAssertTrue(coach.waitForExistence(timeout: 5))
+    XCTAssertTrue(coach.label.localizedCaseInsensitiveContains("left to pass"))
+    XCTAssertTrue(coach.label.localizedCaseInsensitiveContains("right to like"))
+    XCTAssertTrue(identified("shade-swipe-pass-cue").exists)
+    XCTAssertTrue(identified("shade-swipe-like-cue").exists)
+
+    app.swipeUp(velocity: .slow)
+    XCTAssertFalse(coach.waitForExistence(timeout: 1))
+    XCTAssertTrue(waitForFind(1, of: 3))
+  }
+
   func testVerticalScrollRevealsDeepDossierWithoutJudging() throws {
     launch(scenario: "active")
     _ = shadeSurface()
@@ -255,10 +270,11 @@ final class BeachcarUITests: XCTestCase {
     app.descendants(matching: .any).matching(identifier: identifier).firstMatch
   }
 
-  private func launch(scenario: String? = nil) {
+  private func launch(scenario: String? = nil, coachStage: String? = nil) {
     app = XCUIApplication()
     app.launchArguments = ["--ui-testing"]
     if let scenario { app.launchArguments += ["--ui-testing-scenario", scenario] }
+    if let coachStage { app.launchArguments += ["--coach-stage", coachStage] }
     app.launch()
   }
 }

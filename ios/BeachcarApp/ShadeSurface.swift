@@ -10,6 +10,8 @@ struct ShadeSurface: View {
 
   @StateObject private var controller = ShadeController()
   @AppStorage("shade.coachSeen.v1") private var coachSeen = false
+  @AppStorage("shade.swipeCoach.primaryLearned.v2") private var primarySwipeLearned = false
+  @AppStorage("shade.swipeCoach.strongLearned.v2") private var strongSwipeLearned = false
   @State private var undoDismissTask: Task<Void, Never>?
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -52,7 +54,11 @@ struct ShadeSurface: View {
     .onAppear { configure() }
     .onChange(of: cars.map(\.key)) { _, _ in syncCars() }
     .onChange(of: store.lastUndo?.listingKey) { _, listingKey in scheduleUndoDismiss(listingKey) }
-    .onDisappear { undoDismissTask?.cancel() }
+    .onChange(of: reduceMotion) { _, value in controller.updateReduceMotion(value) }
+    .onDisappear {
+      undoDismissTask?.cancel()
+      controller.endCoachSession()
+    }
   }
 
   // MARK: layers
@@ -154,26 +160,6 @@ struct ShadeSurface: View {
     }
   }
 
-  // MARK: coach mark
-
-  private func coachMark(_ geo: FeedGeometry) -> some View {
-    VStack(spacing: 7) {
-      HStack(spacing: 8) {
-        Circle().fill(BC.accent).frame(width: 7, height: 7)
-        Text("Pull down from the top to judge").font(.mono(10.5)).tracking(0.3).foregroundStyle(BC.white)
-      }
-      .padding(.horizontal, 13).padding(.vertical, 7)
-      .background(Color(hex: 0x080a0e).opacity(0.72), in: Capsule())
-      .overlay(Capsule().stroke(Color.white.opacity(0.14), lineWidth: 1))
-      .shadow(color: .black.opacity(0.6), radius: 12, y: 6)
-      BobbingHandle()
-    }
-    .padding(.top, geo.photoTop + 8)
-    .frame(maxHeight: .infinity, alignment: .top)
-    .allowsHitTesting(false)
-    .transition(.opacity)
-  }
-
   private func statusNotices(_ geo: FeedGeometry, belowChrome: Bool = true) -> some View {
     VStack {
       if let summary = statusSummary {
@@ -246,7 +232,23 @@ struct ShadeSurface: View {
       Task { await store.mark(action, listing: car, tokenProvider: tokenProvider) }
       coachSeen = true
     }
-    controller.showHint = !coachSeen
+    controller.onSwipeCompleted = { action in
+      primarySwipeLearned = true
+      if action == .star || action == .avoid { strongSwipeLearned = true }
+      controller.updateCoachLearning(
+        primaryLearned: primarySwipeLearned,
+        strongLearned: strongSwipeLearned
+      )
+    }
+
+    let debugStage = debugCoachStage
+    let learnedPrimary = debugStage.map { $0 != .new } ?? (primarySwipeLearned || coachSeen)
+    let learnedStrong = debugStage.map { $0 == .mastered } ?? strongSwipeLearned
+    controller.configureCoach(
+      primaryLearned: learnedPrimary,
+      strongLearned: learnedStrong,
+      reduceMotion: reduceMotion
+    )
 
     #if DEBUG
     // Debug-only hook to launch straight into an overlay for visual QA, e.g.
@@ -281,6 +283,22 @@ struct ShadeSurface: View {
   }
 
   private var geoPreviewWidth: CGFloat { 390 }
+
+  private var debugCoachStage: ReviewCoachStage? {
+    #if DEBUG
+    guard AppEnv.isUITesting else { return nil }
+    let args = ProcessInfo.processInfo.arguments
+    guard let index = args.firstIndex(of: "--coach-stage"), args.indices.contains(index + 1) else { return nil }
+    switch args[index + 1] {
+    case "new": return .new
+    case "primary": return .primaryLearned
+    case "mastered": return .mastered
+    default: return nil
+    }
+    #else
+    return nil
+    #endif
+  }
 
   private func scheduleUndoDismiss(_ listingKey: String?) {
     undoDismissTask?.cancel()
@@ -348,10 +366,12 @@ private struct ReviewChrome: View {
         .accessibilityIdentifier("shade-review-actions")
       }
 
-      if controller.showHint {
+      if controller.showHint, controller.coachStage != .mastered {
         HStack(spacing: 8) {
-          Image(systemName: "arrow.left.and.right")
-          Text("Swipe to judge · scroll to read")
+          Text("← PASS")
+          Text("·")
+          Text("LIKE →")
+          Text("· SCROLL TO READ")
         }
         .font(.mono(10, bold: true))
         .foregroundStyle(BC.accent)
@@ -360,6 +380,9 @@ private struct ReviewChrome: View {
         .background(BC.accent.opacity(0.1), in: Capsule())
         .overlay(Capsule().stroke(BC.accent.opacity(0.24), lineWidth: 1))
         .transition(.opacity.combined(with: .move(edge: .top)))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Swipe left to pass, right to like. Scroll to read.")
+        .accessibilityIdentifier("shade-swipe-coach")
       }
     }
     .padding(.horizontal, 14)
@@ -470,15 +493,5 @@ private struct ShadeEmptyView: View {
     }
     .padding(28)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-  }
-}
-
-private struct BobbingHandle: View {
-  @State private var down = false
-  var body: some View {
-    Capsule().fill(Color.white.opacity(0.5)).frame(width: 30, height: 4)
-      .offset(y: down ? 6 : 0)
-      .animation(AppEnv.isUITesting ? nil : .easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: down)
-      .onAppear { down = true }
   }
 }

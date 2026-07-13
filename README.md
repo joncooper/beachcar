@@ -102,7 +102,7 @@ Beachcar spans the product surface, agent runtime, data plane, authentication, o
 | **Identity + privacy** | Invite-only Clerk access, user-scoped reads and writes, hashed automation tokens, OAuth metadata, export, and deletion. |
 | **Operations** | Guarded D1 migrations, private recovery artifacts, staged container rollout, strict configuration checks, production smoke tests, and managed-path verification. |
 
-The current verification suite includes **151 Vitest tests** across the web/Worker surface and **25 native tests**: 18 end-to-end XCUITests plus seven gesture-model unit tests.
+The current verification suite includes **151 Vitest tests** across the web/Worker surface and **29 native tests**: 19 end-to-end XCUITests plus ten gesture-and-coaching model unit tests.
 
 ## A typical daily run
 

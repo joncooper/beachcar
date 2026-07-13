@@ -17,7 +17,7 @@ struct ShadeOverlay: View {
           if controller.reviewOffset > 0 { actionMark(action); Spacer() }
           else { Spacer(); actionMark(action) }
         }
-        .padding(.horizontal, 30)
+        .padding(.horizontal, 8)
       } else if controller.showHint {
         HStack {
           edgeCue(.hide)
@@ -25,32 +25,51 @@ struct ShadeOverlay: View {
           edgeCue(.like)
         }
         .padding(.horizontal, 8)
+        .offset(y: -170)
       }
     }
     .frame(width: geo.width)
     .allowsHitTesting(false)
+    .zIndex(controller.showHint ? 1 : 0)
   }
 
   private func actionMark(_ action: FeedbackAction) -> some View {
     VStack(spacing: 9) {
       Image(systemName: Icon.feedback(action))
-        .font(.system(size: 34, weight: .black))
+        .font(.system(size: 31, weight: .black))
       Text(label(action).uppercased())
-        .font(.archivo(18, .black))
-        .tracking(1.2)
-      Text(controller.reviewStage == .strong ? "release to commit" : "keep going for the stronger signal")
-        .font(.mono(10, bold: true))
-        .foregroundStyle(BC.white.opacity(0.66))
+        .font(.archivo(16, .black))
+        .tracking(0.9)
+      if let prompt = ReviewCoachPolicy.prompt(
+        for: action,
+        reviewStage: controller.reviewStage,
+        coachStage: controller.coachStage
+      ) {
+        Text(prompt.uppercased())
+          .font(.mono(8.5, bold: true))
+          .multilineTextAlignment(.center)
+          .foregroundStyle(BC.white.opacity(0.72))
+      }
     }
     .foregroundStyle(Icon.color(for: action))
-    .frame(width: 150)
+    .frame(width: 112)
   }
 
   private func edgeCue(_ action: FeedbackAction) -> some View {
-    Image(systemName: action == .hide ? "chevron.left" : "chevron.right")
-      .font(.system(size: 12, weight: .black))
-      .foregroundStyle(Icon.color(for: action).opacity(0.45))
-      .frame(width: 24, height: 72)
+    HStack(spacing: 3) {
+      if action == .hide { Image(systemName: "chevron.left") }
+      Text(action == .hide ? "PASS" : "LIKE")
+      if action == .like { Image(systemName: "chevron.right") }
+    }
+    .font(.mono(9, bold: true))
+    .foregroundStyle(Icon.color(for: action).opacity(controller.coachStage == .mastered ? 0.52 : 0.72))
+    .padding(.horizontal, 6)
+    .frame(minWidth: 54, minHeight: 34)
+    .background(Color.black.opacity(0.38), in: Capsule())
+    .overlay(Capsule().stroke(Icon.color(for: action).opacity(0.22), lineWidth: 1))
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel(action == .hide ? "Swipe left to pass" : "Swipe right to like")
+    .accessibilityIdentifier(action == .hide ? "shade-swipe-pass-cue" : "shade-swipe-like-cue")
   }
 
   private func label(_ action: FeedbackAction) -> String {

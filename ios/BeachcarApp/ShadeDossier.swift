@@ -33,10 +33,10 @@ struct ShadeReviewPage: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(BC.panel)
-    .clipShape(RoundedRectangle(cornerRadius: controller.reviewIntent == .horizontal ? 24 : 0, style: .continuous))
-    .shadow(color: controller.reviewIntent == .horizontal ? .black.opacity(0.55) : .clear, radius: 24, y: 10)
-    .rotationEffect(.degrees(reduceMotion ? 0 : Double(controller.reviewOffset / max(geo.width, 1)) * 2.2))
-    .offset(x: controller.reviewOffset)
+    .clipShape(RoundedRectangle(cornerRadius: isLifted ? 24 : 0, style: .continuous))
+    .shadow(color: isLifted ? .black.opacity(0.55) : .clear, radius: 24, y: 10)
+    .rotationEffect(.degrees(reduceMotion ? 0 : Double(displayOffset / max(geo.width, 1)) * 2.2))
+    .offset(x: displayOffset)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("shade-review-page")
     .accessibilityAction(named: "Pass") { controller.doAction(.hide, advance: true) }
@@ -44,6 +44,9 @@ struct ShadeReviewPage: View {
     .accessibilityAction(named: "Like") { controller.doAction(.like, advance: true) }
     .accessibilityAction(named: "Love it") { controller.doAction(.star, advance: true) }
   }
+
+  private var displayOffset: CGFloat { controller.reviewOffset + controller.coachOffset }
+  private var isLifted: Bool { controller.reviewIntent == .horizontal || controller.coachOffset != 0 }
 
   private var primaryAuctionLink: some View {
     Group {

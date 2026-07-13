@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS billing_entitlements (
   user_id TEXT NOT NULL,
   feature TEXT NOT NULL,
   active INTEGER NOT NULL DEFAULT 0 CHECK (active IN (0, 1)),
-  source TEXT NOT NULL DEFAULT 'none' CHECK (source IN ('none', 'clerk_session', 'clerk_webhook')),
+  source TEXT NOT NULL DEFAULT 'none' CHECK (source IN ('none', 'clerk_session', 'clerk_webhook', 'pilot_allowlist')),
   plan_slug TEXT,
   expires_at TEXT,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,

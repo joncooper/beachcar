@@ -139,8 +139,17 @@ if (report.workerName) {
     const deployments = await runWrangler(["deployments", "list", "--json", "--name", report.workerName]);
     report.resources.workerDeployments = deployments.ok ? parseJson(deployments.stdout, []) : { error: summarizeFailure(deployments) };
     report.resources.workerSecrets = secretNames(parseJson(secrets.stdout, []));
-    const requiredSecrets = ["PUBLISH_TOKEN", "CLERK_SECRET_KEY", "CLERK_JWT_ISSUER", "CLERK_WEBHOOK_SIGNING_SECRET"];
-    const recommendedSecrets = ["BEACHCAR_AI_GATEWAY_TOKEN"];
+    const requiredSecrets = ["PUBLISH_TOKEN", "CLERK_SECRET_KEY", "CLERK_JWT_ISSUER"];
+    const recommendedSecrets = [
+      {
+        name: "BEACHCAR_AI_GATEWAY_TOKEN",
+        remediation: "Set BEACHCAR_AI_GATEWAY_TOKEN before granting Managed Research pilot access.",
+      },
+      {
+        name: "BEACHCAR_MANAGED_PILOT_EMAILS",
+        remediation: "Optional: set BEACHCAR_MANAGED_PILOT_EMAILS before inviting non-owner pilot users.",
+      },
+    ];
     addCheck("Remote Worker secrets are readable", true, `${report.resources.workerSecrets.length} secret name(s) returned.`);
     for (const name of requiredSecrets) {
       const isRemote = report.resources.workerSecrets.includes(name);
@@ -152,12 +161,12 @@ if (report.workerName) {
         `Keep the existing remote ${name} secret or supply it locally for the atomic deploy.`,
       );
     }
-    for (const name of recommendedSecrets) {
+    for (const { name, remediation } of recommendedSecrets) {
       addCheck(
         `Recommended remote secret ${name} is set`,
         report.resources.workerSecrets.includes(name),
         name,
-        `Set ${name} before enabling Clerk's managed_research feature.`,
+        remediation,
         "warn",
       );
     }

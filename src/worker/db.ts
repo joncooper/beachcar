@@ -460,7 +460,11 @@ export interface SourceIngestionRun {
   finishedAt: string;
 }
 
-export async function ensureUser(db: D1Database, authUser: AuthUser, input: { isOwner?: boolean } = {}): Promise<UserPayload> {
+export async function ensureUser(
+  db: D1Database,
+  authUser: AuthUser,
+  input: { isOwner?: boolean; managedResearchPilot?: boolean } = {},
+): Promise<UserPayload> {
   const now = new Date().toISOString();
   const insertStatus = input.isOwner ? "active" : "invited";
   await db
@@ -480,12 +484,18 @@ export async function ensureUser(db: D1Database, authUser: AuthUser, input: { is
     .bind(authUser.id, authUser.provider, authUser.subject, authUser.email, insertStatus, now, now, input.isOwner ? 1 : 0)
     .run();
 
-  if (authUser.provider === "clerk" || (authUser.provider === "local" && authUser.features.includes(managedResearchFeature))) {
+  if (
+    authUser.provider === "clerk" ||
+    input.managedResearchPilot ||
+    (authUser.provider === "local" && authUser.features.includes(managedResearchFeature))
+  ) {
+    const clerkEntitled = authUser.features.includes(managedResearchFeature);
+    const pilotEntitled = Boolean(input.managedResearchPilot) && !clerkEntitled;
     await upsertBillingEntitlement(db, authUser.id, {
       feature: managedResearchFeature,
-      active: authUser.features.includes(managedResearchFeature),
-      source: "clerk_session",
-      planSlug: authUser.plans[0] || null,
+      active: clerkEntitled || pilotEntitled,
+      source: pilotEntitled ? "pilot_allowlist" : "clerk_session",
+      planSlug: pilotEntitled ? "managed-research-pilot" : authUser.plans[0] || null,
     });
   }
 

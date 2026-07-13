@@ -2,7 +2,9 @@
 
 ## Recommendation
 
-Launch one paid plan: **Managed Research at $29/month**, with a **7-day free trial**, monthly cancellation, and no annual plan at first.
+The commercial recommendation remains **Managed Research at $29/month**, with a **7-day free trial**, monthly cancellation, and no annual plan at first. Do not launch checkout yet: first run a small, free, invite-only pilot and measure recommendation trust, retention, and actual per-user cost.
+
+The pilot uses `BEACHCAR_MANAGED_PILOT_EMAILS`, collects no payment information, and cannot turn into a charge automatically. Keep `VITE_MANAGED_RESEARCH_CHECKOUT_ENABLED=false`; Clerk Billing, Stripe, the paid plan, and the billing webhook are launch-later configuration.
 
 Keep **Agent-connected curation included**. A user who brings Codex, Claude, or another MCP client pays Beachcar nothing for inference because their agent owns the model and tool costs. Managed Research is the convenience tier: Beachcar pays for the hosted Agent, Workflow, source monitoring, browser runner, AI Gateway inference, and automatic publication.
 
@@ -45,9 +47,9 @@ Use **$5 per active subscriber-month** as the launch operating ceiling for varia
 
 These are planning scenarios, not promises. Replace them with cohort measurements after launch.
 
-## Plan definition
+## Deferred paid-plan definition
 
-Create one public Clerk B2C plan:
+When the pilot evidence supports charging, create one public Clerk B2C plan:
 
 | Setting | Value |
 | --- | --- |
@@ -71,9 +73,9 @@ An annual plan is unattractive at launch because car shopping is episodic. First
 - Record tokens and cost per run, then review median, p90, and maximum cost by cohort.
 - Add a product-visible “usage unusually high” state before silently degrading quality.
 
-## Launch questions to measure
+## Pilot and launch questions to measure
 
-After the first 10–20 subscribers, review:
+After the first 5–10 pilot users, review recommendation quality, save/love rate, repeat-session behavior, and median/p90 cost. After the first 10–20 subscribers, review:
 
 1. Trial-to-paid conversion after users receive at least three shortlists.
 2. Recommendation save/love rate versus the free agent-connected path.

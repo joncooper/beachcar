@@ -7,6 +7,7 @@ const distDir = path.join(root, "dist");
 const assetsDir = path.join(distDir, "assets");
 const buildEnv = await loadEnv();
 const publishableKey = buildEnv.VITE_CLERK_PUBLISHABLE_KEY;
+const managedResearchCheckoutEnabled = buildEnv.VITE_MANAGED_RESEARCH_CHECKOUT_ENABLED === "true" ? "true" : "false";
 const appName = buildEnv.VITE_APP_NAME || "Beach Car Watch";
 const appShortName = buildEnv.VITE_APP_SHORT_NAME || "Beachcar";
 
@@ -96,6 +97,7 @@ async function transpileBrowserFile(inputPath, outputPath) {
 
   const output = rewriteBrowserImports(transpiled.outputText)
     .replaceAll("import.meta.env.VITE_CLERK_PUBLISHABLE_KEY", JSON.stringify(publishableKey))
+    .replaceAll("import.meta.env.VITE_MANAGED_RESEARCH_CHECKOUT_ENABLED", JSON.stringify(managedResearchCheckoutEnabled))
     .replaceAll("import.meta.env.VITE_APP_NAME", JSON.stringify(appName))
     .replaceAll("import.meta.env.VITE_APP_SHORT_NAME", JSON.stringify(appShortName))
     .replaceAll("import.meta.env.DEV", "false")

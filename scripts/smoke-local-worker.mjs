@@ -29,6 +29,8 @@ assert(["deterministic", "codex"].includes(runtimeCapability.runnerMode), "Expec
 const me = await requestJson("/api/me");
 assert(me.email === smokeEmail, `Expected /api/me email ${smokeEmail}; received ${me.email || "(missing)"}`);
 assert(me.status === "active", `Expected ${smokeEmail} to be active. Set BOOTSTRAP_OWNER_EMAILS=${smokeEmail} or ALLOWED_EMAIL=${smokeEmail} for local smoke tests.`);
+assert(me.managedResearchEntitlement?.active === true, "Expected the bootstrap owner to receive Managed Research pilot access.");
+assert(me.managedResearchEntitlement?.source === "pilot_allowlist", "Expected bootstrap-owner access to use the pilot allowlist entitlement source.");
 
 const profilePayload = {
   displayName: "Local Smoke Owner",
@@ -76,14 +78,8 @@ const scheduleStatus = await requestJson("/api/agent-schedule");
 assertUnscheduled(scheduleStatus, "agent-connected profile-save schedule status", smokeEmail);
 const blockedScheduleSync = await rawRequest("/api/agent-schedule/sync", { method: "POST", body: {} });
 assert(blockedScheduleSync.status === 403, `Expected agent-connected schedule sync to require Managed Research; received HTTP ${blockedScheduleSync.status}.`);
-const blockedManagedMode = await rawRequest("/api/research-settings", { method: "PUT", body: { mode: "managed" } });
-assert(blockedManagedMode.status === 403, `Expected managed mode to require a subscription; received HTTP ${blockedManagedMode.status}.`);
-
-locallyManagedEmails.add(smokeEmail);
-const subscribed = await requestJson("/api/me");
-assert(subscribed.managedResearchEntitlement?.active === true, "Expected the local subscribed-user simulation to activate Managed Research.");
 const managedResearch = await requestJson("/api/research-settings", { method: "PUT", body: { mode: "managed" } });
-assert(managedResearch.researchSettings?.mode === "managed", "Expected a subscribed user to opt into Managed Research.");
+assert(managedResearch.researchSettings?.mode === "managed", "Expected a pilot-enabled owner to opt into Managed Research.");
 const managedScheduleStatus = await requestJson("/api/agent-schedule");
 assertTimezoneAwareSchedule(managedScheduleStatus, "managed profile-save schedule status", smokeEmail);
 const resyncedScheduleStatus = await requestJson("/api/agent-schedule/sync", { method: "POST", body: {} });
@@ -440,6 +436,12 @@ async function smokeAccountExportAndDeletion() {
       ],
     },
   });
+  const blockedManagedMode = await rawRequest("/api/research-settings", {
+    email: friendEmail,
+    method: "PUT",
+    body: { mode: "managed" },
+  });
+  assert(blockedManagedMode.status === 403, `Expected a non-pilot user to be denied Managed Research; received HTTP ${blockedManagedMode.status}.`);
   locallyManagedEmails.add(friendEmail);
   const subscribedFriend = await requestJson("/api/me", { email: friendEmail });
   assert(subscribedFriend.managedResearchEntitlement?.active === true, "Expected the temporary subscribed friend to receive Managed Research access.");

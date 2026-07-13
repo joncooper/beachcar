@@ -1,7 +1,7 @@
 import { getAgentByName } from "agents";
 import { getContainer } from "@cloudflare/containers";
 import type { AgentRunRecord, ImportPayload, UserProfile } from "../shared/types";
-import { AuthError, isBootstrapOwnerId, primaryBootstrapOwnerId, requirePublisher, requireUser } from "./auth";
+import { AuthError, isBootstrapOwnerId, isManagedResearchPilotEmail, primaryBootstrapOwnerId, requirePublisher, requireUser } from "./auth";
 import {
   acceptInvite,
   createAutomationToken,
@@ -152,7 +152,11 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url:
   }
 
   const authUser = await requireUser(request, env);
-  const userPayload = await ensureUser(env.DB, authUser, { isOwner: isBootstrapOwner(authUser, env) });
+  const isOwner = isBootstrapOwner(authUser, env);
+  const userPayload = await ensureUser(env.DB, authUser, {
+    isOwner,
+    managedResearchPilot: isOwner || isManagedResearchPilotEmail(authUser.email, env),
+  });
   const scope = scopeForUser(authUser, env);
 
   if (request.method === "GET" && url.pathname === "/api/me") {

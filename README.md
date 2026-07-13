@@ -107,7 +107,7 @@ Beachcar spans the product surface, agent runtime, data plane, authentication, o
 | **Web app** | Mobile-first React PWA for onboarding, review, preferences, run history, status, account controls, administration, and aggregated beta calibration analysis. |
 | **Agent runtime** | Cloudflare Agents + Durable Objects for per-user state, Workflows for durable orchestration, and Containers for browser/Codex-backed jobs. |
 | **Data + media** | D1 for user-scoped product and run state; R2 plus Cloudflare Images for cached `thumb`, `deck`, and `full` photo variants. |
-| **Identity + privacy** | Invite-only Clerk access, feature-based subscription entitlements, verified billing webhooks, user-scoped reads and writes, hashed automation tokens, OAuth metadata, export and deletion, plus an explicit boundary between auction-taste memory and short-lived product diagnostics. |
+| **Identity + privacy** | Invite-only Clerk access, pilot and future subscription entitlements, verified billing-webhook support, user-scoped reads and writes, hashed automation tokens, OAuth metadata, export and deletion, plus an explicit boundary between auction-taste memory and short-lived product diagnostics. |
 | **Operations** | Guarded D1 migrations, private recovery artifacts, staged container rollout, strict configuration checks, production smoke tests, and managed-path verification. |
 
 The current verification suite includes **163 Vitest tests** across the web/Worker surface and **44 native tests**: 24 end-to-end XCUITests plus 20 gesture, coaching, tuning, privacy, persistence, and gallery-policy unit tests.
@@ -244,7 +244,7 @@ docs/                Architecture and operations guides
 
 ## Project status
 
-Beachcar is running as a private friend beta: the Worker/PWA is deployed and the native app is distributed through internal TestFlight. Agent-connected curation through MCP is the product default. The managed subscription boundary is implemented in code; production launch still requires creating the Clerk plan/feature and installing the webhook signing secret. The default niche is beach cars and runabouts, but the profile, feedback, orchestration, and publication model are deliberately reusable for other high-consideration searches.
+Beachcar is running as a private friend beta: the Worker/PWA is deployed and the native app is distributed through internal TestFlight. Agent-connected curation through MCP is the product default. Managed Research is entering a free, allowlisted pilot with checkout intentionally disabled; the future subscription boundary is implemented but will not be activated until real-user quality and cost evidence justify it. The default niche is beach cars and runabouts, but the profile, feedback, orchestration, and publication model are deliberately reusable for other high-consideration searches.
 
 ## Responsible use
 

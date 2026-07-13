@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   bootstrapOwnerEmails,
   isBootstrapOwnerId,
+  isManagedResearchPilotEmail,
+  managedResearchPilotEmails,
   normalizeEmail,
   primaryBootstrapOwnerId,
   requireUser,
@@ -63,6 +65,14 @@ describe("auth user identity", () => {
 
     expect(bootstrapOwnerEmails(env)).toEqual(["legacy@example.com"]);
     expect(primaryBootstrapOwnerId(env)).toBe("email:legacy@example.com");
+  });
+
+  it("normalizes and limits managed-research pilot access to explicit emails", () => {
+    const env = { BEACHCAR_MANAGED_PILOT_EMAILS: " Friend@Example.com, pilot@example.com friend@example.com " } as Env;
+
+    expect(managedResearchPilotEmails(env)).toEqual(["friend@example.com", "pilot@example.com"]);
+    expect(isManagedResearchPilotEmail("FRIEND@example.com", env)).toBe(true);
+    expect(isManagedResearchPilotEmail("stranger@example.com", env)).toBe(false);
   });
 
   it("does not use local test-email fallback on production hostnames", async () => {

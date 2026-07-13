@@ -125,6 +125,22 @@ export function bootstrapOwnerEmails(env: Env): string[] {
   );
 }
 
+export function managedResearchPilotEmails(env: Env): string[] {
+  return Array.from(
+    new Set(
+      (env.BEACHCAR_MANAGED_PILOT_EMAILS || "")
+        .split(/[,\s]+/)
+        .map(normalizeEmail)
+        .filter(Boolean),
+    ),
+  );
+}
+
+export function isManagedResearchPilotEmail(email: string, env: Env): boolean {
+  const normalized = normalizeEmail(email);
+  return managedResearchPilotEmails(env).includes(normalized);
+}
+
 export function primaryBootstrapOwnerEmail(env: Env): string {
   return bootstrapOwnerEmails(env)[0] || "";
 }

@@ -79,6 +79,7 @@ import type {
 type ViewFilter = "all" | Lane | "starred" | "ending";
 type ViewMode = "deck" | "list";
 const managedResearchPrice = 29;
+const managedResearchCheckoutEnabled = import.meta.env.VITE_MANAGED_RESEARCH_CHECKOUT_ENABLED === "true";
 type SourceSettingsInput = Array<{ source: string; enabled: boolean; settings?: Record<string, unknown> }>;
 type NotificationChannel = "email" | "none";
 type NotificationSettingsState = {
@@ -2827,6 +2828,13 @@ function ResearchServiceFields(props: {
   setMode: (mode: ResearchMode) => void;
 }) {
   const isExternal = props.mode === "external_agent";
+  const managedAccessLabel = props.managedResearchEntitled
+    ? managedResearchCheckoutEnabled
+      ? "Your plan"
+      : "Pilot access"
+    : managedResearchCheckoutEnabled
+      ? `$${managedResearchPrice}/month`
+      : "Invite-only pilot";
   return (
     <section className="research-service setup-span">
       <div className="setup-section-title">
@@ -2873,15 +2881,15 @@ function ResearchServiceFields(props: {
             </span>
             <small>Beachcar runs the daily research workflow for you with hosted AI, source monitoring, cost controls, and automatic publishing.</small>
           </span>
-          <span className="research-mode-price">
-            {props.managedResearchEntitled ? "Your plan" : `$${managedResearchPrice}/month`}
-          </span>
+          <span className="research-mode-price">{managedAccessLabel}</span>
         </button>
       </div>
       <p className="managed-service-note">
         {isExternal
           ? "Beachcar never charges for agent-connected curation. Create an OAuth connection or one-time token below, then point your agent at the MCP endpoint."
-          : "Managed Research uses Beachcar's AI Gateway budget. Cancel any time while keeping your profile, feedback, and saved finds."}
+          : managedResearchCheckoutEnabled
+            ? "Managed Research uses Beachcar's AI Gateway budget. Cancel any time while keeping your profile, feedback, and saved finds."
+            : "Managed Research is free during the private pilot. Access is limited so we can learn from real usage and keep a close eye on quality and cost."}
       </p>
     </section>
   );
@@ -3926,10 +3934,10 @@ function DossierDetail(props: { dossier?: AuctionListing["dossier"] }) {
 
 function ClerkPricingSheet(props: { clerk: BrowserClerk | null; onClose: () => void }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const canMount = Boolean(props.clerk?.mountPricingTable);
+  const canMount = managedResearchCheckoutEnabled && Boolean(props.clerk?.mountPricingTable);
 
   useEffect(() => {
-    if (!props.clerk?.mountPricingTable || !ref.current) return;
+    if (!managedResearchCheckoutEnabled || !props.clerk?.mountPricingTable || !ref.current) return;
     const node = ref.current;
     props.clerk.mountPricingTable(node, {
       appearance: {
@@ -3949,27 +3957,36 @@ function ClerkPricingSheet(props: { clerk: BrowserClerk | null; onClose: () => v
         <div className="sheet-grabber" />
         <div className="sheet-title">
           <div>
-            <p className="eyebrow">Optional managed service</p>
-            <strong>Let Beachcar run the research.</strong>
+            <p className="eyebrow">{managedResearchCheckoutEnabled ? "Optional managed service" : "Private pilot"}</p>
+            <strong>{managedResearchCheckoutEnabled ? "Let Beachcar run the research." : "Help shape Managed Research."}</strong>
           </div>
           <button type="button" onClick={props.onClose}>
             Done
           </button>
         </div>
         <p className="setup-muted">
-          Managed Research is ${managedResearchPrice}/month. Beachcar runs the hosted agent workflow, monitors sources, applies your feedback, and
-          publishes a fresh private shortlist. Your own agent remains free.
+          {managedResearchCheckoutEnabled
+            ? `Managed Research is $${managedResearchPrice}/month. Beachcar runs the hosted agent workflow, monitors sources, applies your feedback, and publishes a fresh private shortlist. Your own agent remains free.`
+            : "Managed Research is currently a small, free pilot. Beachcar runs the hosted agent workflow, monitors sources, applies your feedback, and publishes a fresh private shortlist while we refine the experience with real users."}
         </p>
         {canMount ? (
           <div className="clerk-pricing-table" ref={ref} />
         ) : (
           <div className="pricing-unavailable">
             <Sparkles size={22} aria-hidden="true" />
-            <strong>Checkout is not available in this environment yet.</strong>
-            <small>The free agent-connected path is fully available. Billing appears here once Clerk Billing is enabled.</small>
+            <strong>{managedResearchCheckoutEnabled ? "Checkout is not available in this environment yet." : "Pilot access is granted by invitation."}</strong>
+            <small>
+              {managedResearchCheckoutEnabled
+                ? "The free agent-connected path is fully available. Billing appears here once Clerk Billing is enabled."
+                : "There is no checkout and no payment information is collected. Your own agent remains available to everyone."}
+            </small>
           </div>
         )}
-        <p className="pricing-footnote">Cancel any time. Your taste profile, feedback, and saved listings stay with you.</p>
+        <p className="pricing-footnote">
+          {managedResearchCheckoutEnabled
+            ? "Cancel any time. Your taste profile, feedback, and saved listings stay with you."
+            : "Pilot members will get clear notice before any future paid offering; access will never turn into a charge automatically."}
+        </p>
       </section>
     </div>
   );

@@ -186,11 +186,13 @@ describe("Cloudflare rollout secret and verifier handling", () => {
       CLERK_SECRET_KEY: "sk_test_local-fixture",
       CLERK_JWT_ISSUER: "https://fixture.clerk.accounts.dev",
       CLERK_WEBHOOK_SIGNING_SECRET: "whsec_local-fixture",
+      BEACHCAR_MANAGED_PILOT_EMAILS: "friend@beachcar.test,pilot@beachcar.test",
       BEACHCAR_AI_GATEWAY_TOKEN: "<your-gateway-token>",
       CLOUDFLARE_API_TOKEN: "wrangler-auth-fixture",
     });
 
     expect(Object.keys(secrets).sort()).toEqual([
+      "BEACHCAR_MANAGED_PILOT_EMAILS",
       "CLERK_JWT_ISSUER",
       "CLERK_SECRET_KEY",
       "CLERK_WEBHOOK_SIGNING_SECRET",
@@ -206,7 +208,6 @@ describe("Cloudflare rollout secret and verifier handling", () => {
     ).toEqual([]);
     expect(missingRequiredWorkerSecrets(["CLERK_SECRET_KEY"], ["PUBLISH_TOKEN"])).toEqual([
       "CLERK_JWT_ISSUER",
-      "CLERK_WEBHOOK_SIGNING_SECRET",
     ]);
   });
 

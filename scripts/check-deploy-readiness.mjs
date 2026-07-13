@@ -80,7 +80,11 @@ check("Runner package includes Codex SDK", !!runnerPackage?.dependencies?.["@ope
 checkSecretHint("PUBLISH_TOKEN", "Needed for admin import, invite admin console, and local Worker smoke.");
 checkSecretHint("CLERK_SECRET_KEY", "Needed for production Clerk token verification.");
 checkSecretHint("CLERK_JWT_ISSUER", "Needed for production Clerk token verification.");
-checkSecretHint("CLERK_WEBHOOK_SIGNING_SECRET", "Needed to persist managed-research entitlement changes for background schedules.");
+if (stringEnv("VITE_MANAGED_RESEARCH_CHECKOUT_ENABLED").toLowerCase() === "true") {
+  checkSecretHint("CLERK_WEBHOOK_SIGNING_SECRET", "Needed to persist paid Managed Research entitlement changes for background schedules.");
+} else if (!hasEnv("CLERK_WEBHOOK_SIGNING_SECRET")) {
+  warn("Clerk billing webhook is not configured", "Expected while the private pilot keeps production checkout disabled.");
+}
 
 const hasGatewayToken = hasEnv("BEACHCAR_AI_GATEWAY_TOKEN");
 const hasGatewayTarget = hasEnv("BEACHCAR_AI_GATEWAY_BASE_URL") || (hasEnv("CLOUDFLARE_ACCOUNT_ID") && hasEnv("BEACHCAR_AI_GATEWAY_ID"));

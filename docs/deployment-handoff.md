@@ -1,6 +1,6 @@
 # Beachcar Deployment Handoff
 
-This branch is ready for a deliberate agent-connected subscriptions rollout after the production account passes the strict read-only gate and remote D1 state is confirmed.
+This branch is ready for a deliberate agent-connected private-pilot rollout after the production account passes the strict read-only gate and remote D1 state is confirmed. Production checkout remains disabled.
 
 ## Production Target
 
@@ -44,7 +44,12 @@ The following are required Worker secret names but their local values may remain
 - `PUBLISH_TOKEN`
 - `CLERK_SECRET_KEY`
 - `CLERK_JWT_ISSUER`
-- `CLERK_WEBHOOK_SIGNING_SECRET`
+
+Private-pilot controls:
+
+- Keep `VITE_MANAGED_RESEARCH_CHECKOUT_ENABLED=false`.
+- Optionally set `BEACHCAR_MANAGED_PILOT_EMAILS` to approved non-owner tester emails. Bootstrap owners already receive access.
+- Leave Clerk Billing, production Stripe, and `CLERK_WEBHOOK_SIGNING_SECRET` unconfigured until the paid launch is approved.
 
 Supply a local value only when creating or rotating that secret. Supplied secret values are included atomically in the one Worker deployment through `wrangler deploy --secrets-file`; omitted secrets are preserved. The rollout does not run `wrangler secret bulk` after deployment.
 
@@ -54,7 +59,7 @@ Optional verifier credentials:
 - `BEACHCAR_MCP_TOKEN`
 - `PUBLISH_TOKEN`, when it is available locally for the admin check
 
-Required before enabling Clerk's paid `managed_research` feature (not required for free agent-connected MCP curation):
+Required before granting private-pilot Managed Research access (not required for free agent-connected MCP curation):
 
 - `BEACHCAR_AI_GATEWAY_TOKEN`
 - `BEACHCAR_AI_GATEWAY_BASE_URL`, or `CLOUDFLARE_ACCOUNT_ID` plus `BEACHCAR_AI_GATEWAY_ID`

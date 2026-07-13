@@ -305,7 +305,7 @@ export interface UserResearchSettings {
 export interface BillingEntitlement {
   feature: "managed_research";
   active: boolean;
-  source: "none" | "clerk_session" | "clerk_webhook";
+  source: "none" | "clerk_session" | "clerk_webhook" | "pilot_allowlist";
   planSlug?: string | null;
   expiresAt?: string | null;
   updatedAt?: string | null;

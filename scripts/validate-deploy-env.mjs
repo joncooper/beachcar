@@ -21,11 +21,22 @@ check(
 );
 checkWorkerSecret("CLERK_SECRET_KEY", () => /^sk_(test|live)_/.test(value("CLERK_SECRET_KEY")), "Expected a Clerk key beginning with sk_test_ or sk_live_.");
 checkWorkerSecret("CLERK_JWT_ISSUER", () => isHttpsUrl(value("CLERK_JWT_ISSUER")), "Use the Clerk issuer URL, usually https://<instance>.clerk.accounts.dev.");
-checkWorkerSecret(
-  "CLERK_WEBHOOK_SIGNING_SECRET",
-  () => /^whsec_/.test(value("CLERK_WEBHOOK_SIGNING_SECRET")),
-  "Expected the Clerk billing webhook signing secret beginning with whsec_.",
-);
+const checkoutEnabled = value("VITE_MANAGED_RESEARCH_CHECKOUT_ENABLED").toLowerCase() === "true";
+if (checkoutEnabled) {
+  checkWorkerSecret(
+    "CLERK_WEBHOOK_SIGNING_SECRET",
+    () => /^whsec_/.test(value("CLERK_WEBHOOK_SIGNING_SECRET")),
+    "Expected the Clerk billing webhook signing secret beginning with whsec_.",
+  );
+} else if (hasRealValue("CLERK_WEBHOOK_SIGNING_SECRET")) {
+  check(
+    "CLERK_WEBHOOK_SIGNING_SECRET has a valid shape",
+    /^whsec_/.test(value("CLERK_WEBHOOK_SIGNING_SECRET")),
+    "Expected a Clerk webhook signing secret beginning with whsec_.",
+  );
+} else {
+  warn("Clerk billing webhook is intentionally not configured", "No action is needed while production checkout remains disabled.");
+}
 
 const gatewayToken = hasRealValue("BEACHCAR_AI_GATEWAY_TOKEN");
 const gatewayTarget = hasRealValue("BEACHCAR_AI_GATEWAY_BASE_URL") || (hasRealValue("CLOUDFLARE_ACCOUNT_ID") && hasRealValue("BEACHCAR_AI_GATEWAY_ID"));

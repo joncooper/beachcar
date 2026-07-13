@@ -80,9 +80,9 @@ function scorerConfigFromEnv(env: Env): ScorerConfig | null {
     endpoint,
     authHeaderName: endpoint.includes("gateway.ai.cloudflare.com") ? "cf-aig-authorization" : "Authorization",
     token,
-    model: trimToNull(env.BEACHCAR_AI_GATEWAY_MODEL) || "openai/gpt-4.1",
+    model: trimToNull(env.BEACHCAR_AI_GATEWAY_MODEL) || "openai/gpt-4.1-mini",
     gatewayId: trimToNull(env.BEACHCAR_AI_GATEWAY_ID) || null,
-    microsPerThousandTokens: positiveNumber(env.BEACHCAR_AI_ESTIMATED_MICROS_PER_1K_TOKENS, 2000),
+    microsPerThousandTokens: positiveNumber(env.BEACHCAR_AI_ESTIMATED_MICROS_PER_1K_TOKENS, 600),
   };
 }
 

@@ -531,8 +531,8 @@ bun run ios:testflight</code></pre>
           <li>Set Beachcar deploy env values in ignored <code>.deploy.env</code> and/or Worker secrets:
             <pre><code>BEACHCAR_AI_GATEWAY_TOKEN=...
 BEACHCAR_AI_GATEWAY_BASE_URL=https://gateway.ai.cloudflare.com/v1/&lt;account_id&gt;/&lt;gateway_id&gt;/openai
-BEACHCAR_AI_GATEWAY_MODEL=openai/gpt-4.1
-BEACHCAR_AI_ESTIMATED_MICROS_PER_1K_TOKENS=2000</code></pre>
+BEACHCAR_AI_GATEWAY_MODEL=openai/gpt-4.1-mini
+BEACHCAR_AI_ESTIMATED_MICROS_PER_1K_TOKENS=600</code></pre>
           </li>
           <li>For OpenRouter through Gateway, use the OpenRouter Gateway v1 endpoint and a model id supported by OpenRouter:
             <pre><code>BEACHCAR_AI_GATEWAY_BASE_URL=https://gateway.ai.cloudflare.com/v1/&lt;account_id&gt;/&lt;gateway_id&gt;/openrouter/v1

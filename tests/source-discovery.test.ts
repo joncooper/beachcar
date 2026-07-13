@@ -754,7 +754,7 @@ describe("source discovery", () => {
             return {
               status: "ok",
               provider: "cloudflare-ai-gateway",
-              model: "openai/gpt-4.1",
+              model: "openai/gpt-4.1-mini",
               gatewayId: "default",
               gatewayKeyRef: "friend-openai",
               requestId: "ai-gateway-score-agent-run-ai-test",

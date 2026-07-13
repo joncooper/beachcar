@@ -24,15 +24,17 @@ Do not launch at `$5–10`. That price compares Beachcar to saved searches and l
 
 ## Delivery-cost model
 
-Beachcar currently defaults managed scoring to GPT-4.1. OpenAI lists GPT-4.1 at **$2 per million input tokens** and **$8 per million output tokens**: [GPT-4.1 model pricing](https://developers.openai.com/api/docs/models/gpt-4.1). Cloudflare AI Gateway Unified Billing adds a **5% fee to paid model usage**: [AI Gateway Unified Billing](https://developers.cloudflare.com/ai-gateway/features/unified-billing/).
+Beachcar currently defaults managed scoring to GPT-4.1 mini through Cloudflare Unified Billing. OpenAI lists GPT-4.1 mini at **$0.40 per million input tokens** and **$1.60 per million output tokens**: [GPT-4.1 mini model pricing](https://developers.openai.com/api/docs/models/gpt-4.1-mini). Cloudflare AI Gateway Unified Billing adds a **5% fee to purchased credits**: [AI Gateway Unified Billing](https://developers.cloudflare.com/ai-gateway/features/unified-billing/).
+
+OpenRouter can also sit behind AI Gateway, but that route still requires an OpenRouter or original-provider token; Cloudflare Unified Billing does not fund it. Keep OpenRouter as a future BYOK option rather than adding another credential to the owner-funded pilot: [AI Gateway OpenRouter provider](https://developers.cloudflare.com/ai-gateway/usage/providers/openrouter/).
 
 An illustrative scoring run with 5,000 input tokens and 600 output tokens costs:
 
 ```text
-(5,000 × $2 / 1,000,000) + (600 × $8 / 1,000,000) = $0.0148
-30 daily runs = $0.444/month
-AI Gateway 5% fee = $0.022/month
-Illustrative monthly scoring cost = $0.466/user
+(5,000 × $0.40 / 1,000,000) + (600 × $1.60 / 1,000,000) = $0.00296
+30 daily runs = $0.0888/month
+AI Gateway 5% fee = $0.0044/month
+Illustrative monthly scoring cost = $0.0932/user
 ```
 
 That is not the whole delivery cost. Source access, retries, image work, container time, larger prompts, and occasional open-ended browser research create the real variance. Cloudflare's Workers paid plan has an account-level base charge and included usage rather than a new base charge for every user: [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/). Containers are metered separately and should be watched as the browser path grows: [Containers pricing](https://developers.cloudflare.com/containers/pricing/).
@@ -41,7 +43,7 @@ Use **$5 per active subscriber-month** as the launch operating ceiling for varia
 
 | Scenario | Model + Gateway | Browser, storage, edge allocation | Total variable cost | Gross margin at $29 |
 | --- | ---: | ---: | ---: | ---: |
-| Normal daily scoring | $0.47 | $1.00 | $1.47 | 94.9% |
+| Normal daily scoring | $0.09 | $1.00 | $1.09 | 96.2% |
 | Browser-heavy month | $2.00 | $3.00 | $5.00 | 82.8% |
 | Exception month | $6.00 | $4.00 | $10.00 | 65.5% |
 

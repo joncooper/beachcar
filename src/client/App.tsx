@@ -1006,7 +1006,7 @@ function demoRunPayload(): RunPayload {
       aiScoring: {
         status: "ok",
         provider: "cloudflare-ai-gateway",
-        model: "openai/gpt-4.1",
+        model: "openai/gpt-4.1-mini",
         totalTokens: 140,
         costMicros: 280,
         message: "AI rerank applied to source candidates.",

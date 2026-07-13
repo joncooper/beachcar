@@ -104,6 +104,8 @@ When local secret values are supplied, the rollout writes only the supplied Work
 
 `BEACHCAR_AI_GATEWAY_TOKEN` is optional only while Beachcar exposes the free agent-connected MCP path. Configure it before granting private-pilot or future paid `managed_research` access: managed runs require Gateway scoring and fail closed when it is unavailable. `CLOUDFLARE_API_TOKEN` is Wrangler authentication only and is never used as a Worker runtime AI credential.
 
+The owner-funded pilot defaults to `openai/gpt-4.1-mini` through Cloudflare Unified Billing. OpenRouter routes require a separate OpenRouter/provider token and are therefore reserved for a future BYOK path rather than the managed pilot.
+
 ## Verification
 
 Verify the public Worker surface with:

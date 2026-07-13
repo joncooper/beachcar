@@ -69,6 +69,21 @@ describe("AI Gateway runtime credential isolation", () => {
     expect(createAiGatewayCandidateScorer(env, context)).not.toBeNull();
   });
 
+  it("defaults Unified Billing scoring to GPT-4.1 mini with a conservative cost estimate", async () => {
+    const submittedUrl = "https://bringatrailer.com/listing/default-model-candidate/";
+    const requestBodies: Array<Record<string, unknown>> = [];
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestBodies.push(JSON.parse(String(init?.body || "{}")) as Record<string, unknown>);
+      return gatewayResponse([{ url: submittedUrl, scoreDelta: 4, why: "Good fit." }]);
+    }));
+    const scorer = createAiGatewayCandidateScorer(gatewayEnv, context);
+
+    const result = await scorer!.scoreCandidates(scoringInput([submittedUrl]));
+
+    expect(requestBodies[0]?.model).toBe("openai/gpt-4.1-mini");
+    expect(result).toMatchObject({ status: "ok", model: "openai/gpt-4.1-mini", costMicros: 72 });
+  });
+
   it("never sends the dedicated Cloudflare token to an arbitrary configured host", () => {
     const env = {
       BEACHCAR_AI_GATEWAY_TOKEN: "dedicated-runtime-token",
@@ -129,7 +144,7 @@ describe("AI Gateway runtime credential isolation", () => {
                   user_id: "user-1",
                   agent_run_id: "agent-run-1",
                   provider: "cloudflare-ai-gateway",
-                  model: "openai/gpt-4.1",
+                  model: "openai/gpt-4.1-mini",
                   operation: "candidate_scoring",
                   mode: "managed",
                   gateway_id: null,

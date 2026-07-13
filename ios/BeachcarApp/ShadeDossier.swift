@@ -11,6 +11,7 @@ struct ShadeReviewPage: View {
   let sourceSummary: RunSourceSummary?
   let api: AuctionAPI
   let geo: FeedGeometry
+  let photoNamespace: Namespace.ID
   let onNote: (String) -> Void
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -82,6 +83,7 @@ struct ShadeReviewPage: View {
           endPoint: .bottom
         )
       }
+      .matchedGeometryEffect(id: photoTransitionID(car.key, selectedPhotoIndex), in: photoNamespace, isSource: true)
       .frame(height: heroHeight)
       .frame(maxWidth: .infinity)
       .clipped()
@@ -92,7 +94,10 @@ struct ShadeReviewPage: View {
       }
       .contentShape(Rectangle())
       .onTapGesture {
-        if !car.displayImages.isEmpty { controller.openGallery() }
+        guard !car.displayImages.isEmpty else { return }
+        withAnimation(reduceMotion ? nil : .galleryTransition) {
+          controller.openGallery(at: selectedPhotoIndex)
+        }
       }
 
       VStack(alignment: .leading, spacing: 7) {
@@ -116,6 +121,10 @@ struct ShadeReviewPage: View {
 
   private var heroHeight: CGFloat {
     car.displayImages.isEmpty ? 126 : clamp(geo.width * 0.67, 230, 310)
+  }
+
+  private var selectedPhotoIndex: Int {
+    clamp(controller.photo(for: car.key), 0, max(car.displayImages.count - 1, 0))
   }
 
   private var heroBadges: some View {
@@ -151,8 +160,8 @@ struct ShadeReviewPage: View {
 
   @ViewBuilder
   private var heroImage: some View {
-    if let first = car.displayImages.first, !first.isEmpty {
-      CachedRemoteImage(url: api.resolvedImageURL(first, variant: .deck)) { img in
+    if car.displayImages.indices.contains(selectedPhotoIndex), !car.displayImages[selectedPhotoIndex].isEmpty {
+      CachedRemoteImage(url: api.resolvedImageURL(car.displayImages[selectedPhotoIndex], variant: .deck)) { img in
         img.resizable().scaledToFill()
       } placeholder: {
         BC.imageBg
@@ -576,61 +585,119 @@ struct ShadePhotoGallery: View {
   let safeTop: CGFloat
   let safeBottom: CGFloat
   let height: CGFloat
+  @ObservedObject var coach: InteractionCoach
+  let photoNamespace: Namespace.ID
   @AccessibilityFocusState private var closeFocused: Bool
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
   @State private var dismissOffset: CGFloat = 0
   @State private var crossedDismissThreshold = false
+  @State private var chromeVisible = true
+  @State private var zoomedPhoto: Int?
+  @State private var isClosing = false
+  @State private var exitTask: Task<Void, Never>?
 
   var body: some View {
     ZStack {
-      Color.black.ignoresSafeArea()
-
-      TabView(selection: $controller.galleryIndex) {
-        ForEach(Array(car.displayImages.enumerated()), id: \.offset) { index, image in
-          ZoomableListingPhoto(url: api.resolvedImageURL(image, variant: .full))
-            .tag(index)
-        }
-      }
-      .tabViewStyle(.page(indexDisplayMode: .never))
-
-      VStack {
-        HStack {
-          VStack(alignment: .leading, spacing: 3) {
-            Text("PHOTO \(controller.galleryIndex + 1) OF \(max(car.displayImages.count, 1))")
-              .font(.mono(11, bold: true))
-              .tracking(1)
-            Text(car.title)
-              .font(.archivo(13, .semibold))
-              .lineLimit(1)
-          }
-          .foregroundStyle(BC.white)
-          Spacer()
-        }
-        .padding(.horizontal, 18)
-        .padding(.top, safeTop + 10)
-        Spacer()
-        galleryExitControl
-          .padding(.bottom, safeBottom + 14)
-      }
+      Color.black.opacity(backdropOpacity).ignoresSafeArea()
+      galleryLayer
+        .scaleEffect(reduceMotion ? 1 : contentScale)
+        .offset(y: dismissOffset)
+        .clipShape(RoundedRectangle(cornerRadius: reduceMotion ? 0 : cornerRadius, style: .continuous))
+        .shadow(color: .black.opacity(dismissProgress * 0.5), radius: 28, y: 12)
     }
-    .offset(y: dismissOffset)
-    .scaleEffect(reduceMotion ? 1 : 1 - min(abs(dismissOffset) / 4_800, 0.025))
+    .contentShape(Rectangle())
     .simultaneousGesture(dismissGesture, including: .all)
     .accessibilityElement(children: .contain)
     .accessibilityAddTraits(.isModal)
-    .accessibilityAction(.escape, closeGallery)
-    .onAppear { closeFocused = true }
+    .accessibilityAction(.escape, closeUsingControl)
+    .onAppear {
+      closeFocused = true
+      controller.selectGalleryPhoto(controller.galleryIndex, for: car.key, count: car.displayImages.count)
+      #if DEBUG
+      if AppEnv.isUITesting, ProcessInfo.processInfo.arguments.contains("--gallery-drag-preview") {
+        dismissOffset = 118
+      }
+      #endif
+    }
+    .onChange(of: controller.galleryIndex) { _, index in
+      zoomedPhoto = nil
+      chromeVisible = true
+      controller.selectGalleryPhoto(index, for: car.key, count: car.displayImages.count)
+    }
+    .task(id: controller.galleryIndex) { await prefetchAdjacentPhotos() }
+    .onDisappear { exitTask?.cancel() }
+  }
+
+  private var galleryLayer: some View {
+    ZStack {
+      TabView(selection: $controller.galleryIndex) {
+        ForEach(Array(car.displayImages.enumerated()), id: \.offset) { index, image in
+          ZoomableListingPhoto(
+            url: api.resolvedImageURL(image, variant: .full),
+            onZoomChanged: { zoomed in
+              guard index == controller.galleryIndex else { return }
+              zoomedPhoto = zoomed ? index : nil
+            },
+            onToggleChrome: toggleChrome
+          )
+          .matchedGeometryEffect(id: photoTransitionID(car.key, index), in: photoNamespace, isSource: false)
+          .accessibilityIdentifier("shade-gallery-photo-\(index)")
+          .tag(index)
+        }
+      }
+      .tabViewStyle(.page(indexDisplayMode: .never))
+      .scrollDisabled(selectedPhotoIsZoomed)
+
+      if effectiveChromeVisible {
+        galleryChrome
+          .opacity(max(0, 1 - dismissProgress * 1.5))
+          .transition(.opacity)
+      }
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Color.black)
+  }
+
+  private var galleryChrome: some View {
+    VStack {
+      HStack {
+        VStack(alignment: .leading, spacing: 3) {
+          Text("PHOTO \(controller.galleryIndex + 1) OF \(max(car.displayImages.count, 1))")
+            .font(.mono(11, bold: true))
+            .tracking(1)
+          Text(car.title)
+            .font(.archivo(13, .semibold))
+            .lineLimit(1)
+        }
+        .foregroundStyle(BC.white)
+        Spacer()
+      }
+      .padding(.horizontal, 18)
+      .padding(.top, safeTop + 10)
+      Spacer()
+      galleryExitControl
+        .padding(.bottom, safeBottom + 14)
+    }
   }
 
   private var galleryExitControl: some View {
-    Button(action: closeGallery) {
-      VStack(spacing: 3) {
-        Label("Swipe up or down to close", systemImage: "arrow.up.and.down")
-          .font(.mono(10, bold: true))
-          .tracking(0.35)
-        Text("Pinch or double-tap to zoom")
-          .font(.archivo(11, .semibold))
-          .foregroundStyle(BC.white.opacity(0.58))
+    Button(action: closeUsingControl) {
+      Group {
+        if coach.state.showsGalleryGuidance {
+          VStack(spacing: 3) {
+            Label("Swipe up or down to close", systemImage: "arrow.up.and.down")
+              .font(.mono(10, bold: true))
+              .tracking(0.35)
+            Text("Pinch or double-tap to zoom")
+              .font(.archivo(11, .semibold))
+              .foregroundStyle(BC.white.opacity(0.58))
+          }
+        } else {
+          Label("Close", systemImage: "arrow.up.and.down")
+            .font(.mono(10, bold: true))
+            .tracking(0.35)
+        }
       }
       .foregroundStyle(BC.white)
       .padding(.horizontal, 15)
@@ -648,7 +715,8 @@ struct ShadePhotoGallery: View {
   private var dismissGesture: some Gesture {
     DragGesture(minimumDistance: 16, coordinateSpace: .global)
       .onChanged { value in
-        dismissOffset = GalleryDismissDecision.displayOffset(for: value.translation)
+        guard !selectedPhotoIsZoomed, !isClosing else { return }
+        dismissOffset = GalleryDismissDecision.displayOffset(for: value.translation, height: height)
         let shouldDismiss = GalleryDismissDecision.shouldDismiss(
           translation: value.translation,
           predictedEndTranslation: value.predictedEndTranslation,
@@ -660,6 +728,11 @@ struct ShadePhotoGallery: View {
         crossedDismissThreshold = shouldDismiss
       }
       .onEnded { value in
+        guard !selectedPhotoIsZoomed, !isClosing else {
+          crossedDismissThreshold = false
+          dismissOffset = 0
+          return
+        }
         let shouldDismiss = GalleryDismissDecision.shouldDismiss(
           translation: value.translation,
           predictedEndTranslation: value.predictedEndTranslation,
@@ -670,10 +743,7 @@ struct ShadePhotoGallery: View {
           let projectedY = value.predictedEndTranslation.height
           let directionSource = projectedY == 0 ? value.translation.height : projectedY
           let direction: CGFloat = directionSource < 0 ? -1 : 1
-          withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
-            dismissOffset = direction * clamp(height * 0.18, 130, 190)
-            controller.closeGallery()
-          }
+          dismissByGesture(direction: direction)
         } else {
           withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.82)) {
             dismissOffset = 0
@@ -682,45 +752,172 @@ struct ShadePhotoGallery: View {
       }
   }
 
-  private func closeGallery() {
-    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+  private var selectedPhotoIsZoomed: Bool { zoomedPhoto == controller.galleryIndex }
+  private var effectiveChromeVisible: Bool { chromeVisible || voiceOverEnabled }
+  private var dismissProgress: CGFloat { GalleryDismissDecision.progress(offset: dismissOffset, height: height) }
+  private var backdropOpacity: Double { Double(1 - dismissProgress * 0.78) }
+  private var contentScale: CGFloat { 1 - dismissProgress * 0.08 }
+  private var cornerRadius: CGFloat { dismissProgress * 30 }
+
+  private func toggleChrome() {
+    guard !voiceOverEnabled else { return }
+    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+      chromeVisible.toggle()
+    }
+  }
+
+  private func dismissByGesture(direction: CGFloat) {
+    isClosing = true
+    coach.recordGalleryDismissal()
+    guard !reduceMotion else {
+      controller.closeGallery()
+      return
+    }
+    withAnimation(.timingCurve(0.2, 0.85, 0.25, 1, duration: 0.24)) {
+      dismissOffset = direction * height * 1.05
+    }
+    exitTask?.cancel()
+    exitTask = Task {
+      try? await Task.sleep(for: .seconds(0.23))
+      guard !Task.isCancelled else { return }
       controller.closeGallery()
     }
+  }
+
+  private func closeUsingControl() {
+    withAnimation(reduceMotion ? nil : .galleryTransition) { controller.closeGallery() }
+  }
+
+  private func prefetchAdjacentPhotos() async {
+    let indices = GalleryPhotoPolicy.adjacentIndices(
+      current: controller.galleryIndex,
+      count: car.displayImages.count
+    )
+    let urls = indices.compactMap { api.resolvedImageURL(car.displayImages[$0], variant: .full) }
+    await BeachcarImagePipeline.shared.prefetch(urls)
   }
 }
 
 private struct ZoomableListingPhoto: View {
   let url: URL?
+  let onZoomChanged: (Bool) -> Void
+  let onToggleChrome: () -> Void
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var scale: CGFloat = 1
   @State private var lastScale: CGFloat = 1
+  @State private var offset: CGSize = .zero
+  @State private var lastOffset: CGSize = .zero
 
   var body: some View {
-    CachedRemoteImage(url: url) { image in
-      image
-        .resizable()
-        .scaledToFit()
-        .scaleEffect(scale)
-        .gesture(
-          MagnificationGesture()
-            .onChanged { value in scale = clamp(lastScale * value, 1, 4) }
-            .onEnded { _ in lastScale = scale }
-        )
-        .onTapGesture(count: 2) {
-          withAnimation(.spring(response: 0.3, dampingFraction: 0.84)) {
-            scale = scale > 1 ? 1 : 2
-            lastScale = scale
-          }
+    GeometryReader { proxy in
+      CachedRemoteImage(url: url) { image in
+        image
+          .resizable()
+          .scaledToFit()
+          .frame(width: proxy.size.width, height: proxy.size.height)
+          .scaleEffect(scale)
+          .offset(offset)
+      } placeholder: {
+        ProgressView().tint(BC.white)
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+      } failure: {
+        VStack(spacing: 10) {
+          Image(systemName: "photo.badge.exclamationmark").font(.system(size: 32))
+          Text("Photo unavailable").font(.archivo(14, .bold))
         }
-    } placeholder: {
-      ProgressView().tint(BC.white)
-    } failure: {
-      VStack(spacing: 10) {
-        Image(systemName: "photo.badge.exclamationmark").font(.system(size: 32))
-        Text("Photo unavailable").font(.archivo(14, .bold))
+        .foregroundStyle(BC.muted)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
-      .foregroundStyle(BC.muted)
+      .contentShape(Rectangle())
+      .simultaneousGesture(magnificationGesture(size: proxy.size))
+      .simultaneousGesture(panGesture(size: proxy.size))
+      .gesture(tapGesture(size: proxy.size))
     }
+    .clipped()
+    .accessibilityAction(named: "Zoom in or out") { toggleZoom(size: CGSize(width: 390, height: 700)) }
+    .accessibilityAction(named: "Show or hide photo controls", onToggleChrome)
+    .onDisappear { onZoomChanged(false) }
   }
+
+  private func magnificationGesture(size: CGSize) -> some Gesture {
+    MagnificationGesture()
+      .onChanged { value in
+        scale = clamp(lastScale * value, 1, 4)
+        offset = bounded(offset, size: size, scale: scale)
+        onZoomChanged(scale > 1.01)
+      }
+      .onEnded { _ in
+        if scale < 1.02 { resetZoom() }
+        else {
+          lastScale = scale
+          lastOffset = bounded(offset, size: size, scale: scale)
+        }
+      }
+  }
+
+  private func panGesture(size: CGSize) -> some Gesture {
+    DragGesture(minimumDistance: 3)
+      .onChanged { value in
+        guard scale > 1.01 else { return }
+        let proposed = CGSize(
+          width: lastOffset.width + value.translation.width,
+          height: lastOffset.height + value.translation.height
+        )
+        offset = bounded(proposed, size: size, scale: scale)
+      }
+      .onEnded { _ in
+        guard scale > 1.01 else { return }
+        lastOffset = bounded(offset, size: size, scale: scale)
+      }
+  }
+
+  private func tapGesture(size: CGSize) -> some Gesture {
+    let doubleTap = TapGesture(count: 2).onEnded { toggleZoom(size: size) }
+    let singleTap = TapGesture().onEnded(onToggleChrome)
+    return doubleTap.exclusively(before: singleTap)
+  }
+
+  private func toggleZoom(size: CGSize) {
+    let zoomingIn = scale <= 1.01
+    withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.84)) {
+      scale = zoomingIn ? 2 : 1
+      lastScale = scale
+      offset = zoomingIn ? bounded(offset, size: size, scale: 2) : .zero
+      lastOffset = offset
+    }
+    onZoomChanged(zoomingIn)
+  }
+
+  private func resetZoom() {
+    scale = 1
+    lastScale = 1
+    offset = .zero
+    lastOffset = .zero
+    onZoomChanged(false)
+  }
+
+  private func bounded(_ value: CGSize, size: CGSize, scale: CGFloat) -> CGSize {
+    GalleryPhotoPolicy.boundedOffset(value, viewport: size, scale: scale)
+  }
+}
+
+enum GalleryPhotoPolicy {
+  static func adjacentIndices(current: Int, count: Int) -> [Int] {
+    [current - 1, current, current + 1].filter { $0 >= 0 && $0 < count }
+  }
+
+  static func boundedOffset(_ value: CGSize, viewport: CGSize, scale: CGFloat) -> CGSize {
+    let maxX = max(viewport.width * (scale - 1) / 2, 0)
+    let maxY = max(viewport.height * (scale - 1) / 2, 0)
+    return CGSize(
+      width: clamp(value.width, -maxX, maxX),
+      height: clamp(value.height, -maxY, maxY)
+    )
+  }
+}
+
+private func photoTransitionID(_ listingKey: String, _ index: Int) -> String {
+  "gallery-photo-\(listingKey)-\(index)"
 }
 
 // MARK: - Section card

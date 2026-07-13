@@ -95,14 +95,14 @@ Beachcar spans the product surface, agent runtime, data plane, authentication, o
 
 | Surface | Implementation |
 | --- | --- |
-| **Native app** | SwiftUI, Clerk authentication, offline run cache, image prefetching, zoomable gallery, gesture feedback, accessibility-aware layouts, and internal TestFlight distribution. |
+| **Native app** | SwiftUI, Clerk authentication, offline run cache, progressive gesture coaching, bounded zoom/pan, matched photo transitions, image prefetching, accessibility-aware layouts, and internal TestFlight distribution. |
 | **Web app** | Mobile-first React PWA for onboarding, review, preferences, run history, status, account controls, and administration. |
 | **Agent runtime** | Cloudflare Agents + Durable Objects for per-user state, Workflows for durable orchestration, and Containers for browser/Codex-backed jobs. |
 | **Data + media** | D1 for user-scoped product and run state; R2 plus Cloudflare Images for cached `thumb`, `deck`, and `full` photo variants. |
 | **Identity + privacy** | Invite-only Clerk access, user-scoped reads and writes, hashed automation tokens, OAuth metadata, export, and deletion. |
 | **Operations** | Guarded D1 migrations, private recovery artifacts, staged container rollout, strict configuration checks, production smoke tests, and managed-path verification. |
 
-The current verification suite includes **151 Vitest tests** across the web/Worker surface and **29 native tests**: 19 end-to-end XCUITests plus ten gesture-and-coaching model unit tests.
+The current verification suite includes **151 Vitest tests** across the web/Worker surface and **36 native tests**: 22 end-to-end XCUITests plus 14 gesture, coaching, persistence, and gallery-policy unit tests.
 
 ## A typical daily run
 

@@ -43,9 +43,9 @@ final class ReviewSwipeDecisionTests: XCTestCase {
   }
 
   func testCoachProgressesFromNewThroughPrimaryToMastered() {
-    XCTAssertEqual(ReviewCoachPolicy.stage(primaryLearned: false, strongLearned: false), .new)
-    XCTAssertEqual(ReviewCoachPolicy.stage(primaryLearned: true, strongLearned: false), .primaryLearned)
-    XCTAssertEqual(ReviewCoachPolicy.stage(primaryLearned: true, strongLearned: true), .mastered)
+    XCTAssertEqual(InteractionCoachState().reviewStage, .new)
+    XCTAssertEqual(InteractionCoachState(primaryJudgments: 1).reviewStage, .primaryLearned)
+    XCTAssertEqual(InteractionCoachState(primaryJudgments: 1, strongJudgments: 1).reviewStage, .mastered)
   }
 
   func testGhostNudgeOnlyRunsForMotionEnabledNewUsersBeforeInteraction() {
@@ -69,6 +69,66 @@ final class ReviewSwipeDecisionTests: XCTestCase {
       "Release to commit"
     )
     XCTAssertNil(ReviewCoachPolicy.prompt(for: .like, reviewStage: .primary, coachStage: .mastered))
+  }
+
+  func testUnifiedCoachTracksReviewAndGalleryMastery() {
+    let first = Date(timeIntervalSince1970: 1_000)
+    let second = Date(timeIntervalSince1970: 2_000)
+    var state = InteractionCoachState()
+
+    XCTAssertEqual(state.reviewStage, .new)
+    XCTAssertTrue(state.showsGalleryGuidance)
+    state.recordReview(.like, at: first)
+    XCTAssertEqual(state.reviewStage, .primaryLearned)
+    XCTAssertEqual(state.primaryJudgments, 1)
+    state.recordReview(.star, at: second)
+    XCTAssertEqual(state.reviewStage, .mastered)
+    XCTAssertEqual(state.strongJudgments, 1)
+    state.recordGalleryDismissal(at: second)
+    XCTAssertFalse(state.showsGalleryGuidance)
+    XCTAssertEqual(state.lastInteractionAt, second)
+  }
+
+  @MainActor
+  func testUnifiedCoachMigratesLegacyFlagsAndPersistsReplay() {
+    let suiteName = "InteractionCoachTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(true, forKey: "shade.swipeCoach.primaryLearned.v2")
+    defaults.set(true, forKey: "shade.swipeCoach.strongLearned.v2")
+
+    let migrated = InteractionCoach(defaults: defaults)
+    XCTAssertEqual(migrated.state.reviewStage, .mastered)
+    XCTAssertEqual(migrated.state.hintVersion, InteractionCoachState.currentHintVersion)
+
+    migrated.replayHints()
+    let restored = InteractionCoach(defaults: defaults)
+    XCTAssertEqual(restored.state.reviewStage, .new)
+    XCTAssertTrue(restored.state.showsGalleryGuidance)
+  }
+
+  func testGalleryDismissPhysicsRevealUnderlyingDossierProgressively() {
+    let offset = GalleryDismissDecision.displayOffset(
+      for: CGSize(width: 8, height: 180),
+      height: 844
+    )
+    XCTAssertEqual(offset, 93.6, accuracy: 0.01)
+    XCTAssertGreaterThan(GalleryDismissDecision.progress(offset: offset, height: 844), 0.35)
+    XCTAssertEqual(GalleryDismissDecision.progress(offset: 900, height: 844), 1, accuracy: 0.01)
+  }
+
+  func testGalleryPrefetchesNeighborsAndBoundsPan() {
+    XCTAssertEqual(GalleryPhotoPolicy.adjacentIndices(current: 0, count: 3), [0, 1])
+    XCTAssertEqual(GalleryPhotoPolicy.adjacentIndices(current: 1, count: 3), [0, 1, 2])
+    XCTAssertEqual(GalleryPhotoPolicy.adjacentIndices(current: 2, count: 3), [1, 2])
+
+    let bounded = GalleryPhotoPolicy.boundedOffset(
+      CGSize(width: 1_000, height: -1_000),
+      viewport: CGSize(width: 390, height: 700),
+      scale: 2
+    )
+    XCTAssertEqual(bounded.width, 195, accuracy: 0.01)
+    XCTAssertEqual(bounded.height, -350, accuracy: 0.01)
   }
 
   func testGalleryDismissAcceptsDecisiveVerticalSwipesInEitherDirection() {

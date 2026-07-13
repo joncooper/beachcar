@@ -67,6 +67,7 @@ final class ShadeController: ObservableObject {
   @Published var completionOpen = false
   @Published var galleryOpen = false
   @Published var galleryIndex = 0
+  @Published var gesturesHelpOpen = false
   @Published var scrollResetID = 0
 
   // Config (design defaults)
@@ -78,6 +79,7 @@ final class ShadeController: ObservableObject {
   var persist: ((FeedbackAction) -> Void)?
   /// Records gesture learning separately from menu and accessibility actions.
   var onSwipeCompleted: ((FeedbackAction) -> Void)?
+  var onCoachInteraction: (() -> Void)?
   var carCount = 0
 
   private var toastWork: DispatchWorkItem?
@@ -97,9 +99,9 @@ final class ShadeController: ObservableObject {
 
   // MARK: lifecycle
 
-  func configureCoach(primaryLearned: Bool, strongLearned: Bool, reduceMotion: Bool) {
+  func configureCoach(stage: ReviewCoachStage, reduceMotion: Bool) {
     coachTask?.cancel()
-    coachStage = ReviewCoachPolicy.stage(primaryLearned: primaryLearned, strongLearned: strongLearned)
+    coachStage = stage
     coachOffset = 0
     showHint = true
 
@@ -126,9 +128,7 @@ final class ShadeController: ObservableObject {
     }
   }
 
-  func updateCoachLearning(primaryLearned: Bool, strongLearned: Bool) {
-    coachStage = ReviewCoachPolicy.stage(primaryLearned: primaryLearned, strongLearned: strongLearned)
-  }
+  func updateCoachStage(_ stage: ReviewCoachStage) { coachStage = stage }
 
   func updateReduceMotion(_ reduceMotion: Bool) {
     guard reduceMotion else { return }
@@ -141,6 +141,7 @@ final class ShadeController: ObservableObject {
     coachTask?.cancel()
     coachOffset = 0
     showHint = false
+    onCoachInteraction?()
   }
 
   func endCoachSession() {
@@ -236,13 +237,19 @@ final class ShadeController: ObservableObject {
     }
   }
 
-  func openGallery(at index: Int = 0) {
-    galleryIndex = max(index, 0)
+  func openGallery(at index: Int? = nil) {
+    let remembered = currentCarInfo?().map { photo(for: $0.key) } ?? 0
+    galleryIndex = max(index ?? remembered, 0)
     galleryOpen = true
     noteCoachInteraction()
   }
 
   func closeGallery() { galleryOpen = false }
+
+  func selectGalleryPhoto(_ index: Int, for key: String, count: Int) {
+    let upperBound = max(count - 1, 0)
+    photoIndex[key] = clamp(index, 0, upperBound)
+  }
 
   func reviewAgain() {
     completionOpen = false
@@ -687,12 +694,6 @@ enum ReviewSwipeDecision {
 }
 
 enum ReviewCoachPolicy {
-  static func stage(primaryLearned: Bool, strongLearned: Bool) -> ReviewCoachStage {
-    if strongLearned { return .mastered }
-    if primaryLearned { return .primaryLearned }
-    return .new
-  }
-
   static func shouldGhost(stage: ReviewCoachStage, reduceMotion: Bool, sessionInteracted: Bool) -> Bool {
     stage == .new && !reduceMotion && !sessionInteracted
   }
@@ -717,9 +718,15 @@ enum GalleryDismissDecision {
     clamp(height * 0.13, 96, 132)
   }
 
-  static func displayOffset(for translation: CGSize) -> CGFloat {
+  static func displayOffset(for translation: CGSize, height: CGFloat = 844) -> CGFloat {
     guard isVerticallyDominant(translation) else { return 0 }
-    return clamp(translation.height * 0.36, -120, 120)
+    let limit = min(height * 0.28, 240)
+    return clamp(translation.height * 0.52, -limit, limit)
+  }
+
+  static func progress(offset: CGFloat, height: CGFloat) -> CGFloat {
+    let revealDistance = max(min(height * 0.28, 240), 1)
+    return clamp(abs(offset) / revealDistance, 0, 1)
   }
 
   static func shouldDismiss(
@@ -747,4 +754,5 @@ extension Animation {
   static let photoSpring = Animation.timingCurve(0.2, 0.9, 0.24, 1, duration: 0.42)
   static let overlaySpring = Animation.timingCurve(0.2, 0.85, 0.22, 1, duration: 0.42)
   static let reviewTransition = Animation.timingCurve(0.2, 0.9, 0.24, 1, duration: 0.34)
+  static let galleryTransition = Animation.timingCurve(0.2, 0.86, 0.22, 1, duration: 0.34)
 }

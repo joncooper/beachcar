@@ -9,10 +9,9 @@ struct ShadeSurface: View {
   var cacheScope: String?
 
   @StateObject private var controller = ShadeController()
-  @AppStorage("shade.coachSeen.v1") private var coachSeen = false
-  @AppStorage("shade.swipeCoach.primaryLearned.v2") private var primarySwipeLearned = false
-  @AppStorage("shade.swipeCoach.strongLearned.v2") private var strongSwipeLearned = false
+  @StateObject private var interactionCoach = InteractionCoach()
   @State private var undoDismissTask: Task<Void, Never>?
+  @Namespace private var photoNamespace
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   private var cars: [AuctionListing] { store.run?.listings ?? store.visibleListings }
@@ -55,6 +54,12 @@ struct ShadeSurface: View {
     .onChange(of: cars.map(\.key)) { _, _ in syncCars() }
     .onChange(of: store.lastUndo?.listingKey) { _, listingKey in scheduleUndoDismiss(listingKey) }
     .onChange(of: reduceMotion) { _, value in controller.updateReduceMotion(value) }
+    .sheet(isPresented: $controller.gesturesHelpOpen) {
+      GestureHelpSheet {
+        interactionCoach.replayHints()
+        controller.configureCoach(stage: .new, reduceMotion: reduceMotion)
+      }
+    }
     .onDisappear {
       undoDismissTask?.cancel()
       controller.endCoachSession()
@@ -89,7 +94,8 @@ struct ShadeSurface: View {
             totalListings: cars.count,
             sourceSummary: store.run?.sourceSummary,
             api: store.api,
-            geo: geo
+            geo: geo,
+            photoNamespace: photoNamespace
           ) { note in
             Task { _ = await store.submitPreferenceNote(note, listing: car, tokenProvider: tokenProvider) }
           }
@@ -141,7 +147,9 @@ struct ShadeSurface: View {
         api: store.api,
         safeTop: geo.safeTop,
         safeBottom: geo.safeBottom,
-        height: geo.height
+        height: geo.height,
+        coach: interactionCoach,
+        photoNamespace: photoNamespace
       )
         .transition(.opacity)
         .zIndex(20)
@@ -230,23 +238,17 @@ struct ShadeSurface: View {
       guard list.indices.contains(controller.idx) else { return }
       let car = list[controller.idx]
       Task { await store.mark(action, listing: car, tokenProvider: tokenProvider) }
-      coachSeen = true
     }
     controller.onSwipeCompleted = { action in
-      primarySwipeLearned = true
-      if action == .star || action == .avoid { strongSwipeLearned = true }
-      controller.updateCoachLearning(
-        primaryLearned: primarySwipeLearned,
-        strongLearned: strongSwipeLearned
-      )
+      interactionCoach.recordReview(action)
+      controller.updateCoachStage(interactionCoach.state.reviewStage)
     }
+    controller.onCoachInteraction = { interactionCoach.recordInteraction() }
+    interactionCoach.beginSession()
 
     let debugStage = debugCoachStage
-    let learnedPrimary = debugStage.map { $0 != .new } ?? (primarySwipeLearned || coachSeen)
-    let learnedStrong = debugStage.map { $0 == .mastered } ?? strongSwipeLearned
     controller.configureCoach(
-      primaryLearned: learnedPrimary,
-      strongLearned: learnedStrong,
+      stage: debugStage ?? interactionCoach.state.reviewStage,
       reduceMotion: reduceMotion
     )
 
@@ -259,6 +261,7 @@ struct ShadeSurface: View {
         switch args[i + 1] {
         case "list": controller.listOpen = true
         case "gallery": controller.openGallery()
+        case "gestures": controller.gesturesHelpOpen = true
         case "swipe", "shade":
           controller.reviewRawOffset = geoPreviewWidth * 0.4
           controller.reviewOffset = geoPreviewWidth * 0.34
@@ -355,6 +358,8 @@ private struct ReviewChrome: View {
           Button("Never again", systemImage: Icon.avoid) { controller.doAction(.avoid, advance: true) }
           Button("Like", systemImage: Icon.like) { controller.doAction(.like, advance: true) }
           Button("Love it", systemImage: Icon.star) { controller.doAction(.star, advance: true) }
+          Divider()
+          Button("Gestures", systemImage: "hand.draw") { controller.gesturesHelpOpen = true }
         } label: {
           Image(systemName: "ellipsis")
             .font(.system(size: 15, weight: .black))
@@ -389,6 +394,98 @@ private struct ReviewChrome: View {
     .padding(.top, safeTop + 4)
     .padding(.bottom, 8)
     .background(BC.bg)
+  }
+}
+
+private struct GestureHelpSheet: View {
+  let onReplayHints: () -> Void
+  @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    NavigationStack {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 22) {
+          VStack(alignment: .leading, spacing: 6) {
+            Text("A small vocabulary")
+              .font(.archivo(25, .extrabold))
+              .foregroundStyle(BC.white)
+            Text("The dossier scrolls vertically. Decisions move sideways. Photos get their own canvas.")
+              .font(.archivo(14, .medium))
+              .foregroundStyle(BC.sub)
+              .lineSpacing(3)
+          }
+
+          helpSection("REVIEW") {
+            gestureRow(symbol: "arrow.left", title: "Swipe left", detail: "Pass · keep going for Never again", color: Icon.color(for: .hide))
+            gestureRow(symbol: "arrow.right", title: "Swipe right", detail: "Like · keep going for Love it", color: Icon.color(for: .like))
+            gestureRow(symbol: "arrow.up.and.down", title: "Scroll", detail: "Read the complete dossier", color: BC.accent)
+          }
+
+          helpSection("PHOTOS") {
+            gestureRow(symbol: "hand.pinch", title: "Pinch or double-tap", detail: "Zoom in; drag to inspect details", color: BC.star)
+            gestureRow(symbol: "arrow.up.and.down.circle", title: "Swipe decisively up or down", detail: "Return to the dossier", color: BC.accent)
+            gestureRow(symbol: "hand.tap", title: "Tap once", detail: "Hide or reveal the photo controls", color: BC.sub)
+          }
+
+          Text("Every decision is also available from the ••• menu and through VoiceOver actions.")
+            .font(.archivo(12.5, .medium))
+            .foregroundStyle(BC.muted)
+            .lineSpacing(2)
+
+          Button {
+            onReplayHints()
+            dismiss()
+          } label: {
+            Label("Replay gesture hints", systemImage: "arrow.counterclockwise")
+              .font(.archivo(14, .bold))
+              .foregroundStyle(BC.accentInk)
+              .frame(maxWidth: .infinity, minHeight: 48)
+              .background(BC.accent, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+          }
+          .buttonStyle(.plain)
+          .accessibilityIdentifier("shade-replay-gesture-hints")
+        }
+        .padding(20)
+      }
+      .background(BC.panel)
+      .navigationTitle("Gestures")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .confirmationAction) {
+          Button("Done") { dismiss() }
+        }
+      }
+    }
+    .preferredColorScheme(.dark)
+    .presentationDetents([.medium, .large])
+    .presentationDragIndicator(.visible)
+    .accessibilityIdentifier("shade-gestures-help")
+  }
+
+  private func helpSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text(title).font(.mono(10, bold: true)).tracking(1.2).foregroundStyle(BC.muted)
+      VStack(spacing: 0) { content() }
+        .background(BC.card, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(BC.border, lineWidth: 1))
+    }
+  }
+
+  private func gestureRow(symbol: String, title: String, detail: String, color: Color) -> some View {
+    HStack(spacing: 13) {
+      Image(systemName: symbol)
+        .font(.system(size: 17, weight: .bold))
+        .foregroundStyle(color)
+        .frame(width: 38, height: 38)
+        .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+      VStack(alignment: .leading, spacing: 3) {
+        Text(title).font(.archivo(14, .bold)).foregroundStyle(BC.white)
+        Text(detail).font(.archivo(12.5, .medium)).foregroundStyle(BC.sub)
+      }
+      Spacer(minLength: 0)
+    }
+    .padding(.horizontal, 13)
+    .frame(minHeight: 62)
   }
 }
 

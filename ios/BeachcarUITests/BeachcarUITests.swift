@@ -1,14 +1,12 @@
 import XCTest
 
+@MainActor
 final class BeachcarUITests: XCTestCase {
   private var app: XCUIApplication!
 
-  override func setUpWithError() throws {
+  override nonisolated func setUp() {
     continueAfterFailure = false
-    app = nil
   }
-
-  override func tearDownWithError() throws { app = nil }
 
   // MARK: Access and setup
 
@@ -71,6 +69,19 @@ final class BeachcarUITests: XCTestCase {
     XCTAssertTrue(waitForFind(1, of: 3))
   }
 
+  func testGestureHelpRemainsRecoverableFromOverflowMenu() throws {
+    launch(scenario: "active", coachStage: "mastered")
+    _ = shadeSurface()
+    app.buttons["shade-review-actions"].tap()
+    let gestures = app.buttons["Gestures"]
+    XCTAssertTrue(gestures.waitForExistence(timeout: 5))
+    gestures.tap()
+    XCTAssertTrue(identified("shade-gestures-help").waitForExistence(timeout: 5))
+    XCTAssertTrue(text(containing: "Swipe left").exists)
+    XCTAssertTrue(text(containing: "Pinch or double-tap").exists)
+    XCTAssertTrue(app.buttons["shade-replay-gesture-hints"].exists)
+  }
+
   func testVerticalScrollRevealsDeepDossierWithoutJudging() throws {
     launch(scenario: "active")
     _ = shadeSurface()
@@ -91,6 +102,34 @@ final class BeachcarUITests: XCTestCase {
     XCTAssertTrue(text(containing: "PHOTO 2 OF 2").waitForExistence(timeout: 5))
     app.buttons["shade-gallery-close"].tap()
     XCTAssertTrue(waitForFind(1, of: 3, timeout: 5))
+  }
+
+  func testGalleryPreservesSelectedPhotoAcrossCloseAndReopen() throws {
+    launch(scenario: "active")
+    _ = shadeSurface()
+    identified("shade-review-hero-ui-test-samurai").tap()
+    XCTAssertTrue(text(containing: "PHOTO 1 OF 2").waitForExistence(timeout: 8))
+    app.swipeLeft()
+    XCTAssertTrue(text(containing: "PHOTO 2 OF 2").waitForExistence(timeout: 5))
+    app.buttons["shade-gallery-close"].tap()
+    XCTAssertTrue(waitForFind(1, of: 3, timeout: 5))
+    identified("shade-review-hero-ui-test-samurai").tap()
+    XCTAssertTrue(text(containing: "PHOTO 2 OF 2").waitForExistence(timeout: 8))
+  }
+
+  func testGalleryChromeCanHideAndReturnWithoutClosing() throws {
+    launch(scenario: "active", galleryCoach: "mastered")
+    _ = shadeSurface()
+    identified("shade-review-hero-ui-test-samurai").tap()
+    let photo = identified("shade-gallery-photo-0")
+    XCTAssertTrue(photo.waitForExistence(timeout: 8))
+    let close = app.buttons["shade-gallery-close"]
+    XCTAssertTrue(close.waitForExistence(timeout: 5))
+    XCTAssertFalse(text(containing: "Swipe up or down to close").exists)
+    photo.tap()
+    XCTAssertFalse(close.waitForExistence(timeout: 1))
+    photo.tap()
+    XCTAssertTrue(close.waitForExistence(timeout: 5))
   }
 
   func testPhotoGalleryDismissesWithDecisiveVerticalSwipes() throws {
@@ -270,11 +309,12 @@ final class BeachcarUITests: XCTestCase {
     app.descendants(matching: .any).matching(identifier: identifier).firstMatch
   }
 
-  private func launch(scenario: String? = nil, coachStage: String? = nil) {
+  private func launch(scenario: String? = nil, coachStage: String? = nil, galleryCoach: String? = nil) {
     app = XCUIApplication()
     app.launchArguments = ["--ui-testing"]
     if let scenario { app.launchArguments += ["--ui-testing-scenario", scenario] }
     if let coachStage { app.launchArguments += ["--coach-stage", coachStage] }
+    if let galleryCoach { app.launchArguments += ["--gallery-coach", galleryCoach] }
     app.launch()
   }
 }

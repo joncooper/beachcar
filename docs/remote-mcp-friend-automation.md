@@ -1,20 +1,20 @@
-# Beachcar Advanced Remote MCP Automation
+# Beachcar Agent-Connected MCP Curation
 
 Date: 2026-06-25
 
 ## Goal
 
-Provide an advanced integration for an operator or technical user who intentionally wants their own cloud agent to gather listings, publish a user-scoped run, record AI usage, and verify the result without running a local MCP server.
+Make a user's own agent the default curation engine: it gathers listings, publishes a user-scoped run, records AI/tool usage, and verifies the result without running a local MCP server.
 
-This is **not the default friend workflow**. Normal onboarding selects Beachcar-managed daily research and requires no MCP client, token, OAuth connection, downloadable skill, provider key, or external agent. See the canonical workflow in `README.md` and `docs/friends-platform-plan.md`.
+This is the **default workflow**. Beachcar owns durable taste memory, feedback, evidence, publishing, and the review experience; Codex, Claude, or another MCP client owns research tools and inference. Beachcar stores no provider key and charges nothing for this path.
 
-The integration supports revocable manually issued bearer tokens and OAuth authorization-code + PKCE for hosted MCP clients. The hosted metadata surface is deployed, while a real remote Clerk session plus external MCP client still needs end-to-end validation. That advanced-path validation does not block friends who use managed research.
+The integration supports revocable manually issued bearer tokens and OAuth authorization-code + PKCE for hosted MCP clients. The hosted metadata surface is deployed, while a real remote Clerk session plus external MCP client still needs end-to-end validation. The optional `$29/month` Managed Research tier uses a separate subscriber-gated Workflow and does not weaken or replace this path.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  User["Technical user or operator"] --> Settings["Preferences: Advanced agent connection"]
+  User["Beachcar user"] --> Settings["Onboarding: connect your agent"]
   Settings --> Token["Scoped automation token shown once"]
   Settings --> Skill["Download Beachcar skill"]
   Agent["Codex / Claude / cloud agent"] --> MCP["Worker /mcp JSON-RPC"]
@@ -99,9 +99,9 @@ OAuth access tokens are also user-owned:
 
 No raw provider/model key is accepted by this system. AI cost attribution is recorded through `record_usage`; actual model payment depends on the friend or owner automation setup.
 
-## App Screen
+## App screen
 
-Preferences includes the collapsed **Advanced: connect your own agent** section. It explicitly says that the managed daily service already works without this connection. When opened, it:
+Onboarding selects **Connect your own agent** by default and places the connection controls directly in the setup flow. Preferences keeps the same controls visible whenever agent-connected mode is selected. The panel:
 
 - Shows the absolute `/mcp` endpoint.
 - Creates a token for a friend cloud agent.
@@ -114,7 +114,7 @@ Preferences includes the collapsed **Advanced: connect your own agent** section.
 
 ## Skill
 
-The canonical skill for this advanced path lives at:
+The canonical skill for this path lives at:
 
 - `.agents/skills/beachcar-daily-run/SKILL.md`
 
@@ -146,9 +146,9 @@ Bring a Trailer RSS ingestion is persisted in D1:
 - Admins can inspect and refresh the cache through `/api/admin/source-cache/status` and `/api/admin/source-cache/ingest`.
 - The admin console surfaces that same status with freshness, item counts, latest ingestion result, and a manual BaT RSS ingest control.
 
-## Advanced-Path Follow-Up
+## Follow-up
 
-Authorization-code + PKCE is implemented and locally verified through `bun run cloudflare:verify`; the deployed metadata and unauthenticated challenge are also verified. Remaining work before offering self-operated agents more broadly:
+Authorization-code + PKCE is implemented and locally verified through `bun run cloudflare:verify`; the deployed metadata and unauthenticated challenge are also verified. Remaining work before offering agent-connected curation more broadly:
 
 1. Validate the OAuth flow on a deployed Worker with a real Clerk bearer session and at least one real MCP client.
 2. Decide whether refresh tokens are useful; the first implementation intentionally issues short-lived access tokens only.

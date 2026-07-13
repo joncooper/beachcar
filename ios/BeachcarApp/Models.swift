@@ -100,6 +100,10 @@ struct SourceSettingsRequest: Encodable, Equatable {
   let sources: [SourceSettingInput]
 }
 
+struct ResearchSettingsRequest: Encodable, Equatable {
+  let mode: String
+}
+
 struct SourceSettingInput: Encodable, Equatable {
   let source: String
   let enabled: Bool

@@ -14,7 +14,7 @@ Beachcar is a private AI auction scout I built for people who love charming, unu
 
 Each day it searches live marketplaces, reconciles messy listing data, evaluates candidates against one person's budget, location, taste, and prior feedback, then publishes a deliberately small shortlist. Every pick arrives with an opinionated dossier: why it fits, what the market says, what could go wrong, and where to stop bidding.
 
-This is an end-to-end agentic product—not a chat wrapper. It schedules work, uses tools, delegates browser-heavy research, preserves per-user memory, recovers from partial failures, and makes its reasoning inspectable in native iOS and web apps. Managed research can run deterministically by design; optional AI Gateway scoring and a Codex-backed Container deepen judgment and browser work without becoming hidden requirements.
+This is an end-to-end agentic product—not a chat wrapper. By default, a person connects the agent they already trust—Codex, Claude, or another MCP client—and Beachcar becomes that agent's durable taste memory, research workspace, and publishing surface. An optional managed tier runs Beachcar's hosted Agent, Workflow, browser runner, and AI Gateway scorer for subscribers. Both paths produce the same inspectable private product in native iOS and on the web.
 
 ## The product
 
@@ -48,21 +48,28 @@ Beachcar explores a more useful relationship between a person and an agent:
 
 The goal is not maximum engagement. It is a few unusually good decisions, delivered at the right time.
 
+## Two ways to use it
+
+| Agent-connected | Managed Research |
+| --- | --- |
+| **Included by default.** Connect a personal Codex automation, Claude, or any OAuth-capable MCP client. The agent reads the profile and feedback, researches with its own tools, and publishes through Beachcar. | **Planned launch price: $29/month.** Beachcar runs the hosted research loop: schedules, source monitoring, browser handoffs, required AI Gateway judgment, publication, and cost controls. |
+| The user controls the model, tools, cadence, and AI spend. Beachcar stores no provider key. | Beachcar pays the inference and infrastructure bill. The `managed_research` Clerk feature gates every manual, scheduled, and in-flight hosted run. |
+
+The agent-connected path has no Beachcar-managed AI fee and is not a degraded recommendation engine. It is the default architecture: bring a capable agent and let Beachcar specialize in memory, evidence, feedback, and a highly crafted review experience. The paid tier buys convenience, not access to one's own data.
+
 ## What makes it agentic
 
 ```mermaid
 flowchart LR
-    A["Taste, budget, region"] --> B["Per-user Agent"]
-    K["Schedule or Run now"] --> B
-    B --> C["Durable Workflow"]
-    C --> D["Source adapters"]
-    C --> E["Browser / Container runner"]
-    D --> F["Normalize, evaluate, rank"]
-    E --> F
-    F --> G["Dossiers + image variants"]
-    G --> H["Publish private shortlist"]
-    H --> I["SwiftUI app"]
-    H --> J["React PWA"]
+    A["Taste, budget, feedback"] --> M["Beachcar memory + MCP"]
+    X["Your Codex, Claude, or MCP agent"] <--> M
+    X --> R["Research with agent-owned tools"]
+    S["Managed subscriber"] --> B["Beachcar Agent + durable Workflow"]
+    B --> R2["Source adapters + browser runner + AI Gateway"]
+    R --> P["Publish evidence + dossiers"]
+    R2 --> P
+    P --> I["SwiftUI app"]
+    P --> J["React PWA"]
     I --> L["Like · Love · Pass · Avoid"]
     J --> L
     L --> A
@@ -70,13 +77,13 @@ flowchart LR
 
 | Agent capability | How Beachcar uses it |
 | --- | --- |
-| **Autonomy** | Time-zone-aware schedules and signed-in “Run now” requests start research without an operator driving each step. |
+| **Autonomy** | A connected personal agent can plan and publish through MCP; subscribers can also use time-zone-aware schedules and signed-in “Run now” requests. |
 | **Tool use** | Source modules inspect auction feeds and pages; browser-heavy work can hand off to an isolated Cloudflare Container runner. |
 | **Durable execution** | Cloudflare Workflows coordinate discovery, scoring, publication, image warming, and terminal status across long-running work. |
 | **Memory** | Per-user feedback and preference events are loaded into later runs, changing both ranking and suppression. |
 | **Judgment** | Candidates are assessed for fit, value, practical constraints, risk, novelty, and confidence—not only keyword similarity. |
 | **Observability** | Users and operators can inspect source checks, candidate counts, runner handoffs, failures, usage, and the exact published result. |
-| **Extensibility** | A hosted MCP surface lets technical users connect Codex, Claude, or another capable agent without changing the friend-facing product. |
+| **Interoperability** | A hosted Streamable HTTP MCP surface with OAuth makes Codex, Claude, and other capable agents first-class clients of the same user-scoped product state. |
 
 That traceability is deliberate. Source failure is not the same as “nothing worth showing,” missing location is not silently treated as local, and a runner handoff is not reported as a completed run. Every run retains its workflow identity, source diagnostics, candidate funnel, final publication, and human-readable errors.
 
@@ -86,8 +93,9 @@ That traceability is deliberate. Source failure is not the same as “nothing wo
 - **Reasons belong beside the recommendation.** Fit, market context, confidence, and watch-outs are part of the core object—not an expandable AI garnish.
 - **Taste is richer than filters.** “Open-air, charming, kid-plausible” is useful context even when it cannot be reduced to a checkbox.
 - **Missing data should look missing.** The UI distinguishes no photo, failed loading, unknown location, and weak valuation evidence.
-- **The default should feel effortless.** Friends do not need an API key, automation token, MCP client, or knowledge of the agent stack.
-- **Advanced power can remain available.** Operators get source controls, usage accounting, scoped automation, and reproducible fallback playbooks without exposing that machinery during onboarding.
+- **The default should preserve agency.** Users bring the agent and tools they already pay for; Beachcar does not force everyone onto a mediocre shared inference path.
+- **Convenience should be an honest upgrade.** The managed tier pays for hosted research and required model-backed judgment. If that scorer is unavailable, Beachcar fails the run instead of publishing deterministic filler.
+- **Agent access should still feel productized.** OAuth, scoped tokens, setup context, publishing tools, verification, and event history make MCP a polished path rather than an integration appendix.
 
 ## Built as a real product
 
@@ -99,18 +107,19 @@ Beachcar spans the product surface, agent runtime, data plane, authentication, o
 | **Web app** | Mobile-first React PWA for onboarding, review, preferences, run history, status, account controls, administration, and aggregated beta calibration analysis. |
 | **Agent runtime** | Cloudflare Agents + Durable Objects for per-user state, Workflows for durable orchestration, and Containers for browser/Codex-backed jobs. |
 | **Data + media** | D1 for user-scoped product and run state; R2 plus Cloudflare Images for cached `thumb`, `deck`, and `full` photo variants. |
-| **Identity + privacy** | Invite-only Clerk access, user-scoped reads and writes, hashed automation tokens, OAuth metadata, export and deletion, plus an explicit boundary between auction-taste memory and short-lived product diagnostics. |
+| **Identity + privacy** | Invite-only Clerk access, feature-based subscription entitlements, verified billing webhooks, user-scoped reads and writes, hashed automation tokens, OAuth metadata, export and deletion, plus an explicit boundary between auction-taste memory and short-lived product diagnostics. |
 | **Operations** | Guarded D1 migrations, private recovery artifacts, staged container rollout, strict configuration checks, production smoke tests, and managed-path verification. |
 
-The current verification suite includes **154 Vitest tests** across the web/Worker surface and **44 native tests**: 24 end-to-end XCUITests plus 20 gesture, coaching, tuning, privacy, persistence, and gallery-policy unit tests.
+The current verification suite includes **163 Vitest tests** across the web/Worker surface and **44 native tests**: 24 end-to-end XCUITests plus 20 gesture, coaching, tuning, privacy, persistence, and gallery-policy unit tests.
 
 ## A typical daily run
 
-1. A schedule or signed-in request starts the user's Agent and loads profile constraints, source settings, and feedback memory.
-2. Source adapters gather candidates; browser-dependent work can move to the isolated Container runner.
-3. The Workflow normalizes evidence, evaluates fit and value, and selects a small, diverse set—using deterministic or optional model-backed scoring.
-4. It publishes the run to D1, mirrors and warms image variants in R2, and records source-by-source diagnostics.
-5. The friend reviews in iOS or the PWA; that feedback changes the next run.
+1. By default, a connected agent loads setup context and feedback through MCP, researches with its own tools, submits candidates, and publishes a verified run.
+2. For a subscriber, a schedule or signed-in request starts Beachcar's per-user Agent and durable Workflow after rechecking the `managed_research` entitlement and AI budget.
+3. Source adapters gather candidates; browser-dependent work can move to the isolated Container runner.
+4. Managed runs require successful AI Gateway judgment before publication. Failed or unavailable scoring cannot silently become heuristic recommendations.
+5. Beachcar publishes the run to D1, mirrors and warms image variants in R2, and records source-by-source diagnostics.
+6. The person reviews in iOS or the PWA; that feedback becomes memory for whichever agent runs next.
 
 ## System map: runtime architecture
 
@@ -121,14 +130,14 @@ flowchart TB
     subgraph surfaces["Product surfaces"]
         IOS["Native SwiftUI app<br/>ios/BeachcarApp"]
         WEB["React PWA<br/>src/client"]
-        CLIENT["Codex, Claude, or MCP client<br/>advanced path"]
+        CLIENT["Codex, Claude, or MCP client<br/>default curation path"]
     end
 
     subgraph edge["Cloudflare Worker · src/worker"]
         ASSETS["PWA assets"]
         API["JSON API<br/>auth + user scoping"]
         MCP["Hosted MCP + OAuth"]
-        TRIGGER["Cron + Run now"]
+        TRIGGER["Subscriber schedule + Run now"]
         DOMAIN["User-scoped domain + image services"]
     end
 
@@ -146,9 +155,9 @@ flowchart TB
     end
 
     subgraph services["External services"]
-        CLERK["Clerk<br/>identity"]
+        CLERK["Clerk<br/>identity + billing"]
         MARKETS["Auction sources<br/>BaT · Cars & Bids · Hemmings"]
-        MODEL["AI Gateway / model<br/>optional scoring + runner"]
+        MODEL["AI Gateway / model<br/>required for managed judgment"]
     end
 
     IOS --> API
@@ -158,8 +167,10 @@ flowchart TB
     IOS -. sign in .-> CLERK
     WEB -. sign in .-> CLERK
     API -. verifies tokens .-> CLERK
+    CLERK -. feature + webhook .-> API
     API --> DOMAIN
     MCP --> DOMAIN
+    CLIENT --> MARKETS
     API --> TRIGGER
     TRIGGER --> AGENT
     AGENT --> FLOW
@@ -168,15 +179,15 @@ flowchart TB
     FLOW --> DOMAIN
     SOURCES --> MARKETS
     RUNNER --> MARKETS
-    RUNNER -. optional .-> MODEL
-    FLOW -. optional .-> MODEL
+    RUNNER --> MODEL
+    FLOW --> MODEL
     DOMAIN --> D1
     DOMAIN -->|mirror originals| R2
     DOMAIN -->|prewarm + serve| IMAGES
     IMAGES <--> R2
 ```
 
-The Worker is the trust boundary: it verifies identity, scopes every read and write to a user, and exposes the same product state to iOS, the PWA, and optional MCP clients. Durable Objects hold per-user agent state, Workflows own long-running execution, and the Container is available for work that is too browser-heavy or open-ended for a request-bound Worker.
+The Worker is the trust boundary: it verifies identity, scopes every read and write to a user, and exposes the same product state to iOS, the PWA, and MCP clients. The default agent-connected path reaches that state through OAuth and scoped MCP tools. The managed branch additionally checks Clerk's feature claim at request time, persists webhook-backed entitlement state for background schedules, and rechecks access inside the Workflow before spending inference budget.
 
 ## Run it locally
 
@@ -215,6 +226,7 @@ For configuration details, see the focused guides instead of treating this READM
 - [Cloudflare architecture and guarded deployment](docs/cloudflare.md)
 - [Publishing contract and dossier schema](docs/publishing.md)
 - [Hosted MCP and bring-your-own-agent path](docs/remote-mcp-friend-automation.md)
+- [Managed Research pricing and unit economics](docs/pricing.md)
 - [Scraping and compliance notes](docs/scraping-and-compliance.md)
 
 ## Repository map
@@ -232,7 +244,7 @@ docs/                Architecture and operations guides
 
 ## Project status
 
-Beachcar is running as a private friend beta: the Worker/PWA is deployed, the managed research path is operational, and the native app is distributed through internal TestFlight. The default niche is beach cars and runabouts, but the profile, feedback, orchestration, and publication model are deliberately reusable for other high-consideration searches.
+Beachcar is running as a private friend beta: the Worker/PWA is deployed and the native app is distributed through internal TestFlight. Agent-connected curation through MCP is the product default. The managed subscription boundary is implemented in code; production launch still requires creating the Clerk plan/feature and installing the webhook signing secret. The default niche is beach cars and runabouts, but the profile, feedback, orchestration, and publication model are deliberately reusable for other high-consideration searches.
 
 ## Responsible use
 

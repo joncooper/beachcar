@@ -66,6 +66,11 @@ check("Source cache migration is present", migrationFiles.includes("0009_source_
 check("MCP OAuth migration is present", migrationFiles.includes("0010_mcp_oauth.sql"), "Add/apply 0010_mcp_oauth.sql.");
 check("Source Quality v1 cache migration is present", migrationFiles.includes("0011_source_cache_listing_fields.sql"), "Add/apply 0011_source_cache_listing_fields.sql.");
 check("Product diagnostics migration is present", migrationFiles.includes("0012_product_events.sql"), "Add/apply 0012_product_events.sql.");
+check(
+  "Agent-connected subscription migration is present",
+  migrationFiles.includes("0013_agent_connected_subscriptions.sql"),
+  "Add/apply 0013_agent_connected_subscriptions.sql.",
+);
 check("Preflight script is available", !!packageJson?.scripts?.preflight, "Add bun run preflight.");
 check("Local Worker preflight script is available", !!packageJson?.scripts?.["preflight:local"], "Add bun run preflight:local.");
 check("Full preflight script is available", !!packageJson?.scripts?.["preflight:full"], "Add bun run preflight:full.");
@@ -75,6 +80,7 @@ check("Runner package includes Codex SDK", !!runnerPackage?.dependencies?.["@ope
 checkSecretHint("PUBLISH_TOKEN", "Needed for admin import, invite admin console, and local Worker smoke.");
 checkSecretHint("CLERK_SECRET_KEY", "Needed for production Clerk token verification.");
 checkSecretHint("CLERK_JWT_ISSUER", "Needed for production Clerk token verification.");
+checkSecretHint("CLERK_WEBHOOK_SIGNING_SECRET", "Needed to persist managed-research entitlement changes for background schedules.");
 
 const hasGatewayToken = hasEnv("BEACHCAR_AI_GATEWAY_TOKEN");
 const hasGatewayTarget = hasEnv("BEACHCAR_AI_GATEWAY_BASE_URL") || (hasEnv("CLOUDFLARE_ACCOUNT_ID") && hasEnv("BEACHCAR_AI_GATEWAY_ID"));

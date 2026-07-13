@@ -10,6 +10,7 @@ Required Worker secrets:
 
 - `CLERK_SECRET_KEY`
 - `CLERK_JWT_ISSUER`
+- `CLERK_WEBHOOK_SIGNING_SECRET`
 
 Before deployment, put Clerk values in `.deploy.env` and run:
 
@@ -32,8 +33,10 @@ Authorization is handled in D1:
 - Invited users can only call `/api/me` and `POST /api/invites/accept` until they accept an invite code.
 - Active users can read/write only their own profile, latest run, feedback, and preference events.
 - Active users can update per-user source toggles with `PUT /api/source-settings`.
+- Active users can choose free agent-connected curation with `PUT /api/research-settings`. Selecting `managed` requires the Clerk `managed_research` feature.
+- Manual hosted runs, managed schedule synchronization, scheduled callbacks, and Workflow inference all recheck Managed Research access. MCP publication remains available to active users without that paid feature.
 - Active users can export their account data with `GET /api/account/export`.
-- Active users can delete their private account data with `DELETE /api/account` after confirming their email. This deletes profile, source settings, AI settings, AI usage events, runner tasks, feedback, preference events, user-scoped runs, and Agent run history, then marks the user row `disabled`. Shared listing and image cache rows are preserved.
+- Active users can delete their private account data with `DELETE /api/account` after confirming their email. This deletes profile, source settings, research settings, billing entitlements, AI settings, AI usage events, runner tasks, feedback, preference events, user-scoped runs, and Agent run history, then marks the user row `disabled`. Shared listing and image cache rows are preserved.
 - Disabled users can still call `/api/me` to see account status, but other user routes return `Account disabled`.
 - Admin/publisher routes still require `PUBLISH_TOKEN`.
 
@@ -47,6 +50,20 @@ Admin invite routes:
 User invite route:
 
 - `POST /api/invites/accept`
+
+## Billing authorization
+
+The public Clerk B2C plan should carry the feature slug `managed_research`. Clerk session-v2 `fea` and `pla` claims provide immediate request-time authorization. `ensureUser` mirrors those claims into D1 whenever a signed-in user calls the Worker.
+
+Background schedules do not have a browser session, so Clerk billing events must also be delivered to:
+
+```text
+POST /api/webhooks/clerk
+```
+
+Subscribe that endpoint to `subscription.*`, `subscriptionItem.*`, and `paymentAttempt.*` billing events. The Worker verifies the Standard Webhooks signature with `CLERK_WEBHOOK_SIGNING_SECRET`, fetches the current user subscription through the Clerk Backend SDK, and persists only whether an active plan contains `managed_research`, its plan slug, and period end. A lost entitlement stops new manual runs immediately and cancels the Durable Object schedule at its next callback.
+
+See [Managed Research pricing](pricing.md) for the plan definition and launch assumptions.
 
 ## Native iOS
 

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { bootstrapOwnerEmails, isBootstrapOwnerId, normalizeEmail, primaryBootstrapOwnerId, requireUser, userIdForEmail } from "../src/worker/auth";
+import {
+  bootstrapOwnerEmails,
+  isBootstrapOwnerId,
+  normalizeEmail,
+  primaryBootstrapOwnerId,
+  requireUser,
+  scopedClerkClaims,
+  userIdForEmail,
+} from "../src/worker/auth";
 
 describe("auth user identity", () => {
   it("uses normalized email ids so providers merge into one beta user", () => {
@@ -7,9 +15,24 @@ describe("auth user identity", () => {
     expect(userIdForEmail(" Friend@Example.COM ")).toBe("email:friend@example.com");
   });
 
+  it("extracts only user-scoped Clerk billing claims", () => {
+    expect(scopedClerkClaims(["u:managed_research", "o:team_plan", "u:managed_research", "u:beta"], "u")).toEqual([
+      "managed_research",
+      "beta",
+    ]);
+    expect(scopedClerkClaims("u:managed_research,o:team_plan,u:pro", "u")).toEqual(["managed_research", "pro"]);
+    expect(scopedClerkClaims(null, "u")).toEqual([]);
+  });
+
   it("allows a localhost test email only when real auth is not configured", async () => {
     const user = await requireUser(
-      new Request("http://127.0.0.1/api/me", { headers: { "X-Beachcar-Test-Email": " Friend@Example.com " } }),
+      new Request("http://127.0.0.1/api/me", {
+        headers: {
+          "X-Beachcar-Test-Email": " Friend@Example.com ",
+          "X-Beachcar-Test-Features": "managed_research beta",
+          "X-Beachcar-Test-Plans": "managed-research",
+        },
+      }),
       { ALLOWED_EMAIL: "owner@example.com", ENVIRONMENT: "production" } as Env,
     );
 
@@ -17,6 +40,8 @@ describe("auth user identity", () => {
       id: "email:friend@example.com",
       email: "friend@example.com",
       provider: "local",
+      features: ["managed_research", "beta"],
+      plans: ["managed-research"],
     });
   });
 
@@ -44,7 +69,7 @@ describe("auth user identity", () => {
     await expect(
       requireUser(
         new Request("https://beach-car-watch.example.workers.dev/api/me", {
-          headers: { "X-Beachcar-Test-Email": "friend@example.com" },
+          headers: { "X-Beachcar-Test-Email": "friend@example.com", "X-Beachcar-Test-Features": "managed_research" },
         }),
         { ALLOWED_EMAIL: "owner@example.com", ENVIRONMENT: "production" } as Env,
       ),

@@ -21,11 +21,19 @@ check(
 );
 checkWorkerSecret("CLERK_SECRET_KEY", () => /^sk_(test|live)_/.test(value("CLERK_SECRET_KEY")), "Expected a Clerk key beginning with sk_test_ or sk_live_.");
 checkWorkerSecret("CLERK_JWT_ISSUER", () => isHttpsUrl(value("CLERK_JWT_ISSUER")), "Use the Clerk issuer URL, usually https://<instance>.clerk.accounts.dev.");
+checkWorkerSecret(
+  "CLERK_WEBHOOK_SIGNING_SECRET",
+  () => /^whsec_/.test(value("CLERK_WEBHOOK_SIGNING_SECRET")),
+  "Expected the Clerk billing webhook signing secret beginning with whsec_.",
+);
 
 const gatewayToken = hasRealValue("BEACHCAR_AI_GATEWAY_TOKEN");
 const gatewayTarget = hasRealValue("BEACHCAR_AI_GATEWAY_BASE_URL") || (hasRealValue("CLOUDFLARE_ACCOUNT_ID") && hasRealValue("BEACHCAR_AI_GATEWAY_ID"));
 if (!gatewayToken && !gatewayTarget) {
-  warn("AI Gateway credentials are not configured", "First deploy can run deterministic scoring; configure AI Gateway before proving managed AI spend.");
+  warn(
+    "AI Gateway credentials are not configured",
+    "Agent-connected MCP curation remains available; configure AI Gateway before enabling the managed_research feature.",
+  );
 } else {
   check("AI Gateway token is available", gatewayToken, "Set BEACHCAR_AI_GATEWAY_TOKEN. Reserve CLOUDFLARE_API_TOKEN for Wrangler authentication.");
   check("AI Gateway target is available", gatewayTarget, "Set BEACHCAR_AI_GATEWAY_BASE_URL or CLOUDFLARE_ACCOUNT_ID plus BEACHCAR_AI_GATEWAY_ID.");

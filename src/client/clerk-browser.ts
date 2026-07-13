@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 
+const clerkBrowserVersion = "6.10.4";
+
 type ClerkSession = {
-  getToken: () => Promise<string | null>;
+  getToken: (options?: Record<string, unknown>) => Promise<string | null>;
 };
 
 type ClerkSignInResource = {
@@ -37,6 +39,8 @@ export type BrowserClerk = {
   authenticateWithRedirect?: (options: Record<string, unknown>) => Promise<void>;
   mountUserButton?: (node: HTMLElement, props?: Record<string, unknown>) => void;
   unmountUserButton?: (node: HTMLElement) => void;
+  mountPricingTable?: (node: HTMLDivElement, props?: Record<string, unknown>) => void;
+  unmountPricingTable?: (node: HTMLDivElement) => void;
 };
 
 type ClerkAuthState = {
@@ -218,7 +222,7 @@ function loadClerkScript(publishableKey: string): Promise<void> {
   const script = document.createElement("script");
   script.async = true;
   script.crossOrigin = "anonymous";
-  script.src = `https://${frontendApi}/npm/@clerk/clerk-js@latest/dist/clerk.browser.js`;
+  script.src = `https://${frontendApi}/npm/@clerk/clerk-js@${clerkBrowserVersion}/dist/clerk.browser.js`;
   script.setAttribute("data-clerk-js-script", "true");
   script.setAttribute("data-clerk-publishable-key", publishableKey);
 

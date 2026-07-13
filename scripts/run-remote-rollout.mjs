@@ -112,7 +112,7 @@ try {
   console.log(
     aiGatewayTokenAvailable
       ? "\nManaged scoring mode: Cloudflare AI Gateway runtime token is available."
-      : "\nManaged scoring mode: explicit heuristic-only pilot (no BEACHCAR_AI_GATEWAY_TOKEN available locally or remotely).",
+      : "\nManaged scoring unavailable: agent-connected MCP curation can deploy, but the Clerk managed_research feature must remain disabled until BEACHCAR_AI_GATEWAY_TOKEN is configured.",
   );
 
   await captureRolloutSafetyArtifacts(resourceReport);
@@ -368,7 +368,10 @@ async function verifyRemoteSourceQualitySchema() {
   const indexesSql = `SELECT COUNT(*) AS found_indexes FROM sqlite_master WHERE type = 'index' AND name IN ('idx_source_items_source_live_ends','idx_source_items_source_bid','idx_source_items_source_location')`;
   const productColumnsSql = `SELECT COUNT(*) AS found_product_columns FROM pragma_table_info('product_events') WHERE name IN ('id','user_id','session_id','event_name','properties_json','client_created_at','received_at','app_build','tuning_version')`;
   const productIndexesSql = `SELECT COUNT(*) AS found_product_indexes FROM sqlite_master WHERE type = 'index' AND name IN ('idx_product_events_user_received','idx_product_events_name_received','idx_product_events_received')`;
-  const [columns, indexes, productColumns, productIndexes, quickCheck] = await Promise.all([
+  const researchColumnsSql = `SELECT COUNT(*) AS found_research_columns FROM pragma_table_info('user_research_settings') WHERE name IN ('user_id','mode','created_at','updated_at')`;
+  const billingColumnsSql = `SELECT COUNT(*) AS found_billing_columns FROM pragma_table_info('billing_entitlements') WHERE name IN ('user_id','feature','active','source','plan_slug','expires_at','updated_at')`;
+  const billingIndexesSql = `SELECT COUNT(*) AS found_billing_indexes FROM sqlite_master WHERE type = 'index' AND name IN ('idx_billing_entitlements_feature_active')`;
+  const [columns, indexes, productColumns, productIndexes, researchColumns, billingColumns, billingIndexes, quickCheck] = await Promise.all([
     run(["bunx", "wrangler", "d1", "execute", d1Name, "--remote", "--json", "--command", columnsSql], {
       env,
       label: "Verify Source Quality v1 D1 columns",
@@ -389,6 +392,21 @@ async function verifyRemoteSourceQualitySchema() {
       label: "Verify product-events D1 indexes",
       quiet: true,
     }),
+    run(["bunx", "wrangler", "d1", "execute", d1Name, "--remote", "--json", "--command", researchColumnsSql], {
+      env,
+      label: "Verify agent-connected research settings D1 columns",
+      quiet: true,
+    }),
+    run(["bunx", "wrangler", "d1", "execute", d1Name, "--remote", "--json", "--command", billingColumnsSql], {
+      env,
+      label: "Verify billing entitlement D1 columns",
+      quiet: true,
+    }),
+    run(["bunx", "wrangler", "d1", "execute", d1Name, "--remote", "--json", "--command", billingIndexesSql], {
+      env,
+      label: "Verify billing entitlement D1 indexes",
+      quiet: true,
+    }),
     run(["bunx", "wrangler", "d1", "execute", d1Name, "--remote", "--json", "--command", "PRAGMA quick_check"], {
       env,
       label: "Run remote D1 quick_check",
@@ -400,14 +418,17 @@ async function verifyRemoteSourceQualitySchema() {
     indexes: indexes.stdout,
     productColumns: productColumns.stdout,
     productIndexes: productIndexes.stdout,
+    researchColumns: researchColumns.stdout,
+    billingColumns: billingColumns.stdout,
+    billingIndexes: billingIndexes.stdout,
     quickCheck: quickCheck.stdout,
   });
   if (!gate.ok) {
     throw new Error(
-      `Post-migration D1 gate failed: expected 12 Source Quality columns, 3 Source Quality indexes, 9 product-event columns, 3 product-event indexes, and quick_check=ok; found ${gate.columnCount}, ${gate.indexCount}, ${gate.productColumnCount}, ${gate.productIndexCount}, quick_check=${gate.quickCheck || "unreadable"}. The Worker was not deployed.`,
+      `Post-migration D1 gate failed: expected 12 Source Quality columns, 3 Source Quality indexes, 9 product-event columns, 3 product-event indexes, 4 research-setting columns, 7 billing-entitlement columns, 1 billing index, and quick_check=ok; found ${gate.columnCount}, ${gate.indexCount}, ${gate.productColumnCount}, ${gate.productIndexCount}, ${gate.researchColumnCount}, ${gate.billingColumnCount}, ${gate.billingIndexCount}, quick_check=${gate.quickCheck || "unreadable"}. The Worker was not deployed.`,
     );
   }
-  console.log("\nD1 post-migration gate passed: Source Quality and product-event schemas present, quick_check=ok.");
+  console.log("\nD1 post-migration gate passed: Source Quality, product-event, research-mode, and billing-entitlement schemas present; quick_check=ok.");
 }
 
 async function writeProtectedSecretsFile(secrets) {
@@ -433,7 +454,7 @@ function assertExpectedPendingMigrations(output) {
   const pending = pendingD1MigrationFiles(output);
   const detail = pending.length ? pending.join(", ") : "unrecognized migration-list output";
   throw new Error(
-    `Remote migration gate expected no pending migration or only the reviewed 0011/0012 migrations; found ${detail}.`,
+    `Remote migration gate expected no pending migration or only the reviewed 0011/0012/0013 migrations; found ${detail}.`,
   );
 }
 
@@ -587,7 +608,7 @@ Execution sequence:
   1. Validate .deploy.env without printing secrets.
   2. Build production client assets with VITE_CLERK_PUBLISHABLE_KEY.
   3. Run a strict, keep-vars Wrangler deploy dry-run.
-  4. Strictly confirm the production account, coupled D1 name/UUID, resources, and required remote/local secret names; explicitly report Gateway-backed or heuristic-only scoring mode.
+  4. Strictly confirm the production account, coupled D1 name/UUID, resources, and required remote/local secret names; explicitly report whether paid managed scoring can be enabled.
   5. Require one active Worker version at 100% traffic whose remote Durable Object migration tag already matches configured v2. Capture only minimal rollback evidence, plus a D1 Time Travel bookmark, pending migrations, and a full D1 export under a private /tmp/beachcar-rollout-* directory. Worker secret staging is never stored in that recovery directory.
   6. Stage locally supplied secrets in a separate private temporary directory, strictly dry-run the exact code/vars/secrets again, apply only the gated remote D1 migration, verify its schema and quick_check, then strictly deploy Worker beachcar-watch once with --keep-vars. Locally supplied secrets are included atomically; omitted remote secrets are preserved. Secret staging is removed after deploy or failure.
   7. Strictly verify the public Worker surface, run authenticated gates for tokens supplied locally, and re-check Cloudflare resources.

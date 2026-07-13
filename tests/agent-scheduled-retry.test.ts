@@ -4,6 +4,7 @@ import type { AgentRunRecord } from "../src/shared/types";
 const dbMocks = vi.hoisted(() => ({
   createAgentRunRequest: vi.fn(),
   createIdempotentAgentRunRequest: vi.fn(),
+  getManagedResearchAccess: vi.fn(),
   getProfile: vi.fn(),
   markAgentRunPrepared: vi.fn(),
   markAgentRunRunning: vi.fn(),
@@ -25,6 +26,11 @@ describe("BeachcarAgent scheduled-run retries", () => {
       onboardingCompletedAt: "2026-07-01T12:00:00.000Z",
       scheduleCron: "0 8 * * *",
       timezone: "America/New_York",
+    });
+    dbMocks.getManagedResearchAccess.mockResolvedValue({
+      settings: { mode: "managed" },
+      entitlement: { feature: "managed_research", active: true, source: "clerk_session" },
+      allowed: true,
     });
   });
 

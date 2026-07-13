@@ -202,7 +202,7 @@ export type ManagedAiProof = {
   scoring: boolean;
   budgetHealthy: boolean;
   usageEvent: boolean;
-  mode: "ai-gateway" | "heuristic";
+  mode: "ai-gateway";
 };
 
 export function evaluateManagedAiProof(input: {
@@ -210,9 +210,10 @@ export function evaluateManagedAiProof(input: {
   sourceSummary: unknown;
   usage: unknown;
   agentRunId: string;
-  requireAiGateway?: boolean;
 }): ManagedAiProof {
   const user = isRecord(input.user) ? input.user : {};
+  const researchSettings = isRecord(user.researchSettings) ? user.researchSettings : {};
+  const entitlement = isRecord(user.managedResearchEntitlement) ? user.managedResearchEntitlement : {};
   const settings = isRecord(user.aiSettings) ? user.aiSettings : {};
   const sourceSummary = isRecord(input.sourceSummary) ? input.sourceSummary : {};
   const scoring = isRecord(sourceSummary.aiScoring) ? sourceSummary.aiScoring : {};
@@ -228,15 +229,17 @@ export function evaluateManagedAiProof(input: {
       event.provider === "cloudflare-ai-gateway" &&
       event.status === "ok",
   );
-  const requireAiGateway = input.requireAiGateway === true;
   return {
-    settings: settings.mode === "managed" && settings.status === "active",
-    scoring: requireAiGateway
-      ? scoring.status === "ok" && scoring.provider === "cloudflare-ai-gateway"
-      : scoring.status === "skipped" && scoring.provider === "heuristic",
+    settings:
+      researchSettings.mode === "managed" &&
+      entitlement.feature === "managed_research" &&
+      entitlement.active === true &&
+      settings.mode === "managed" &&
+      settings.status === "active",
+    scoring: scoring.status === "ok" && scoring.provider === "cloudflare-ai-gateway",
     budgetHealthy: budget.budgetExceeded === false,
-    usageEvent: requireAiGateway ? gatewayEvent : runScoringEvents.length === 0,
-    mode: requireAiGateway ? "ai-gateway" : "heuristic",
+    usageEvent: gatewayEvent,
+    mode: "ai-gateway",
   };
 }
 

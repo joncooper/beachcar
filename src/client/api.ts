@@ -20,6 +20,7 @@ import type {
   SourceCacheAdminStatus,
   SourceCacheIngestResult,
   UserAiSettings,
+  ResearchMode,
   UserPayload,
   OAuthAccessTokenRecord,
 } from "../shared/types";
@@ -77,6 +78,14 @@ export async function putAiSettings(input: {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
+  });
+}
+
+export async function putResearchSettings(mode: ResearchMode): Promise<UserPayload> {
+  return requestJson<UserPayload>("/api/research-settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode }),
   });
 }
 

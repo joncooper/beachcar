@@ -32,6 +32,10 @@ struct AuctionAPI {
     try await request(path: "/api/source-settings", method: "PUT", body: input, authToken: authToken)
   }
 
+  func putResearchSettings(input: ResearchSettingsRequest, authToken: String?) async throws -> UserPayload {
+    try await request(path: "/api/research-settings", method: "PUT", body: input, authToken: authToken)
+  }
+
   func latestRun(authToken: String?) async throws -> RunPayload {
     try await request(path: "/api/runs/latest", authToken: authToken)
   }

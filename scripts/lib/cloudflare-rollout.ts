@@ -1,6 +1,12 @@
-export const REQUIRED_WORKER_SECRET_NAMES = ["PUBLISH_TOKEN", "CLERK_SECRET_KEY", "CLERK_JWT_ISSUER"] as const;
+export const REQUIRED_WORKER_SECRET_NAMES = [
+  "PUBLISH_TOKEN",
+  "CLERK_SECRET_KEY",
+  "CLERK_JWT_ISSUER",
+  "CLERK_WEBHOOK_SIGNING_SECRET",
+] as const;
 export const SOURCE_QUALITY_V1_MIGRATION = "0011_source_cache_listing_fields.sql";
 export const PRODUCT_EVENTS_V1_MIGRATION = "0012_product_events.sql";
+export const AGENT_CONNECTED_SUBSCRIPTIONS_MIGRATION = "0013_agent_connected_subscriptions.sql";
 
 export const WORKER_SECRET_NAMES = [
   ...REQUIRED_WORKER_SECRET_NAMES,
@@ -218,7 +224,7 @@ export function pendingD1MigrationFiles(output: string): string[] {
 export function isSafeSourceQualityMigrationSet(output: string): boolean {
   const pending = pendingD1MigrationFiles(output);
   if (pending.length === 0) return /No migrations to apply!/i.test(output);
-  const allowed = new Set([SOURCE_QUALITY_V1_MIGRATION, PRODUCT_EVENTS_V1_MIGRATION]);
+  const allowed = new Set([SOURCE_QUALITY_V1_MIGRATION, PRODUCT_EVENTS_V1_MIGRATION, AGENT_CONNECTED_SUBSCRIPTIONS_MIGRATION]);
   return pending.every((migration) => allowed.has(migration));
 }
 
@@ -227,12 +233,28 @@ export function evaluateSourceQualitySchemaGate(outputs: {
   indexes: string;
   productColumns: string;
   productIndexes: string;
+  researchColumns: string;
+  billingColumns: string;
+  billingIndexes: string;
   quickCheck: string;
-}): { columnCount: number; indexCount: number; productColumnCount: number; productIndexCount: number; quickCheck: string; ok: boolean } {
+}): {
+  columnCount: number;
+  indexCount: number;
+  productColumnCount: number;
+  productIndexCount: number;
+  researchColumnCount: number;
+  billingColumnCount: number;
+  billingIndexCount: number;
+  quickCheck: string;
+  ok: boolean;
+} {
   const columnCount = numericResult(outputs.columns, "found_columns");
   const indexCount = numericResult(outputs.indexes, "found_indexes");
   const productColumnCount = numericResult(outputs.productColumns, "found_product_columns");
   const productIndexCount = numericResult(outputs.productIndexes, "found_product_indexes");
+  const researchColumnCount = numericResult(outputs.researchColumns, "found_research_columns");
+  const billingColumnCount = numericResult(outputs.billingColumns, "found_billing_columns");
+  const billingIndexCount = numericResult(outputs.billingIndexes, "found_billing_indexes");
   const quickRows = d1RowsFromJson(outputs.quickCheck);
   const quickCheck = clean(quickRows[0]?.quick_check || quickRows[0]?.integrity_check);
   return {
@@ -240,12 +262,18 @@ export function evaluateSourceQualitySchemaGate(outputs: {
     indexCount,
     productColumnCount,
     productIndexCount,
+    researchColumnCount,
+    billingColumnCount,
+    billingIndexCount,
     quickCheck,
     ok:
       columnCount === 12 &&
       indexCount === 3 &&
       productColumnCount === 9 &&
       productIndexCount === 3 &&
+      researchColumnCount === 4 &&
+      billingColumnCount === 7 &&
+      billingIndexCount === 1 &&
       quickCheck.toLowerCase() === "ok",
   };
 }

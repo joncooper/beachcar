@@ -1,6 +1,6 @@
 # Beachcar Deployment Handoff
 
-This branch is ready for a deliberate Source Quality v1 rollout after the production account passes the strict read-only gate and remote D1 state is confirmed.
+This branch is ready for a deliberate agent-connected subscriptions rollout after the production account passes the strict read-only gate and remote D1 state is confirmed.
 
 ## Production Target
 
@@ -27,7 +27,7 @@ The remote migration ledger is authoritative:
 bunx wrangler d1 migrations list beach-car-watch --remote
 ```
 
-The expected Source Quality v1 state is that only `0011_source_cache_listing_fields.sql` is pending. Stop if the command reports any other pending migration.
+The rollout accepts no pending migrations or only the reviewed additive set: `0011_source_cache_listing_fields.sql`, `0012_product_events.sql`, and `0013_agent_connected_subscriptions.sql`. Stop if the command reports any other pending migration.
 
 ## Deployment Environment
 
@@ -44,6 +44,7 @@ The following are required Worker secret names but their local values may remain
 - `PUBLISH_TOKEN`
 - `CLERK_SECRET_KEY`
 - `CLERK_JWT_ISSUER`
+- `CLERK_WEBHOOK_SIGNING_SECRET`
 
 Supply a local value only when creating or rotating that secret. Supplied secret values are included atomically in the one Worker deployment through `wrangler deploy --secrets-file`; omitted secrets are preserved. The rollout does not run `wrangler secret bulk` after deployment.
 
@@ -53,7 +54,7 @@ Optional verifier credentials:
 - `BEACHCAR_MCP_TOKEN`
 - `PUBLISH_TOKEN`, when it is available locally for the admin check
 
-Optional managed AI runtime configuration:
+Required before enabling Clerk's paid `managed_research` feature (not required for free agent-connected MCP curation):
 
 - `BEACHCAR_AI_GATEWAY_TOKEN`
 - `BEACHCAR_AI_GATEWAY_BASE_URL`, or `CLOUDFLARE_ACCOUNT_ID` plus `BEACHCAR_AI_GATEWAY_ID`
@@ -94,14 +95,14 @@ Before migration, the orchestrator creates a random private `/tmp/beachcar-rollo
 - Current Worker versions and the single active 100%-traffic version needed for a code rollback.
 - Minimal rollback evidence containing the active version id, timestamps, and remote Durable Object migration tag. The tag must already match configured `v2`; otherwise rollout stops before D1 backup or mutation because a code rollback would not be proven available.
 - A pre-migration D1 Time Travel bookmark.
-- The pending-migration report, which must be empty or list only `0011_source_cache_listing_fields.sql`.
+- The pending-migration report, which must be empty or list only reviewed migrations `0011`, `0012`, and `0013`.
 - A full pre-migration D1 SQL export and its SHA-256 digest.
 
 Keep the printed directory until verification is complete, then move the artifacts to durable, access-controlled storage according to the project retention policy. Cloudflare auth tokens and headers, full service metadata, plain variable values, secret values, and the separate temporary Worker-secret staging directory are kept out of these artifacts.
 
-The remaining execution order is: require the configured D1 name and UUID to identify the same remote database; prove rollback availability; capture recovery state; run an exact `wrangler deploy --strict --keep-vars --dry-run` with any supplied secrets; apply only the verified pending migration; require all 12 migration-0011 columns, all three indexes, and `PRAGMA quick_check=ok`; deploy code and supplied secrets together once with `--strict --keep-vars`; run verification; and repeat the strict resource check. Strict mode stops remote configuration conflicts, while `--keep-vars` preserves audited dashboard-only plain vars. A failed schema gate leaves the old Worker live with the additive migration applied. There is no post-deploy secret-only release.
+The remaining execution order is: require the configured D1 name and UUID to identify the same remote database; prove rollback availability; capture recovery state; run an exact `wrangler deploy --strict --keep-vars --dry-run` with any supplied secrets; apply only the verified pending migrations; require the Source Quality, product-event, research-mode, and billing-entitlement schemas plus `PRAGMA quick_check=ok`; deploy code and supplied secrets together once with `--strict --keep-vars`; run verification; and repeat the strict resource check. Strict mode stops remote configuration conflicts, while `--keep-vars` preserves audited dashboard-only plain vars. A failed schema gate leaves the old Worker live with the additive migrations applied. There is no post-deploy secret-only release.
 
-Direct remote migration and bootstrap mutation commands are disabled. `bun run deploy:remote -- --execute --yes` is the sole production mutation entrypoint. If `BEACHCAR_AI_GATEWAY_TOKEN` is unavailable locally and remotely, the command explicitly records heuristic-only pilot mode and continues; `CLOUDFLARE_API_TOKEN` is never substituted as a runtime AI credential.
+Direct remote migration and bootstrap mutation commands are disabled. `bun run deploy:remote -- --execute --yes` is the sole production mutation entrypoint. If `BEACHCAR_AI_GATEWAY_TOKEN` is unavailable locally and remotely, the free MCP path can still deploy, but the paid managed feature must remain disabled; `CLOUDFLARE_API_TOKEN` is never substituted as a runtime AI credential.
 
 The orchestrator requires an explicit `BEACHCAR_RUNNER_MODE=deterministic|codex` in `.deploy.env` and reads the effective mode back after deployment. `deterministic` skips Cloudflare Container image publishing with `--containers-rollout none`. To intentionally use `codex`, supply its `OPENAI_API_KEY` in `.deploy.env` (never only in the ambient shell) and run:
 
@@ -145,9 +146,9 @@ For the friend-pilot managed-path proof, use the protected single-use Clerk tick
 bun run cloudflare:verify-managed -- --execute --yes
 ```
 
-The verifier fails closed before ticket exchange unless the target, deployed Clerk key, exact protected pilot id, active/onboarded state, budget, managed mode, BaT/C&B/Hemmings settings, and effective Gateway/heuristic mode are ready. The recognized legacy ticket URL is never visited: only its single `__clerk_ticket` value is extracted in memory and redeemed on `BEACHCAR_DEPLOY_URL`. It sends a persisted UUID `requestId`, follows the exact Agent/Workflow/published-run ids, proves exact Run-detail identity and same-origin image bytes/cache headers, and synchronizes plus validates the exact next timezone-aware schedule occurrence last.
+The verifier fails closed before ticket exchange unless the target, deployed Clerk key, exact protected pilot id, active/onboarded state, `managed_research` entitlement, budget, managed mode, BaT/C&B/Hemmings settings, and AI Gateway runtime are ready. The recognized legacy ticket URL is never visited: only its single `__clerk_ticket` value is extracted in memory and redeemed on `BEACHCAR_DEPLOY_URL`. It sends a persisted UUID `requestId`, follows the exact Agent/Workflow/published-run ids, proves exact Run-detail identity and same-origin image bytes/cache headers, and synchronizes plus validates the exact next timezone-aware schedule occurrence last.
 
-Use `--configure-pilot` only to explicitly repair managed mode and the three required source settings after the admin preflight reports drift. The preflight auto-selects the effective AI proof; `--require-ai-gateway` or `--require-heuristic` pins it. The default runner gate waits for C&B candidates to merge and for Hemmings to merge candidates or terminate honestly empty/blocked. `--allow-runner-handoff-only` reports exact task ids for non-release diagnostics but does not qualify as release evidence. The UUID request gets bounded idempotent retry only inside the same authenticated process. As soon as the Clerk session exists, the consumed token and both ticket URLs are atomically cleared from `.env.local` while token id/user/email remain; `.tmp/managed-production-verification.json` contains only non-secret evidence. Do not run the verifier as a rehearsal.
+Use `--configure-pilot` only to select managed research and repair the three required source settings after Clerk already grants the feature; the verifier cannot grant billing access. The default runner gate waits for C&B candidates to merge and for Hemmings to merge candidates or terminate honestly empty/blocked. `--allow-runner-handoff-only` reports exact task ids for non-release diagnostics but does not qualify as release evidence. The UUID request gets bounded idempotent retry only inside the same authenticated process. As soon as the Clerk session exists, the consumed token and both ticket URLs are atomically cleared from `.env.local` while token id/user/email remain; `.tmp/managed-production-verification.json` contains only non-secret evidence. Do not run the verifier as a rehearsal.
 
 ## Rollback
 
@@ -159,7 +160,7 @@ bunx wrangler rollback <activeWorkerVersionId> \
   --message "Rollback Source Quality v1"
 ```
 
-Migration `0011` is additive, so a failed code upload can leave `0011` applied while the old Worker remains live. However, after the new release has resynchronized a profile schedule, do **not** roll directly back to the old `0010` Worker: the new scheduler creates timezone-aware one-shot Durable Object schedules that the old code neither renews nor reconciles. Prefer a forward hotfix or a bridge/reconciliation release. A direct code rollback is only a safe option before the new scheduler has touched production schedule state.
+Migrations `0011`–`0013` are additive, so a failed code upload can leave them applied while the old Worker remains live. However, after the new release has resynchronized a profile schedule, do **not** roll directly back to the old `0010` Worker: the new scheduler creates timezone-aware one-shot Durable Object schedules that the old code neither renews nor reconciles. Prefer a forward hotfix or a bridge/reconciliation release. A direct code rollback is only a safe option before the new scheduler has touched production schedule state.
 
 Only use D1 Time Travel for confirmed database corruption. It is destructive and discards writes after the chosen bookmark. First stop writes and roll back the Worker, then restore deliberately from the saved bookmark and retain the undo bookmark Cloudflare returns:
 

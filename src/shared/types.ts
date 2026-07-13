@@ -295,6 +295,22 @@ export interface UserAiSettings {
   updatedAt: string;
 }
 
+export type ResearchMode = "external_agent" | "managed";
+
+export interface UserResearchSettings {
+  mode: ResearchMode;
+  updatedAt?: string | null;
+}
+
+export interface BillingEntitlement {
+  feature: "managed_research";
+  active: boolean;
+  source: "none" | "clerk_session" | "clerk_webhook";
+  planSlug?: string | null;
+  expiresAt?: string | null;
+  updatedAt?: string | null;
+}
+
 export interface AiUsageWindow {
   spendMicros: number;
   budgetCents?: number | null;
@@ -419,6 +435,8 @@ export interface RunnerTaskRecord {
 export interface UserPayload extends UserRecord {
   profile?: UserProfile | null;
   sourceSettings?: SourceSetting[];
+  researchSettings?: UserResearchSettings;
+  managedResearchEntitlement?: BillingEntitlement;
   aiSettings?: UserAiSettings | null;
   aiUsage?: AiUsageSummary | null;
   onboarding?: {
@@ -426,6 +444,7 @@ export interface UserPayload extends UserRecord {
     completedAt?: string | null;
   };
   capabilities?: {
+    canConnectAgent: boolean;
     canUseManagedAi: boolean;
     canUseByok: boolean;
     canRunNow: boolean;
@@ -436,6 +455,8 @@ export interface AdminUserSummary extends UserRecord {
   onboardingCompletedAt?: string | null;
   latestRunAt?: string | null;
   sourceSettings?: SourceSetting[];
+  researchSettings?: UserResearchSettings;
+  managedResearchEntitlement?: BillingEntitlement;
   aiSettings?: UserAiSettings | null;
   aiUsage?: AiUsageSummary | null;
   createdAt: string;
@@ -603,6 +624,8 @@ export interface AccountDeletionResult {
   deleted: {
     profiles: number;
     sourceSettings: number;
+    researchSettings: number;
+    billingEntitlements: number;
     aiSettings: number;
     aiUsageEvents: number;
     runnerTasks: number;

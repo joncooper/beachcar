@@ -139,7 +139,7 @@ if (report.workerName) {
     const deployments = await runWrangler(["deployments", "list", "--json", "--name", report.workerName]);
     report.resources.workerDeployments = deployments.ok ? parseJson(deployments.stdout, []) : { error: summarizeFailure(deployments) };
     report.resources.workerSecrets = secretNames(parseJson(secrets.stdout, []));
-    const requiredSecrets = ["PUBLISH_TOKEN", "CLERK_SECRET_KEY", "CLERK_JWT_ISSUER"];
+    const requiredSecrets = ["PUBLISH_TOKEN", "CLERK_SECRET_KEY", "CLERK_JWT_ISSUER", "CLERK_WEBHOOK_SIGNING_SECRET"];
     const recommendedSecrets = ["BEACHCAR_AI_GATEWAY_TOKEN"];
     addCheck("Remote Worker secrets are readable", true, `${report.resources.workerSecrets.length} secret name(s) returned.`);
     for (const name of requiredSecrets) {
@@ -153,7 +153,13 @@ if (report.workerName) {
       );
     }
     for (const name of recommendedSecrets) {
-      addCheck(`Recommended remote secret ${name} is set`, report.resources.workerSecrets.includes(name), name, `Set ${name} before remote AI Gateway scoring rehearsal.`, "warn");
+      addCheck(
+        `Recommended remote secret ${name} is set`,
+        report.resources.workerSecrets.includes(name),
+        name,
+        `Set ${name} before enabling Clerk's managed_research feature.`,
+        "warn",
+      );
     }
   } else {
     report.resources.workerDeployments = null;

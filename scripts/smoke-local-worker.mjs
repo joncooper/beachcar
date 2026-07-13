@@ -12,6 +12,7 @@ const publishToken = process.env.PUBLISH_TOKEN || "";
 const smokeEmail = firstEmail(process.env.SMOKE_TEST_EMAIL, process.env.BOOTSTRAP_OWNER_EMAILS, process.env.ALLOWED_EMAILS, process.env.ALLOWED_EMAIL, "you@example.com");
 const pollAttempts = numberFromEnv("SMOKE_WORKFLOW_POLLS", 180);
 const pollDelayMs = numberFromEnv("SMOKE_WORKFLOW_POLL_MS", 500);
+const locallyManagedEmails = new Set();
 
 if (!publishToken) {
   fail("Set PUBLISH_TOKEN in the environment, .dev.vars, or .publish.env before running the local Worker smoke test.");
@@ -70,12 +71,25 @@ const profilePayload = {
 };
 const profiled = await requestJson("/api/profile", { method: "PUT", body: profilePayload });
 assert(profiled.onboarding?.completed === true, "Expected profile save to complete onboarding.");
+assert(profiled.researchSettings?.mode === "external_agent", "Expected new users to default to agent-connected curation.");
 const scheduleStatus = await requestJson("/api/agent-schedule");
-assertTimezoneAwareSchedule(scheduleStatus, "profile-save schedule status");
+assertUnscheduled(scheduleStatus, "agent-connected profile-save schedule status", smokeEmail);
+const blockedScheduleSync = await rawRequest("/api/agent-schedule/sync", { method: "POST", body: {} });
+assert(blockedScheduleSync.status === 403, `Expected agent-connected schedule sync to require Managed Research; received HTTP ${blockedScheduleSync.status}.`);
+const blockedManagedMode = await rawRequest("/api/research-settings", { method: "PUT", body: { mode: "managed" } });
+assert(blockedManagedMode.status === 403, `Expected managed mode to require a subscription; received HTTP ${blockedManagedMode.status}.`);
+
+locallyManagedEmails.add(smokeEmail);
+const subscribed = await requestJson("/api/me");
+assert(subscribed.managedResearchEntitlement?.active === true, "Expected the local subscribed-user simulation to activate Managed Research.");
+const managedResearch = await requestJson("/api/research-settings", { method: "PUT", body: { mode: "managed" } });
+assert(managedResearch.researchSettings?.mode === "managed", "Expected a subscribed user to opt into Managed Research.");
+const managedScheduleStatus = await requestJson("/api/agent-schedule");
+assertTimezoneAwareSchedule(managedScheduleStatus, "managed profile-save schedule status", smokeEmail);
 const resyncedScheduleStatus = await requestJson("/api/agent-schedule/sync", { method: "POST", body: {} });
-assertTimezoneAwareSchedule(resyncedScheduleStatus, "explicit schedule resync");
+assertTimezoneAwareSchedule(resyncedScheduleStatus, "explicit managed schedule resync", smokeEmail);
 assert(
-  resyncedScheduleStatus.scheduleId === scheduleStatus.scheduleId,
+  resyncedScheduleStatus.scheduleId === managedScheduleStatus.scheduleId,
   "Expected repeated timezone-aware schedule sync to reuse the existing idempotent one-shot schedule.",
 );
 const ownerSources = await requestJson("/api/source-settings", {
@@ -130,13 +144,6 @@ assert(
   typeof rawKeyResponse.body?.error === "string" && rawKeyResponse.body.error.includes("AI Gateway BYOK"),
   "Expected raw provider key rejection to direct users to AI Gateway BYOK.",
 );
-
-const byok = await requestJson("/api/ai-settings", {
-  method: "PUT",
-  body: { mode: "byok", gatewayKeyRef: "gateway-key-ref-local-smoke", dailyBudgetCents: 300, monthlyBudgetCents: 3000 },
-});
-assert(byok.aiSettings?.mode === "byok", "Expected BYOK AI settings to save.");
-assert(byok.aiSettings?.gatewayKeyRef === "gateway-key-ref-local-smoke", "Expected BYOK gateway reference to round-trip.");
 
 const manualRunRequestId = crypto.randomUUID();
 const manualRunReason = `local smoke workflow ${new Date().toISOString()}`;
@@ -371,7 +378,7 @@ const deletedFriend = await smokeAccountExportAndDeletion();
 
 console.log(`Local Worker smoke passed for ${smokeEmail}.`);
 console.log(`Agent run: ${published.id}; Workflow: ${published.workflowInstanceId}; published run: ${latestRun.id}.`);
-console.log(`Listings: ${latestRun.listings.length}; AI mode: ${byok.aiSettings.mode}.`);
+console.log(`Listings: ${latestRun.listings.length}; AI mode: ${managed.aiSettings.mode}.`);
 console.log(`Export/delete: ${deletedFriend.email}; deleted runs: ${deletedFriend.deleted.runs}.`);
 
 async function smokeAccountExportAndDeletion() {
@@ -432,6 +439,14 @@ async function smokeAccountExportAndDeletion() {
         { source: "marketplace", enabled: false, settings: { maxDistanceMiles: 100, browserRunner: true } },
       ],
     },
+  });
+  locallyManagedEmails.add(friendEmail);
+  const subscribedFriend = await requestJson("/api/me", { email: friendEmail });
+  assert(subscribedFriend.managedResearchEntitlement?.active === true, "Expected the temporary subscribed friend to receive Managed Research access.");
+  await requestJson("/api/research-settings", {
+    email: friendEmail,
+    method: "PUT",
+    body: { mode: "managed" },
   });
   await requestJson("/api/ai-settings", {
     email: friendEmail,
@@ -507,6 +522,8 @@ async function smokeAccountExportAndDeletion() {
     "Expected account export to include source-specific settings.",
   );
   assert(account.user?.profile?.profile?.notifications?.digestTime === "09:00", "Expected account export to include notification preferences.");
+  assert(account.user?.researchSettings?.mode === "managed", "Expected account export to include the research mode.");
+  assert(account.user?.managedResearchEntitlement?.active === true, "Expected account export to include the managed entitlement.");
   assert(account.user?.aiUsage?.daily?.spendMicros >= 170000, "Expected account export user payload to include AI usage summary.");
   assert(Array.isArray(account.aiUsageEvents) && account.aiUsageEvents.some((event) => event.gatewayId === "local-smoke-gateway"), "Expected account export to include AI usage events.");
   assert(Array.isArray(account.aiUsageEvents) && account.aiUsageEvents.some((event) => event.gatewayRequestId === mcpRun.gatewayRequestId), "Expected account export to include MCP-recorded AI usage events.");
@@ -526,6 +543,8 @@ async function smokeAccountExportAndDeletion() {
   assert(deleted.ok === true, "Expected account deletion to return ok.");
   assert(deleted.deleted.profiles >= 1, "Expected account deletion to remove profile data.");
   assert(deleted.deleted.sourceSettings >= 1, "Expected account deletion to remove source settings.");
+  assert(deleted.deleted.researchSettings >= 1, "Expected account deletion to remove research settings.");
+  assert(deleted.deleted.billingEntitlements >= 1, "Expected account deletion to remove billing entitlements.");
   assert(deleted.deleted.aiSettings >= 1, "Expected account deletion to remove AI settings.");
   assert(deleted.deleted.aiUsageEvents >= 1, "Expected account deletion to remove AI usage events.");
   assert(deleted.deleted.runs >= 1, "Expected account deletion to remove user-scoped runs.");
@@ -774,6 +793,9 @@ async function rawRequest(path, options = {}) {
   const headers = {
     Accept: "application/json",
     ...(options.admin ? { "X-Publish-Token": publishToken } : { "X-Beachcar-Test-Email": email }),
+    ...(!options.admin && locallyManagedEmails.has(email)
+      ? { "X-Beachcar-Test-Features": "managed_research", "X-Beachcar-Test-Plans": "managed-research" }
+      : {}),
     ...(options.body === undefined ? {} : { "Content-Type": "application/json" }),
     ...(options.headers || {}),
   };
@@ -791,6 +813,9 @@ async function rawBinaryRequest(path, options = {}) {
     method: options.method || "GET",
     headers: {
       ...(options.admin ? { "X-Publish-Token": publishToken } : { "X-Beachcar-Test-Email": email }),
+      ...(!options.admin && locallyManagedEmails.has(email)
+        ? { "X-Beachcar-Test-Features": "managed_research", "X-Beachcar-Test-Plans": "managed-research" }
+        : {}),
       ...(options.headers || {}),
     },
   });
@@ -925,11 +950,11 @@ function assert(condition, message) {
   if (!condition) fail(message);
 }
 
-function assertTimezoneAwareSchedule(status, label) {
+function assertTimezoneAwareSchedule(status, label, email) {
   const dailySchedules = Array.isArray(status?.schedules)
     ? status.schedules.filter((schedule) => schedule?.callback === "queueScheduledRun")
     : [];
-  assert(status?.userId === `email:${smokeEmail}`, `Expected ${label} to remain scoped to the signed-in owner.`);
+  assert(status?.userId === `email:${email}`, `Expected ${label} to remain scoped to the signed-in user.`);
   assert(status?.scheduleCron === "0 8 * * *", `Expected ${label} to report the saved daily cron.`);
   assert(status?.scheduleTimezone === "America/New_York", `Expected ${label} to report the saved profile timezone.`);
   assert(status?.phase === "scheduled", `Expected ${label} to report the Agent as scheduled.`);
@@ -939,6 +964,16 @@ function assertTimezoneAwareSchedule(status, label) {
   assert(dailySchedules[0]?.nextRunAt === status.nextRunAt, `Expected ${label} state and schedule-list timestamps to agree.`);
   assert(Date.parse(status.nextRunAt) > Date.now(), `Expected ${label} next-run timestamp to be in the future.`);
   assert(!Object.prototype.hasOwnProperty.call(dailySchedules[0], "payload"), `Expected ${label} to redact the Agent callback payload.`);
+}
+
+function assertUnscheduled(status, label, email) {
+  const dailySchedules = Array.isArray(status?.schedules)
+    ? status.schedules.filter((schedule) => schedule?.callback === "queueScheduledRun")
+    : [];
+  assert(status?.userId === `email:${email}`, `Expected ${label} to remain scoped to the signed-in user.`);
+  assert(status?.phase === "idle", `Expected ${label} to keep the hosted Agent idle.`);
+  assert(status?.scheduleId === null, `Expected ${label} not to retain a hosted schedule id.`);
+  assert(dailySchedules.length === 0, `Expected ${label} not to create a hosted daily schedule.`);
 }
 
 function fail(message) {

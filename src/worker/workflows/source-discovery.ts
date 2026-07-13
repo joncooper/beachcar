@@ -81,6 +81,8 @@ interface DiscoveryOptions {
   fetchImpl?: FetchLike;
   now?: Date;
   aiScorer?: CandidateAiScorer | null;
+  requireAiScoring?: boolean;
+  allowPlaceholderFallback?: boolean;
   sourceCache?: {
     searchBringATrailer(input: { terms: string[]; limit: number; refresh?: boolean }): Promise<SourceCacheSearchResult>;
   };
@@ -233,6 +235,9 @@ export async function discoverAndScoreCandidates(
   scored = scored.slice(0, 8);
 
   if (scored.length) {
+    if (options.requireAiScoring && !options.aiScorer) {
+      throw new Error("Managed curation is unavailable because AI Gateway is not configured");
+    }
     aiScoring = options.aiScorer
       ? await runAiScoring(options.aiScorer, context, params, scored)
       : {
@@ -241,10 +246,13 @@ export async function discoverAndScoreCandidates(
           model: null,
           totalTokens: 0,
           costMicros: 0,
-          message: "Dedicated AI Gateway runtime is not configured; deterministic heuristic scoring was used.",
+          message: "AI scoring was not requested; heuristic scoring was used.",
           scores: [],
         };
     checkedSources.push(aiScoringCheck(aiScoring, generatedAt));
+    if (options.requireAiScoring && aiScoring.status !== "ok") {
+      throw new Error(aiScoring.message || "Managed curation failed before a trustworthy shortlist could be produced");
+    }
     if (aiScoring.status === "ok") {
       scored = applyAiScoring(scored, aiScoring)
         .sort((a, b) => b.score - a.score)
@@ -254,7 +262,9 @@ export async function discoverAndScoreCandidates(
 
   const fallbackUsed = scored.length === 0;
   const listings = fallbackUsed
-    ? buildFallbackListings(context, params, generatedAt, sources)
+    ? options.allowPlaceholderFallback === false
+      ? []
+      : buildFallbackListings(context, params, generatedAt, sources)
     : scored.map((candidate) => listingFromCandidate(candidate, context));
   const cacheableCandidates = fallbackUsed ? [] : scored.map((candidate) => candidate.candidate);
 

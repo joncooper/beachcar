@@ -4,6 +4,7 @@ import type {
   AccountDeletionResult,
   AccountExport,
   AdminOpsSummary,
+  BillingEntitlement,
   AutomationEventRecord,
   AutomationScope,
   AutomationTokenRecord,
@@ -25,6 +26,7 @@ import type {
   RunSourceSummary,
   RunnerTaskRecord,
   SourceSetting,
+  UserResearchSettings,
   UserAiSettings,
   UserPayload,
   UserProfile,
@@ -105,6 +107,22 @@ interface UserAiSettingsRow {
   monthly_budget_cents: number | null;
   daily_budget_cents: number | null;
   status: UserAiSettings["status"];
+  updated_at: string;
+}
+
+interface UserResearchSettingsRow {
+  user_id: string;
+  mode: UserResearchSettings["mode"];
+  updated_at: string;
+}
+
+interface BillingEntitlementRow {
+  user_id: string;
+  feature: BillingEntitlement["feature"];
+  active: number;
+  source: BillingEntitlement["source"];
+  plan_slug: string | null;
+  expires_at: string | null;
   updated_at: string;
 }
 
@@ -398,6 +416,8 @@ export interface AuthenticatedAutomationToken {
 }
 
 export const defaultAutomationScopes: AutomationScope[] = ["setup:read", "sources:read", "runs:publish", "usage:write", "events:read"];
+export const managedResearchFeature = "managed_research" as const;
+export const managedResearchRequiredError = "Managed Research subscription required";
 export const missingByokAliasError = "BYOK mode requires an AI Gateway key alias";
 export const inactiveAiSettingsError = "Active managed or BYOK AI settings are required before running";
 export const runnerTaskRunnerIdRequiredMessage = "runnerId is required for runner task ownership";
@@ -459,6 +479,15 @@ export async function ensureUser(db: D1Database, authUser: AuthUser, input: { is
     )
     .bind(authUser.id, authUser.provider, authUser.subject, authUser.email, insertStatus, now, now, input.isOwner ? 1 : 0)
     .run();
+
+  if (authUser.provider === "clerk" || (authUser.provider === "local" && authUser.features.includes(managedResearchFeature))) {
+    await upsertBillingEntitlement(db, authUser.id, {
+      feature: managedResearchFeature,
+      active: authUser.features.includes(managedResearchFeature),
+      source: "clerk_session",
+      planSlug: authUser.plans[0] || null,
+    });
+  }
 
   return getUserPayload(db, authUser.id);
 }
@@ -522,6 +551,8 @@ export async function listAdminUsers(db: D1Database): Promise<
     onboardingCompletedAt?: string | null;
     latestRunAt?: string | null;
     sourceSettings?: SourceSetting[];
+    researchSettings?: UserResearchSettings;
+    managedResearchEntitlement?: BillingEntitlement;
     aiSettings?: UserAiSettings | null;
     aiUsage?: AiUsageSummary | null;
     createdAt: string;
@@ -548,8 +579,10 @@ export async function listAdminUsers(db: D1Database): Promise<
     .all<AdminUserRow>();
   return Promise.all(
     results.map(async (row) => {
-      const [sourceSettings, aiSettings, aiUsage] = await Promise.all([
+      const [sourceSettings, researchSettings, managedResearchEntitlement, aiSettings, aiUsage] = await Promise.all([
         getSourceSettings(db, row.id),
+        getResearchSettings(db, row.id),
+        getBillingEntitlement(db, row.id, managedResearchFeature),
         getAiSettings(db, row.id),
         getAiUsageSummary(db, row.id),
       ]);
@@ -561,6 +594,8 @@ export async function listAdminUsers(db: D1Database): Promise<
         onboardingCompletedAt: row.onboarding_completed_at,
         latestRunAt: row.latest_run_at,
         sourceSettings,
+        researchSettings,
+        managedResearchEntitlement,
         aiSettings,
         aiUsage,
         createdAt: row.created_at,
@@ -645,9 +680,11 @@ export async function getAdminOpsSummary(db: D1Database, now = new Date()): Prom
 export async function getUserPayload(db: D1Database, userId: string): Promise<UserPayload> {
   const user = await db.prepare("SELECT id, email, display_name, status FROM users WHERE id = ?").bind(userId).first<UserRow>();
   if (!user) throw new Error("Unknown user");
-  const [profile, sourceSettings, aiSettings, aiUsage] = await Promise.all([
+  const [profile, sourceSettings, researchSettings, managedResearchEntitlement, aiSettings, aiUsage] = await Promise.all([
     getProfile(db, userId),
     getSourceSettings(db, userId),
+    getResearchSettings(db, userId),
+    getBillingEntitlement(db, userId, managedResearchFeature),
     getAiSettings(db, userId),
     getAiUsageSummary(db, userId),
   ]);
@@ -658,6 +695,8 @@ export async function getUserPayload(db: D1Database, userId: string): Promise<Us
     status: user.status,
     profile,
     sourceSettings,
+    researchSettings,
+    managedResearchEntitlement,
     aiSettings,
     aiUsage,
     onboarding: {
@@ -665,11 +704,95 @@ export async function getUserPayload(db: D1Database, userId: string): Promise<Us
       completedAt: profile?.onboardingCompletedAt || null,
     },
     capabilities: {
-      canUseManagedAi: true,
-      canUseByok: true,
-      canRunNow: user.status === "active" && !aiUsage.budgetExceeded && hasRunnableAiSettings(aiSettings),
+      canConnectAgent: user.status === "active",
+      canUseManagedAi: managedResearchEntitlement.active,
+      canUseByok: false,
+      canRunNow:
+        user.status === "active" &&
+        researchSettings.mode === "managed" &&
+        managedResearchEntitlement.active &&
+        !aiUsage.budgetExceeded &&
+        hasRunnableAiSettings(aiSettings),
     },
   };
+}
+
+export async function upsertResearchSettings(
+  db: D1Database,
+  userId: string,
+  input: { mode?: unknown },
+): Promise<UserResearchSettings> {
+  if (input.mode !== "managed" && input.mode !== "external_agent") {
+    throw new Error("Research mode must be external_agent or managed");
+  }
+  const mode: UserResearchSettings["mode"] = input.mode;
+  if (mode === "managed") {
+    const entitlement = await getBillingEntitlement(db, userId, managedResearchFeature);
+    if (!entitlement.active) throw new Error(managedResearchRequiredError);
+  }
+  const now = new Date().toISOString();
+  await db
+    .prepare(
+      `INSERT INTO user_research_settings (user_id, mode, created_at, updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET mode = excluded.mode, updated_at = excluded.updated_at`,
+    )
+    .bind(userId, mode, now, now)
+    .run();
+  if (mode === "managed") await ensureManagedAiSettings(db, userId);
+  return getResearchSettings(db, userId);
+}
+
+export async function upsertBillingEntitlement(
+  db: D1Database,
+  userId: string,
+  input: {
+    feature: BillingEntitlement["feature"];
+    active: boolean;
+    source: Exclude<BillingEntitlement["source"], "none">;
+    planSlug?: string | null;
+    expiresAt?: string | null;
+  },
+): Promise<BillingEntitlement> {
+  const now = new Date().toISOString();
+  await db
+    .prepare(
+      `INSERT INTO billing_entitlements (user_id, feature, active, source, plan_slug, expires_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(user_id, feature) DO UPDATE SET
+         active = excluded.active,
+         source = excluded.source,
+         plan_slug = excluded.plan_slug,
+         expires_at = excluded.expires_at,
+         updated_at = excluded.updated_at
+       WHERE billing_entitlements.source != 'clerk_webhook' OR excluded.source = 'clerk_webhook'`,
+    )
+    .bind(userId, input.feature, input.active ? 1 : 0, input.source, input.planSlug || null, input.expiresAt || null, now)
+    .run();
+  return getBillingEntitlement(db, userId, input.feature);
+}
+
+export async function findUserIdByAuthSubject(db: D1Database, provider: string, subject: string): Promise<string | null> {
+  const row = await db
+    .prepare("SELECT id FROM users WHERE auth_provider = ? AND auth_subject = ?")
+    .bind(provider, subject)
+    .first<{ id: string }>();
+  return row?.id || null;
+}
+
+export async function getManagedResearchAccess(
+  db: D1Database,
+  userId: string,
+): Promise<{ settings: UserResearchSettings; entitlement: BillingEntitlement; allowed: boolean }> {
+  const [settings, entitlement] = await Promise.all([
+    getResearchSettings(db, userId),
+    getBillingEntitlement(db, userId, managedResearchFeature),
+  ]);
+  return { settings, entitlement, allowed: settings.mode === "managed" && entitlement.active };
+}
+
+export async function assertManagedResearchAccess(db: D1Database, userId: string): Promise<void> {
+  if (!(await getManagedResearchAccess(db, userId)).allowed) throw new Error(managedResearchRequiredError);
 }
 
 export async function upsertProfile(
@@ -842,6 +965,7 @@ export async function getAiUsageSummary(db: D1Database, userId: string, now = ne
 }
 
 export async function assertAiBudgetAvailable(db: D1Database, userId: string): Promise<void> {
+  await assertManagedResearchAccess(db, userId);
   const settings = await getAiSettings(db, userId);
   if (!settings || settings.status !== "active") throw new Error(inactiveAiSettingsError);
   if (settings.mode === "byok" && !settings.gatewayKeyRef?.trim()) throw new Error(missingByokAliasError);
@@ -2558,6 +2682,8 @@ export async function deleteAccountData(db: D1Database, userId: string): Promise
   const deleted = {
     profiles: await countRows(db, "SELECT COUNT(*) AS count FROM profiles WHERE user_id = ?", userId),
     sourceSettings: await countRows(db, "SELECT COUNT(*) AS count FROM source_settings WHERE user_id = ?", userId),
+    researchSettings: await countRows(db, "SELECT COUNT(*) AS count FROM user_research_settings WHERE user_id = ?", userId),
+    billingEntitlements: await countRows(db, "SELECT COUNT(*) AS count FROM billing_entitlements WHERE user_id = ?", userId),
     aiSettings: await countRows(db, "SELECT COUNT(*) AS count FROM user_ai_settings WHERE user_id = ?", userId),
     aiUsageEvents: await countRows(db, "SELECT COUNT(*) AS count FROM ai_usage_events WHERE user_id = ?", userId),
     runnerTasks: await countRows(db, "SELECT COUNT(*) AS count FROM runner_tasks WHERE user_id = ?", userId),
@@ -2584,6 +2710,8 @@ export async function deleteAccountData(db: D1Database, userId: string): Promise
   await db.prepare("DELETE FROM ai_usage_events WHERE user_id = ?").bind(userId).run();
   await db.prepare("DELETE FROM runner_tasks WHERE user_id = ?").bind(userId).run();
   await db.prepare("DELETE FROM source_settings WHERE user_id = ?").bind(userId).run();
+  await db.prepare("DELETE FROM billing_entitlements WHERE user_id = ?").bind(userId).run();
+  await db.prepare("DELETE FROM user_research_settings WHERE user_id = ?").bind(userId).run();
   await db.prepare("DELETE FROM user_ai_settings WHERE user_id = ?").bind(userId).run();
   await db.prepare("DELETE FROM profiles WHERE user_id = ?").bind(userId).run();
   await db.prepare("DELETE FROM agent_runs WHERE user_id = ?").bind(userId).run();
@@ -3194,6 +3322,37 @@ export async function getProfile(db: D1Database, userId: string): Promise<UserPr
   return row ? profileFromRow(row) : null;
 }
 
+async function getResearchSettings(db: D1Database, userId: string): Promise<UserResearchSettings> {
+  const row = await db
+    .prepare("SELECT user_id, mode, updated_at FROM user_research_settings WHERE user_id = ?")
+    .bind(userId)
+    .first<UserResearchSettingsRow>();
+  return row ? { mode: row.mode, updatedAt: row.updated_at } : { mode: "external_agent", updatedAt: null };
+}
+
+async function getBillingEntitlement(
+  db: D1Database,
+  userId: string,
+  feature: BillingEntitlement["feature"],
+): Promise<BillingEntitlement> {
+  const row = await db
+    .prepare(
+      "SELECT user_id, feature, active, source, plan_slug, expires_at, updated_at FROM billing_entitlements WHERE user_id = ? AND feature = ?",
+    )
+    .bind(userId, feature)
+    .first<BillingEntitlementRow>();
+  return row
+    ? {
+        feature: row.feature,
+        active: row.active === 1 && (!row.expires_at || new Date(row.expires_at).getTime() > Date.now()),
+        source: row.source,
+        planSlug: row.plan_slug,
+        expiresAt: row.expires_at,
+        updatedAt: row.updated_at,
+      }
+    : { feature, active: false, source: "none", planSlug: null, expiresAt: null, updatedAt: null };
+}
+
 async function getSourceSettings(db: D1Database, userId: string): Promise<SourceSetting[]> {
   const { results } = await db
     .prepare("SELECT source, enabled, settings_json, updated_at FROM source_settings WHERE user_id = ? ORDER BY source ASC")
@@ -3210,6 +3369,26 @@ async function getSourceSettings(db: D1Database, userId: string): Promise<Source
 async function getAiSettings(db: D1Database, userId: string): Promise<UserAiSettings | null> {
   const row = await db.prepare("SELECT * FROM user_ai_settings WHERE user_id = ?").bind(userId).first<UserAiSettingsRow>();
   return row ? aiSettingsFromRow(row) : null;
+}
+
+async function ensureManagedAiSettings(db: D1Database, userId: string): Promise<void> {
+  const now = new Date().toISOString();
+  await db
+    .prepare(
+      `INSERT INTO user_ai_settings (
+         user_id, mode, gateway_key_ref, monthly_budget_cents, daily_budget_cents, status, updated_at
+       )
+       VALUES (?, 'managed', NULL, 500, 50, 'active', ?)
+       ON CONFLICT(user_id) DO UPDATE SET
+         mode = 'managed',
+         gateway_key_ref = NULL,
+         monthly_budget_cents = COALESCE(user_ai_settings.monthly_budget_cents, 500),
+         daily_budget_cents = COALESCE(user_ai_settings.daily_budget_cents, 50),
+         status = 'active',
+         updated_at = excluded.updated_at`,
+    )
+    .bind(userId, now)
+    .run();
 }
 
 async function sumAiUsageMicros(db: D1Database, userId: string, startsAt: string, endsAt: string): Promise<number> {

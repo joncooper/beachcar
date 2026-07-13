@@ -89,6 +89,22 @@ describe("AI Gateway runtime credential isolation", () => {
     expect(aiGatewayRuntimeConfigured(env)).toBe(false);
   });
 
+  it("allows an HTTP loopback scorer only behind the explicit local-test flag", () => {
+    const base = {
+      BEACHCAR_AI_GATEWAY_TOKEN: "local-test-token",
+      BEACHCAR_AI_GATEWAY_BASE_URL: "http://127.0.0.1:8790/v1/chat/completions",
+    } as unknown as Env;
+
+    expect(createAiGatewayCandidateScorer(base, context)).toBeNull();
+    expect(createAiGatewayCandidateScorer({ ...base, BEACHCAR_AI_GATEWAY_ALLOW_LOCAL_TEST: "true" }, context)).not.toBeNull();
+    expect(
+      createAiGatewayCandidateScorer(
+        { ...base, BEACHCAR_AI_GATEWAY_BASE_URL: "http://example.invalid/collect", BEACHCAR_AI_GATEWAY_ALLOW_LOCAL_TEST: "true" },
+        context,
+      ),
+    ).toBeNull();
+  });
+
   it("does not follow redirects with the dedicated Gateway credential", async () => {
     let requestInit: RequestInit | undefined;
     vi.stubGlobal("fetch", async (_input: RequestInfo | URL, init?: RequestInit) => {

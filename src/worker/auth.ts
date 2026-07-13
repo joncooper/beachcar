@@ -8,6 +8,8 @@ export interface AuthUser {
   email: string;
   provider: "local" | "clerk" | "cloudflare-access";
   subject: string;
+  features: string[];
+  plans: string[];
 }
 
 export async function requireUser(request: Request, env: Env): Promise<AuthUser> {
@@ -15,7 +17,14 @@ export async function requireUser(request: Request, env: Env): Promise<AuthUser>
   const isLocalRequest = host === "localhost" || host === "127.0.0.1" || host === "::1";
   if (isLocalRequest && !env.CLERK_SECRET_KEY && !env.TEAM_DOMAIN && !env.POLICY_AUD) {
     const email = normalizeEmail(request.headers.get("x-beachcar-test-email") || primaryBootstrapOwnerEmail(env));
-    return { id: userIdForEmail(email), email, provider: "local", subject: email };
+    return {
+      id: userIdForEmail(email),
+      email,
+      provider: "local",
+      subject: email,
+      features: localTestClaims(request.headers.get("x-beachcar-test-features")),
+      plans: localTestClaims(request.headers.get("x-beachcar-test-plans")),
+    };
   }
 
   const clerkToken = bearerToken(request);
@@ -32,6 +41,10 @@ export async function requireUser(request: Request, env: Env): Promise<AuthUser>
   }
 
   throw new AuthError("Authentication is not configured", 403);
+}
+
+function localTestClaims(value: string | null): string[] {
+  return Array.from(new Set((value || "").split(/[,\s]+/).map((claim) => claim.trim()).filter(Boolean)));
 }
 
 async function requireCloudflareAccessUser(request: Request, env: Env): Promise<AuthUser> {
@@ -51,7 +64,7 @@ async function requireCloudflareAccessUser(request: Request, env: Env): Promise<
   const email = typeof payload.email === "string" ? payload.email.toLowerCase() : "";
   if (!email) throw new AuthError("Cloudflare Access token is missing email", 403);
 
-  return { id: userIdForEmail(email), email, provider: "cloudflare-access", subject: email };
+  return { id: userIdForEmail(email), email, provider: "cloudflare-access", subject: email, features: [], plans: [] };
 }
 
 async function requireClerkUser(token: string, env: Env): Promise<AuthUser> {
@@ -67,7 +80,28 @@ async function requireClerkUser(token: string, env: Env): Promise<AuthUser> {
   if (!email) throw new AuthError("Clerk user is missing primary email", 403);
 
   const normalizedEmail = normalizeEmail(email);
-  return { id: userIdForEmail(normalizedEmail), email: normalizedEmail, provider: "clerk", subject: userId };
+  return {
+    id: userIdForEmail(normalizedEmail),
+    email: normalizedEmail,
+    provider: "clerk",
+    subject: userId,
+    features: scopedClerkClaims(payload.fea, "u"),
+    plans: scopedClerkClaims(payload.pla, "u"),
+  };
+}
+
+export function scopedClerkClaims(value: unknown, scope: "u" | "o"): string[] {
+  const claims = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [];
+  const prefix = `${scope}:`;
+  return Array.from(
+    new Set(
+      claims
+        .filter((claim): claim is string => typeof claim === "string")
+        .map((claim) => claim.trim())
+        .filter((claim) => claim.startsWith(prefix) && claim.length > prefix.length)
+        .map((claim) => claim.slice(prefix.length)),
+    ),
+  );
 }
 
 export function userIdForEmail(email: string): string {

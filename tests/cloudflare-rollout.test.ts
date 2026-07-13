@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  AGENT_CONNECTED_SUBSCRIPTIONS_MIGRATION,
   SOURCE_QUALITY_V1_MIGRATION,
   PRODUCT_EVENTS_V1_MIGRATION,
   collectWorkerSecrets,
@@ -65,7 +66,7 @@ if (command === "whoami --json") {
 } else if (command === "r2 bucket list") {
   console.log("name: beachcar-watch-images");
 } else if (command.startsWith("secret list")) {
-  console.log(JSON.stringify([{ name: "PUBLISH_TOKEN" }, { name: "CLERK_SECRET_KEY" }, { name: "CLERK_JWT_ISSUER" }]));
+  console.log(JSON.stringify([{ name: "PUBLISH_TOKEN" }, { name: "CLERK_SECRET_KEY" }, { name: "CLERK_JWT_ISSUER" }, { name: "CLERK_WEBHOOK_SIGNING_SECRET" }]));
 } else if (command.startsWith("deployments list")) {
   console.log("[]");
 } else {
@@ -143,7 +144,7 @@ if (command === "whoami --json") {
 } else if (command === "r2 bucket list") {
   console.log("name: beachcar-watch-images");
 } else if (command.startsWith("secret list")) {
-  console.log(JSON.stringify([{ name: "PUBLISH_TOKEN" }, { name: "CLERK_SECRET_KEY" }, { name: "CLERK_JWT_ISSUER" }]));
+  console.log(JSON.stringify([{ name: "PUBLISH_TOKEN" }, { name: "CLERK_SECRET_KEY" }, { name: "CLERK_JWT_ISSUER" }, { name: "CLERK_WEBHOOK_SIGNING_SECRET" }]));
 } else if (command.startsWith("deployments list")) {
   console.log("[]");
 } else {
@@ -184,18 +185,29 @@ describe("Cloudflare rollout secret and verifier handling", () => {
       PUBLISH_TOKEN: "publish-token-with-at-least-24-characters",
       CLERK_SECRET_KEY: "sk_test_local-fixture",
       CLERK_JWT_ISSUER: "https://fixture.clerk.accounts.dev",
+      CLERK_WEBHOOK_SIGNING_SECRET: "whsec_local-fixture",
       BEACHCAR_AI_GATEWAY_TOKEN: "<your-gateway-token>",
       CLOUDFLARE_API_TOKEN: "wrangler-auth-fixture",
     });
 
-    expect(Object.keys(secrets).sort()).toEqual(["CLERK_JWT_ISSUER", "CLERK_SECRET_KEY", "PUBLISH_TOKEN"]);
+    expect(Object.keys(secrets).sort()).toEqual([
+      "CLERK_JWT_ISSUER",
+      "CLERK_SECRET_KEY",
+      "CLERK_WEBHOOK_SIGNING_SECRET",
+      "PUBLISH_TOKEN",
+    ]);
     expect(secrets).not.toHaveProperty("CLOUDFLARE_API_TOKEN");
     expect(secrets).not.toHaveProperty("BEACHCAR_AI_GATEWAY_TOKEN");
   });
 
   it("allows required secrets to be satisfied by the union of remote names and local deploy input", () => {
-    expect(missingRequiredWorkerSecrets(["CLERK_SECRET_KEY", "CLERK_JWT_ISSUER"], ["PUBLISH_TOKEN"])).toEqual([]);
-    expect(missingRequiredWorkerSecrets(["CLERK_SECRET_KEY"], ["PUBLISH_TOKEN"])).toEqual(["CLERK_JWT_ISSUER"]);
+    expect(
+      missingRequiredWorkerSecrets(["CLERK_SECRET_KEY", "CLERK_JWT_ISSUER", "CLERK_WEBHOOK_SIGNING_SECRET"], ["PUBLISH_TOKEN"]),
+    ).toEqual([]);
+    expect(missingRequiredWorkerSecrets(["CLERK_SECRET_KEY"], ["PUBLISH_TOKEN"])).toEqual([
+      "CLERK_JWT_ISSUER",
+      "CLERK_WEBHOOK_SIGNING_SECRET",
+    ]);
   });
 
   it("never admits an ambient OpenAI key and requires deliberate codex container input", () => {
@@ -267,22 +279,30 @@ describe("Cloudflare rollout secret and verifier handling", () => {
 });
 
 describe("Cloudflare rollout D1 gates", () => {
-  it("accepts only no pending migrations or the reviewed 0011/0012 migrations", () => {
+  it("accepts only no pending migrations or the reviewed 0011/0012/0013 migrations", () => {
     expect(isSafeSourceQualityMigrationSet("✅ No migrations to apply!\n")).toBe(true);
     expect(isSafeSourceQualityMigrationSet(`Migrations to be applied:\n${SOURCE_QUALITY_V1_MIGRATION}\n`)).toBe(true);
     expect(isSafeSourceQualityMigrationSet(`Migrations to be applied:\n${PRODUCT_EVENTS_V1_MIGRATION}\n`)).toBe(true);
-    expect(isSafeSourceQualityMigrationSet(`${SOURCE_QUALITY_V1_MIGRATION}\n${PRODUCT_EVENTS_V1_MIGRATION}\n`)).toBe(true);
+    expect(isSafeSourceQualityMigrationSet(`Migrations to be applied:\n${AGENT_CONNECTED_SUBSCRIPTIONS_MIGRATION}\n`)).toBe(true);
+    expect(
+      isSafeSourceQualityMigrationSet(
+        `${SOURCE_QUALITY_V1_MIGRATION}\n${PRODUCT_EVENTS_V1_MIGRATION}\n${AGENT_CONNECTED_SUBSCRIPTIONS_MIGRATION}\n`,
+      ),
+    ).toBe(true);
     expect(isSafeSourceQualityMigrationSet(`0005_multi_user_beta.sql\n${SOURCE_QUALITY_V1_MIGRATION}\n`)).toBe(false);
     expect(isSafeSourceQualityMigrationSet("unexpected output")).toBe(false);
     expect(pendingD1MigrationFiles(`| ${SOURCE_QUALITY_V1_MIGRATION} |`)).toEqual([SOURCE_QUALITY_V1_MIGRATION]);
   });
 
-  it("requires all 12 columns, all 3 indexes, and quick_check=ok", () => {
+  it("requires every reviewed migration schema and quick_check=ok", () => {
     const gate = evaluateSourceQualitySchemaGate({
       columns: d1Json({ found_columns: 12 }),
       indexes: d1Json({ found_indexes: 3 }),
       productColumns: d1Json({ found_product_columns: 9 }),
       productIndexes: d1Json({ found_product_indexes: 3 }),
+      researchColumns: d1Json({ found_research_columns: 4 }),
+      billingColumns: d1Json({ found_billing_columns: 7 }),
+      billingIndexes: d1Json({ found_billing_indexes: 1 }),
       quickCheck: d1Json({ quick_check: "ok" }),
     });
     expect(gate).toEqual({
@@ -290,6 +310,9 @@ describe("Cloudflare rollout D1 gates", () => {
       indexCount: 3,
       productColumnCount: 9,
       productIndexCount: 3,
+      researchColumnCount: 4,
+      billingColumnCount: 7,
+      billingIndexCount: 1,
       quickCheck: "ok",
       ok: true,
     });
@@ -300,6 +323,9 @@ describe("Cloudflare rollout D1 gates", () => {
         indexes: d1Json({ found_indexes: 3 }),
         productColumns: d1Json({ found_product_columns: 9 }),
         productIndexes: d1Json({ found_product_indexes: 3 }),
+        researchColumns: d1Json({ found_research_columns: 4 }),
+        billingColumns: d1Json({ found_billing_columns: 7 }),
+        billingIndexes: d1Json({ found_billing_indexes: 1 }),
         quickCheck: d1Json({ quick_check: "ok" }),
       }).ok,
     ).toBe(false);

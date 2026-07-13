@@ -69,7 +69,8 @@ function scorerConfigFromEnv(env: Env): ScorerConfig | null {
   if (!token) return null;
 
   const configuredBaseEndpoint = trimToNull(env.BEACHCAR_AI_GATEWAY_BASE_URL);
-  const baseEndpoint = normalizeEndpoint(configuredBaseEndpoint || undefined);
+  const allowLocalTestEndpoint = env.BEACHCAR_AI_GATEWAY_ALLOW_LOCAL_TEST?.trim().toLowerCase() === "true";
+  const baseEndpoint = normalizeEndpoint(configuredBaseEndpoint || undefined, allowLocalTestEndpoint);
   if (configuredBaseEndpoint && !baseEndpoint) return null;
   const accountId = trimToNull(env.CLOUDFLARE_ACCOUNT_ID);
   const endpoint = baseEndpoint || (accountId ? `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions` : null);
@@ -147,7 +148,7 @@ async function scoreCandidatesWithGateway(
         gatewayId: config.gatewayId,
         gatewayKeyRef: usageContext.gatewayKeyRef || null,
         requestId,
-        message: `AI Gateway returned HTTP ${response.status}; heuristic scoring was used.`,
+        message: `AI Gateway returned HTTP ${response.status}; the managed run was not published.`,
         scores: [],
       };
     }
@@ -188,7 +189,7 @@ async function scoreCandidatesWithGateway(
       gatewayId: config.gatewayId,
       gatewayKeyRef: usageContext.gatewayKeyRef || null,
       requestId,
-      message: scores.length ? "AI Gateway reranked the source candidates." : "AI Gateway returned no usable scores; heuristic scoring was used.",
+      message: scores.length ? "AI Gateway reranked the source candidates." : "AI Gateway returned no usable scores; the managed run was not published.",
       inputTokens: usage.inputTokens,
       outputTokens: usage.outputTokens,
       totalTokens: usage.totalTokens,
@@ -219,7 +220,7 @@ async function scoreCandidatesWithGateway(
       gatewayId: config.gatewayId,
       gatewayKeyRef: usageContext.gatewayKeyRef || null,
       requestId: gatewayRequestIdFallback,
-      message: "AI Gateway scoring failed; heuristic scoring was used.",
+      message: "AI Gateway scoring failed; the managed run was not published.",
       scores: [],
     };
   }
@@ -356,19 +357,18 @@ function usageFromResponse(response: ChatCompletionResponse | null, config: Scor
   return { inputTokens, outputTokens, totalTokens, costMicros, estimatedCost: true };
 }
 
-function normalizeEndpoint(value: string | undefined): string | null {
+function normalizeEndpoint(value: string | undefined, allowLocalTestEndpoint = false): string | null {
   const trimmed = trimToNull(value);
   if (!trimmed) return null;
   try {
     const endpoint = new URL(trimmed);
-    if (
-      endpoint.protocol !== "https:" ||
-      endpoint.username ||
-      endpoint.password ||
-      endpoint.search ||
-      endpoint.hash ||
-      !["api.cloudflare.com", "gateway.ai.cloudflare.com"].includes(endpoint.hostname)
-    ) {
+    const isProductionGateway =
+      endpoint.protocol === "https:" && ["api.cloudflare.com", "gateway.ai.cloudflare.com"].includes(endpoint.hostname);
+    const isLocalTestGateway =
+      allowLocalTestEndpoint &&
+      endpoint.protocol === "http:" &&
+      ["localhost", "127.0.0.1", "::1"].includes(endpoint.hostname);
+    if (endpoint.username || endpoint.password || endpoint.search || endpoint.hash || (!isProductionGateway && !isLocalTestGateway)) {
       return null;
     }
     const normalized = endpoint.toString().replace(/\/+$/, "");

@@ -230,7 +230,11 @@ struct RootView: View {
     do {
       let token = try await token()
       _ = try await store.api.putProfile(input: input, authToken: token)
-      user = try await store.api.putSourceSettings(input: input.sourceSettings, authToken: token)
+      _ = try await store.api.putSourceSettings(input: input.sourceSettings, authToken: token)
+      user = try await store.api.putResearchSettings(
+        input: ResearchSettingsRequest(mode: "external_agent"),
+        authToken: token
+      )
       accountError = nil
     } catch {
       guard !Self.isCancellation(error) else { return }
@@ -575,7 +579,7 @@ private struct ProfileOnboardingView: View {
         else { onSave(profileInput) }
       } label: {
         Label(
-          step == 3 ? (isSaving ? "Saving…" : "Build my shortlist") : "Continue",
+          step == 3 ? (isSaving ? "Saving…" : "Save my agent brief") : "Continue",
           systemImage: step == 3 ? "sparkles" : "arrow.right"
         )
         .frame(maxWidth: .infinity)
@@ -606,9 +610,9 @@ private struct ProfileOnboardingView: View {
 
   private var shortlistPreview: some View {
     VStack(alignment: .leading, spacing: 9) {
-      Label("You’re set", systemImage: "checkmark.seal.fill")
+      Label("Your agent brief is ready", systemImage: "checkmark.seal.fill")
         .font(.archivo(16, .extrabold)).foregroundStyle(BC.accent)
-      Text("Each morning, Beachcar will rank the most promising finds for \(homeRegion.isEmpty ? "your region" : homeRegion), explain the value, and learn from every swipe.")
+      Text("Connect Codex, Claude, or another MCP agent in Beachcar’s web Preferences. It can use this brief to research \(homeRegion.isEmpty ? "your region" : homeRegion), publish the best finds, and learn from every swipe.")
         .font(.archivo(13.5, .medium)).foregroundStyle(BC.white.opacity(0.78)).lineSpacing(3)
     }
     .padding(16)
@@ -620,7 +624,7 @@ private struct ProfileOnboardingView: View {
     "A little context helps rank local practicality against a truly special car.",
     "Set the line between a confident buy and a worthwhile stretch.",
     "Start with a few instincts. You can teach Beachcar more with every daily run.",
-    "Pick the sources and alerts you actually want; the research machinery stays out of your way.",
+    "Choose the sources and alerts your connected agent should use. Beachcar keeps the brief and review history in sync.",
   ] }
 
   private var tasteChoices: [CalibrationChoice] { [

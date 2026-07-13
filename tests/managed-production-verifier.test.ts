@@ -244,24 +244,28 @@ describe("managed verifier exact run proof", () => {
 });
 
 describe("managed verifier AI, image, and redaction proof", () => {
-  const user = { aiSettings: { mode: "managed", status: "active" } };
+  const user = {
+    researchSettings: { mode: "managed" },
+    managedResearchEntitlement: { feature: "managed_research", active: true },
+    aiSettings: { mode: "managed", status: "active" },
+  };
 
-  it("requires explicit heuristic provenance and no run-scoped model event by default", () => {
+  it("never accepts heuristic provenance for managed research", () => {
     const proof = evaluateManagedAiProof({
       user,
       sourceSummary: { aiScoring: { status: "skipped", provider: "heuristic" } },
       usage: { summary: { budgetExceeded: false }, events: [] },
       agentRunId: "agent-run-exact",
     });
-    expect(proof).toEqual({ settings: true, scoring: true, budgetHealthy: true, usageEvent: true, mode: "heuristic" });
+    expect(proof).toEqual({ settings: true, scoring: false, budgetHealthy: true, usageEvent: false, mode: "ai-gateway" });
 
     expect(
       evaluateManagedAiProof({
-        user,
+        user: { ...user, managedResearchEntitlement: { feature: "managed_research", active: false } },
         sourceSummary: { aiScoring: null },
         usage: { summary: { budgetExceeded: false }, events: [] },
         agentRunId: "agent-run-exact",
-      }).scoring,
+      }).settings,
     ).toBe(false);
   });
 
@@ -282,7 +286,6 @@ describe("managed verifier AI, image, and redaction proof", () => {
         ],
       },
       agentRunId: "agent-run-exact",
-      requireAiGateway: true,
     });
     expect(proof).toMatchObject({ scoring: true, usageEvent: true, budgetHealthy: false, mode: "ai-gateway" });
   });
@@ -323,7 +326,9 @@ describe("managed verifier executable lifecycle invariants", () => {
   it("clears the consumed ticket before any managed run request and has no fresh-process resume flag", () => {
     expect(source.indexOf('"/api/admin/runtime"'))
       .toBeLessThan(source.indexOf("await markTicketConsumed()"));
-    expect(source).toContain('aiProofMode: requireAiGatewayFlag ? "ai-gateway" : requireHeuristicFlag ? "heuristic" : "auto-preflight"');
+    expect(source).toContain('aiProofMode: "ai-gateway"');
+    expect(source).toContain('"/api/research-settings"');
+    expect(source).not.toContain('"/api/ai-settings"');
     expect(source).toContain("entry?.id === expectedBeachcarUserId");
     expect(source).toContain("jwtSubject(initialToken) === expectedClerkUserId");
     expect(source).toContain("meResult.body?.id === expectedBeachcarUserId");

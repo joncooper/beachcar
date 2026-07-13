@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { createAgentRunRequest, upsertAiSettings, upsertProfile } from "../src/worker/db";
+import {
+  createAgentRunRequest,
+  managedResearchRequiredError,
+  upsertAiSettings,
+  upsertProfile,
+  upsertResearchSettings,
+} from "../src/worker/db";
 
 describe("database settings validation", () => {
   it("rejects new invalid timezone and cron values before writing", async () => {
@@ -51,6 +57,38 @@ describe("database settings validation", () => {
     expect(db.writes).toBe(0);
   });
 
+  it("keeps hosted runs behind the managed-research entitlement", async () => {
+    const external = new SettingsValidationD1(null, "active", managedAiSettings(), researchSettings("external_agent"), null);
+    await expect(
+      createAgentRunRequest(external as unknown as D1Database, { userId: "user-a", source: "manual" }),
+    ).rejects.toThrow(managedResearchRequiredError);
+    expect(external.writes).toBe(0);
+
+    const unsubscribed = new SettingsValidationD1(null, "active", managedAiSettings(), researchSettings("managed"), billingEntitlement(false));
+    await expect(
+      createAgentRunRequest(unsubscribed as unknown as D1Database, { userId: "user-a", source: "schedule" }),
+    ).rejects.toThrow(managedResearchRequiredError);
+    expect(unsubscribed.writes).toBe(0);
+  });
+
+  it("allows free external-agent mode but refuses managed mode without a subscription", async () => {
+    const external = new SettingsValidationD1();
+    await expect(upsertResearchSettings(external as unknown as D1Database, "user-a", { mode: "external_agent" })).resolves.toMatchObject({
+      mode: "external_agent",
+    });
+    expect(external.writes).toBe(1);
+
+    const managed = new SettingsValidationD1();
+    await expect(upsertResearchSettings(managed as unknown as D1Database, "user-a", { mode: "managed" })).rejects.toThrow(
+      managedResearchRequiredError,
+    );
+    expect(managed.writes).toBe(0);
+
+    await expect(upsertResearchSettings(managed as unknown as D1Database, "user-a", { mode: "something-else" })).rejects.toThrow(
+      "Research mode must be external_agent or managed",
+    );
+  });
+
   it("refuses to run a legacy BYOK configuration without a Gateway alias", async () => {
     const db = new SettingsValidationD1(null, "active", {
       user_id: "user-a",
@@ -60,7 +98,7 @@ describe("database settings validation", () => {
       daily_budget_cents: null,
       status: "active",
       updated_at: "2026-07-01T12:00:00.000Z",
-    });
+    }, researchSettings("managed"), billingEntitlement(true));
     await expect(
       createAgentRunRequest(db as unknown as D1Database, { userId: "user-a", source: "schedule" }),
     ).rejects.toThrow("BYOK mode requires an AI Gateway key alias");
@@ -68,7 +106,7 @@ describe("database settings validation", () => {
   });
 
   it("refuses to run before active AI settings are configured", async () => {
-    const missing = new SettingsValidationD1();
+    const missing = new SettingsValidationD1(null, "active", null, researchSettings("managed"), billingEntitlement(true));
     await expect(
       createAgentRunRequest(missing as unknown as D1Database, { userId: "user-a", source: "manual" }),
     ).rejects.toThrow("Active managed or BYOK AI settings are required before running");
@@ -82,7 +120,7 @@ describe("database settings validation", () => {
       daily_budget_cents: 100,
       status: "disabled",
       updated_at: "2026-07-01T12:00:00.000Z",
-    });
+    }, researchSettings("managed"), billingEntitlement(true));
     await expect(
       createAgentRunRequest(disabled as unknown as D1Database, { userId: "user-a", source: "manual" }),
     ).rejects.toThrow("Active managed or BYOK AI settings are required before running");
@@ -103,6 +141,34 @@ function profileRow(scheduleCron: string): ProfileTestRow {
     schedule_cron: scheduleCron,
     profile_json: "{}",
     onboarding_completed_at: "2026-07-01T12:00:00.000Z",
+    updated_at: "2026-07-01T12:00:00.000Z",
+  };
+}
+
+function managedAiSettings(): Record<string, unknown> {
+  return {
+    user_id: "user-a",
+    mode: "managed",
+    gateway_key_ref: null,
+    monthly_budget_cents: 500,
+    daily_budget_cents: 50,
+    status: "active",
+    updated_at: "2026-07-01T12:00:00.000Z",
+  };
+}
+
+function researchSettings(mode: "external_agent" | "managed"): Record<string, unknown> {
+  return { user_id: "user-a", mode, updated_at: "2026-07-01T12:00:00.000Z" };
+}
+
+function billingEntitlement(active: boolean): Record<string, unknown> {
+  return {
+    user_id: "user-a",
+    feature: "managed_research",
+    active: active ? 1 : 0,
+    source: "clerk_session",
+    plan_slug: active ? "managed-research" : null,
+    expires_at: null,
     updated_at: "2026-07-01T12:00:00.000Z",
   };
 }
@@ -129,6 +195,8 @@ class SettingsValidationD1 {
     public profile: ProfileTestRow | null = null,
     public userStatus = "active",
     public aiSettings: Record<string, unknown> | null = null,
+    public researchSettings: Record<string, unknown> | null = null,
+    public entitlement: Record<string, unknown> | null = null,
   ) {}
 
   prepare(sql: string): SettingsValidationStatement {
@@ -152,6 +220,10 @@ class SettingsValidationStatement {
   async first<T>(): Promise<T | null> {
     if (this.sql === "SELECT * FROM profiles WHERE user_id = ?") return this.db.profile as T | null;
     if (this.sql === "SELECT * FROM user_ai_settings WHERE user_id = ?") return this.db.aiSettings as T | null;
+    if (this.sql === "SELECT user_id, mode, updated_at FROM user_research_settings WHERE user_id = ?") {
+      return this.db.researchSettings as T | null;
+    }
+    if (this.sql.includes("FROM billing_entitlements WHERE user_id = ? AND feature = ?")) return this.db.entitlement as T | null;
     if (this.sql === "SELECT status FROM users WHERE id = ?") return { status: this.db.userStatus } as T;
     throw new Error(`Unexpected first() query: ${this.sql}`);
   }
@@ -174,6 +246,12 @@ class SettingsValidationStatement {
         onboarding_completed_at: onboardingCompletedAt === null ? null : String(onboardingCompletedAt),
         updated_at: String(updatedAt),
       };
+      this.db.writes += 1;
+      return { success: true };
+    }
+    if (this.sql.includes("INSERT INTO user_research_settings")) {
+      const [userId, mode, , updatedAt] = this.values;
+      this.db.researchSettings = { user_id: String(userId), mode: String(mode), updated_at: String(updatedAt) };
       this.db.writes += 1;
       return { success: true };
     }

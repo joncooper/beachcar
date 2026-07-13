@@ -3,6 +3,8 @@ import type { AgentWorkflowEvent, AgentWorkflowStep, DefaultProgress } from "age
 import type { ImportPayload, SourceSetting } from "../../shared/types";
 import type { BeachcarAgent } from "../agents/beachcar-agent";
 import {
+  assertAiBudgetAvailable,
+  assertManagedResearchAccess,
   createRunnerTask,
   exportFeedback,
   getLatestRun,
@@ -60,6 +62,11 @@ export class BeachcarRunWorkflow extends AgentWorkflow<BeachcarAgent, BeachcarRu
       });
       await this.reportProgress({ stage: "starting", status: "running", percent: 0.15, agentRunId: params.runId });
 
+      await step.do("verify managed research entitlement", async () => {
+        await assertManagedResearchAccess(this.env.DB, params.userId);
+        await assertAiBudgetAvailable(this.env.DB, params.userId);
+      });
+
       const context = await step.do("load user context", async () => {
         const scope: UserScope = { userId: params.userId, includeLegacyData: false };
         const [user, feedback, latestRun] = await Promise.all([
@@ -98,6 +105,8 @@ export class BeachcarRunWorkflow extends AgentWorkflow<BeachcarAgent, BeachcarRu
         });
         return discoverAndScoreCandidates(context, params, {
           aiScorer,
+          requireAiScoring: true,
+          allowPlaceholderFallback: false,
           sourceCache: {
             searchBringATrailer: (input) => searchBringATrailerCache(this.env.DB, input),
           },

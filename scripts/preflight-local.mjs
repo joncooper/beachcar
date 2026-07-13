@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -19,10 +20,13 @@ if (fresh && useExistingWorker) throw new Error("--fresh cannot be combined with
 const configuredPersistTo = valueArg("--persist-to");
 let persistTo = configuredPersistTo || "";
 let ownsPersistTo = false;
-const workerEnvFileArgs = (await fileExists(resolve(".publish.env"))) ? ["--env-file", ".publish.env"] : [];
+const workerEnvFileArgs = [];
+if (await fileExists(resolve(".env"))) workerEnvFileArgs.push("--env-file", ".env");
+if (await fileExists(resolve(".publish.env"))) workerEnvFileArgs.push("--env-file", ".publish.env");
 const fileEnv = {};
 await loadEnvFile(resolve(".dev.vars"), fileEnv);
 await loadEnvFile(resolve(".env.local"), fileEnv);
+await loadEnvFile(resolve(".env"), fileEnv);
 await loadWranglerVars(resolve("wrangler.jsonc"), fileEnv);
 await loadEnvFile(resolve(".publish.env"), fileEnv);
 const inheritedEnv = { ...process.env, ...fileEnv };
@@ -55,6 +59,8 @@ console.log(`\nPreflight passed${runSmoke ? " with local Worker smoke" : ""}${ru
 
 async function runWorkerSmoke() {
   let worker = null;
+  let aiGatewayStub = null;
+  let aiGatewayStubDir = "";
   try {
     if (!useExistingWorker) {
       if (fresh && !persistTo) {
@@ -64,8 +70,17 @@ async function runWorkerSmoke() {
       if (persistTo) {
         await run("Fresh local D1 migrations", jsRunner, ["scripts/apply-d1-migrations.mjs", "--local", "--persist-to", persistTo]);
       }
+      aiGatewayStub = await startAiGatewayStub();
+      aiGatewayStubDir = await mkdtemp(join(tmpdir(), "beachcar-ai-gateway-stub-"));
+      const aiGatewayStubEnv = join(aiGatewayStubDir, "worker.env");
+      await writeFile(
+        aiGatewayStubEnv,
+        `BEACHCAR_AI_GATEWAY_TOKEN=local_preflight_token\nBEACHCAR_AI_GATEWAY_BASE_URL=${aiGatewayStub.url}\nBEACHCAR_AI_GATEWAY_ALLOW_LOCAL_TEST=true\n`,
+        "utf8",
+      );
       const persistenceArgs = persistTo ? ["--persist-to", persistTo] : [];
-      worker = spawn(jsRunner, ["run", "worker:dev", "--", "--local", "--ip", "127.0.0.1", "--port", port, ...persistenceArgs, ...workerEnvFileArgs], {
+      const localGatewayArgs = ["--env-file", aiGatewayStubEnv];
+      worker = spawn(jsRunner, ["run", "worker:dev", "--", "--local", "--ip", "127.0.0.1", "--port", port, ...persistenceArgs, ...workerEnvFileArgs, ...localGatewayArgs], {
         cwd: root,
         env: {
           ...inheritedEnv,
@@ -93,8 +108,55 @@ async function runWorkerSmoke() {
     });
   } finally {
     if (worker) await stopWorker(worker);
+    if (aiGatewayStub) await closeServer(aiGatewayStub.server);
+    if (aiGatewayStubDir) await rm(aiGatewayStubDir, { recursive: true, force: true });
     if (ownsPersistTo) await rm(persistTo, { recursive: true, force: true });
   }
+}
+
+async function startAiGatewayStub() {
+  const server = createServer(async (request, response) => {
+    try {
+      const body = await readRequestBody(request);
+      const payload = JSON.parse(body || "{}");
+      const prompt = JSON.parse(payload.messages?.at(-1)?.content || "{}");
+      const scores = (prompt.candidates || [])
+        .filter((candidate) => typeof candidate.url === "string" && candidate.url)
+        .map((candidate) => ({
+          url: candidate.url,
+          scoreDelta: 0,
+          why: "Local preflight scorer confirmed this candidate against the supplied profile.",
+          concerns: "Verify the source listing before acting.",
+          summary: "Local preflight AI scoring completed",
+        }));
+      response.writeHead(200, { "Content-Type": "application/json", "cf-aig-request-id": "local-preflight-ai-gateway" });
+      response.end(JSON.stringify({
+        id: "local-preflight-chat-completion",
+        choices: [{ message: { content: JSON.stringify({ scores }) } }],
+        usage: { prompt_tokens: 100, completion_tokens: 40, total_tokens: 140, total_cost_micros: 280 },
+      }));
+    } catch (error) {
+      response.writeHead(400, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+    }
+  });
+  await new Promise((resolveListen, rejectListen) => {
+    server.once("error", rejectListen);
+    server.listen(0, "127.0.0.1", resolveListen);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Could not start local AI Gateway stub");
+  return { server, url: `http://127.0.0.1:${address.port}/v1/chat/completions` };
+}
+
+async function readRequestBody(request) {
+  const chunks = [];
+  for await (const chunk of request) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+async function closeServer(server) {
+  await new Promise((resolveClose, rejectClose) => server.close((error) => error ? rejectClose(error) : resolveClose()));
 }
 
 async function waitForWorker(url) {

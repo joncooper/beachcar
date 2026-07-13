@@ -43,9 +43,9 @@ import {
   getMe,
   ingestAdminSourceCache,
   listAdminUsers,
-  putAiSettings,
   putFeedback,
   putProfile,
+  putResearchSettings,
   putSourceSettings,
   requestAgentRun,
   revokeAutomationToken,
@@ -54,7 +54,6 @@ import {
 } from "./api";
 import { signInWithGoogle, useClerkBrowser } from "./clerk-browser";
 import type { BrowserClerk } from "./clerk-browser";
-import { looksLikeRawProviderKey } from "../shared/ai-keys";
 import type {
   AdminUserSummary,
   AdminOpsSummary,
@@ -71,22 +70,15 @@ import type {
   OAuthAccessTokenRecord,
   ProductEventSummary,
   RunPayload,
+  ResearchMode,
   SourceCacheAdminStatus,
   SourceSetting,
-  UserAiSettings,
   UserPayload,
 } from "../shared/types";
 
 type ViewFilter = "all" | Lane | "starred" | "ending";
 type ViewMode = "deck" | "list";
-type AiSettingsInput = {
-  mode: UserAiSettings["mode"];
-  gatewayKeyRef?: string | null;
-  monthlyBudgetCents?: number | null;
-  dailyBudgetCents?: number | null;
-};
-const rawProviderKeyMessage = "Store provider keys in AI Gateway BYOK, then paste the gateway alias here.";
-const missingGatewayAliasMessage = "Add an AI Gateway alias, or keep Beachcar managed.";
+const managedResearchPrice = 29;
 type SourceSettingsInput = Array<{ source: string; enabled: boolean; settings?: Record<string, unknown> }>;
 type NotificationChannel = "email" | "none";
 type NotificationSettingsState = {
@@ -377,10 +369,20 @@ function agentRunLabel(run: AgentRunRecord | null): string {
 
 function runButtonTitle(user: UserPayload, run: AgentRunRecord | null, canQueueRun: boolean): string {
   if (!canQueueRun) {
+    if (user.researchSettings?.mode === "external_agent") return "Your connected agent publishes new shortlists through Beachcar MCP.";
+    if (!user.managedResearchEntitlement?.active) return "Managed Research is available with a subscription.";
     if (user.aiUsage?.budgetExceeded) return "AI budget reached. Raise the cap in Preferences before running again.";
     return "Finish setup before running.";
   }
   return run ? `Latest agent run: ${run.status}` : "Queue a fresh run";
+}
+
+function runActionLabel(user: UserPayload, run: AgentRunRecord | null, canQueueRun: boolean): string {
+  if (canQueueRun) return agentRunLabel(run);
+  if (user.researchSettings?.mode === "external_agent") return "Your agent";
+  if (!user.managedResearchEntitlement?.active) return "Upgrade";
+  if (user.aiUsage?.budgetExceeded) return "Budget";
+  return "Setup";
 }
 
 function sourceSummaryView(value: unknown): SourceSummaryView {
@@ -672,6 +674,7 @@ export function App(props: { clerkPublishableKey: string }) {
           onClose={() => undefined}
           onDelete={() => undefined}
           onExport={() => undefined}
+          onOpenPricing={() => undefined}
           onSubmit={() => undefined}
           user={demoSettingsUser()}
         />
@@ -685,7 +688,17 @@ export function App(props: { clerkPublishableKey: string }) {
     return <InviteGate email="friend@example.com" error={null} isPending={false} onSubmit={() => undefined} />;
   }
   if (demoMode === "onboarding") {
-    return <OnboardingGate email="friend@example.com" error={null} isPending={false} onSubmit={() => undefined} />;
+    return (
+      <OnboardingGate
+        automationStatus={demoAutomationStatus()}
+        email="friend@example.com"
+        error={null}
+        isPending={false}
+        managedResearchEntitled={false}
+        onOpenPricing={() => undefined}
+        onSubmit={() => undefined}
+      />
+    );
   }
   return <AuthenticatedApp clerkPublishableKey={props.clerkPublishableKey} />;
 }
@@ -748,6 +761,14 @@ function demoSettingsUser(): UserPayload {
         updatedAt: "2026-06-25T12:00:00.000Z",
       },
     ],
+    researchSettings: { mode: "external_agent", updatedAt: "2026-06-25T12:00:00.000Z" },
+    managedResearchEntitlement: {
+      feature: "managed_research",
+      active: false,
+      source: "clerk_session",
+      planSlug: null,
+      updatedAt: "2026-06-25T12:00:00.000Z",
+    },
     aiSettings: {
       mode: "managed",
       dailyBudgetCents: 250,
@@ -757,7 +778,7 @@ function demoSettingsUser(): UserPayload {
       updatedAt: "2026-06-25T12:00:00.000Z",
     },
     onboarding: { completed: true, completedAt: "2026-06-25T12:00:00.000Z" },
-    capabilities: { canUseManagedAi: true, canUseByok: true, canRunNow: false },
+    capabilities: { canConnectAgent: true, canUseManagedAi: false, canUseByok: false, canRunNow: false },
   };
 }
 
@@ -841,8 +862,10 @@ function RunDetailDemo() {
       <RunStatusStrip
         agentRun={agentRun}
         canQueueRun
+        onConfigure={() => undefined}
         onOpen={() => setOpen(true)}
         onQueue={() => undefined}
+        onUpgrade={() => undefined}
         pending={false}
         run={run}
         sourceSummary={sourceSummary}
@@ -861,7 +884,9 @@ function RunDetailDemo() {
           agentRun={agentRun}
           canQueueRun
           onClose={() => setOpen(false)}
+          onConfigure={() => undefined}
           onQueue={() => undefined}
+          onUpgrade={() => undefined}
           pending={false}
           run={run}
           sourceSummary={sourceSummary}
@@ -1025,6 +1050,7 @@ function AuthenticatedApp(props: { clerkPublishableKey: string }) {
   const [filter, setFilter] = useState<ViewFilter>("all");
   const [filterOpen, setFilterOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [pricingOpen, setPricingOpen] = useState(false);
   const [runDetailOpen, setRunDetailOpen] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
   const [query, setQuery] = useState("");
@@ -1098,15 +1124,15 @@ function AuthenticatedApp(props: { clerkPublishableKey: string }) {
     homeRegion?: string | null;
     timezone: string;
     profile: Record<string, unknown>;
-    aiSettings?: AiSettingsInput;
+    researchMode: ResearchMode;
     sourceSettings?: SourceSettingsInput;
   }) {
     setAccountActionPending(true);
     try {
-      const { aiSettings, sourceSettings, ...profileInput } = input;
+      const { researchMode, sourceSettings, ...profileInput } = input;
       let nextUser = await putProfile({ ...profileInput, completeOnboarding: true });
       if (sourceSettings) nextUser = await putSourceSettings({ sources: sourceSettings });
-      if (aiSettings) nextUser = await putAiSettings(aiSettings);
+      nextUser = await putResearchSettings(researchMode);
       setUser(nextUser);
       await loadRunForUser(nextUser.id).catch(() => {
         setRun({ id: null, generatedAt: null, listings: [], feedback: [] });
@@ -1128,15 +1154,15 @@ function AuthenticatedApp(props: { clerkPublishableKey: string }) {
     homeRegion?: string | null;
     timezone: string;
     profile: Record<string, unknown>;
-    aiSettings?: AiSettingsInput;
+    researchMode: ResearchMode;
     sourceSettings?: SourceSettingsInput;
   }) {
     setAccountActionPending(true);
     try {
-      const { aiSettings, sourceSettings, ...profileInput } = input;
+      const { researchMode, sourceSettings, ...profileInput } = input;
       let nextUser = await putProfile({ ...profileInput, completeOnboarding: true });
       if (sourceSettings) nextUser = await putSourceSettings({ sources: sourceSettings });
-      if (aiSettings) nextUser = await putAiSettings(aiSettings);
+      nextUser = await putResearchSettings(researchMode);
       setUser(nextUser);
       setSettingsOpen(false);
       setError(null);
@@ -1172,10 +1198,19 @@ function AuthenticatedApp(props: { clerkPublishableKey: string }) {
               displayName: null,
               profile: null,
               sourceSettings: [],
+              researchSettings: { mode: "external_agent", updatedAt: null },
+              managedResearchEntitlement: {
+                feature: "managed_research",
+                active: false,
+                source: "none",
+                planSlug: null,
+                expiresAt: null,
+                updatedAt: null,
+              },
               aiSettings: null,
               aiUsage: null,
               onboarding: { completed: false, completedAt: null },
-              capabilities: { canUseManagedAi: false, canUseByok: false, canRunNow: false },
+              capabilities: { canConnectAgent: false, canUseManagedAi: false, canUseByok: false, canRunNow: false },
             }
           : null,
       );
@@ -1201,6 +1236,17 @@ function AuthenticatedApp(props: { clerkPublishableKey: string }) {
       setError(runError instanceof Error ? runError.message : "Could not queue run");
     } finally {
       setRunRequestPending(false);
+    }
+  }
+
+  async function closePricing() {
+    setPricingOpen(false);
+    try {
+      await auth.clerk?.session?.getToken({ skipCache: true });
+      setUser(await getMe());
+      setError(null);
+    } catch (refreshError) {
+      setError(refreshError instanceof Error ? refreshError.message : "Could not refresh subscription status");
     }
   }
 
@@ -1353,7 +1399,7 @@ function AuthenticatedApp(props: { clerkPublishableKey: string }) {
   const counts = useMemo(() => {
     const all = run?.listings.length || 0;
     const starred = [...feedbackByKey.values()].filter((feedback) => feedback.action === "star").length;
-    const hidden = [...feedbackByKey.values()].filter((feedback) => isHiddenAction(feedback.action)).length;
+    const hidden = (run?.listings || []).filter((listing) => isHiddenAction(feedbackByKey.get(listingKey(listing))?.action)).length;
     const ending = (run?.listings || []).filter(isEndingSoon).length;
     return { all, visible: visibleListings.length, starred, hidden, ending };
   }, [feedbackByKey, run?.listings, visibleListings.length]);
@@ -1402,12 +1448,17 @@ function AuthenticatedApp(props: { clerkPublishableKey: string }) {
 
   if (user && !user.onboarding?.completed) {
     return (
-      <OnboardingGate
-        email={user.email || auth.email || ""}
-        error={error}
-        isPending={accountActionPending}
-        onSubmit={(input) => void completeProfile(input)}
-      />
+      <>
+        <OnboardingGate
+          email={user.email || auth.email || ""}
+          error={error}
+          isPending={accountActionPending}
+          managedResearchEntitled={Boolean(user.managedResearchEntitlement?.active)}
+          onOpenPricing={() => setPricingOpen(true)}
+          onSubmit={(input) => void completeProfile(input)}
+        />
+        {pricingOpen ? <ClerkPricingSheet clerk={auth.clerk} onClose={() => void closePricing()} /> : null}
+      </>
     );
   }
 
@@ -1459,8 +1510,10 @@ function AuthenticatedApp(props: { clerkPublishableKey: string }) {
       <RunStatusStrip
         agentRun={agentRun}
         canQueueRun={canQueueRun}
+        onConfigure={() => setSettingsOpen(true)}
         onOpen={() => setRunDetailOpen(true)}
         onQueue={() => void queueAgentRun()}
+        onUpgrade={() => setPricingOpen(true)}
         pending={runRequestPending}
         run={run}
         sourceSummary={sourceSummary}
@@ -1487,17 +1540,28 @@ function AuthenticatedApp(props: { clerkPublishableKey: string }) {
           onClose={() => setSettingsOpen(false)}
           onDelete={(confirmEmail) => void deleteAccount(confirmEmail)}
           onExport={() => void exportAccountData()}
+          onOpenPricing={() => setPricingOpen(true)}
           onSubmit={(input) => void saveSettings(input)}
           user={user}
         />
       ) : null}
+
+      {pricingOpen ? <ClerkPricingSheet clerk={auth.clerk} onClose={() => void closePricing()} /> : null}
 
       {runDetailOpen ? (
         <RunDetailSheet
           agentRun={agentRun}
           canQueueRun={canQueueRun}
           onClose={() => setRunDetailOpen(false)}
+          onConfigure={() => {
+            setRunDetailOpen(false);
+            setSettingsOpen(true);
+          }}
           onQueue={() => void queueAgentRun()}
+          onUpgrade={() => {
+            setRunDetailOpen(false);
+            setPricingOpen(true);
+          }}
           pending={runRequestPending}
           run={run}
           sourceSummary={sourceSummary}
@@ -1668,8 +1732,10 @@ function AuthenticatedApp(props: { clerkPublishableKey: string }) {
 function RunStatusStrip(props: {
   agentRun: AgentRunRecord | null;
   canQueueRun: boolean;
+  onConfigure: () => void;
   onOpen: () => void;
   onQueue: () => void;
+  onUpgrade: () => void;
   pending: boolean;
   run: RunPayload | null;
   sourceSummary: SourceSummaryView;
@@ -1686,13 +1752,18 @@ function RunStatusStrip(props: {
       </button>
       <button
         className="run-now-action"
-        disabled={props.pending || !props.canQueueRun}
+        disabled={props.pending}
         type="button"
-        onClick={props.onQueue}
+        onClick={() => {
+          if (props.canQueueRun) props.onQueue();
+          else if (props.user.researchSettings?.mode === "external_agent") props.onConfigure();
+          else if (!props.user.managedResearchEntitlement?.active) props.onUpgrade();
+          else props.onConfigure();
+        }}
         title={runButtonTitle(props.user, props.agentRun, props.canQueueRun)}
       >
         <Sparkles size={16} aria-hidden="true" />
-        <span>{props.pending ? "Queueing" : props.canQueueRun ? agentRunLabel(props.agentRun) : "Budget"}</span>
+        <span>{props.pending ? "Queueing" : runActionLabel(props.user, props.agentRun, props.canQueueRun)}</span>
       </button>
     </section>
   );
@@ -1702,7 +1773,9 @@ function RunDetailSheet(props: {
   agentRun: AgentRunRecord | null;
   canQueueRun: boolean;
   onClose: () => void;
+  onConfigure: () => void;
   onQueue: () => void;
+  onUpgrade: () => void;
   pending: boolean;
   run: RunPayload | null;
   sourceSummary: SourceSummaryView;
@@ -1738,13 +1811,18 @@ function RunDetailSheet(props: {
           </div>
           <button
             className="run-now-action"
-            disabled={props.pending || !props.canQueueRun}
+            disabled={props.pending}
             type="button"
-            onClick={props.onQueue}
+            onClick={() => {
+              if (props.canQueueRun) props.onQueue();
+              else if (props.user.researchSettings?.mode === "external_agent") props.onConfigure();
+              else if (!props.user.managedResearchEntitlement?.active) props.onUpgrade();
+              else props.onConfigure();
+            }}
             title={runButtonTitle(props.user, props.agentRun, props.canQueueRun)}
           >
             <Sparkles size={16} aria-hidden="true" />
-            <span>{props.pending ? "Queueing" : props.canQueueRun ? agentRunLabel(props.agentRun) : "Budget"}</span>
+            <span>{props.pending ? "Queueing" : runActionLabel(props.user, props.agentRun, props.canQueueRun)}</span>
           </button>
         </div>
 
@@ -1960,6 +2038,7 @@ function SettingsSheet(props: {
   onClose: () => void;
   onDelete: (confirmEmail: string) => void;
   onExport: () => void;
+  onOpenPricing: () => void;
   onSubmit: (input: {
     displayName?: string;
     niche: string;
@@ -1968,14 +2047,13 @@ function SettingsSheet(props: {
     homeRegion?: string | null;
     timezone: string;
     profile: Record<string, unknown>;
-    aiSettings?: AiSettingsInput;
+    researchMode: ResearchMode;
     sourceSettings?: SourceSettingsInput;
   }) => void;
   user: UserPayload;
 }) {
   const profile = props.user.profile;
   const profileData = profile?.profile || {};
-  const aiSettings = props.user.aiSettings;
   const [displayName, setDisplayName] = useState(profile?.displayName || props.user.displayName || "");
   const [budgetMax, setBudgetMax] = useState(profile?.budgetMax?.toString() || "30000");
   const [stretchBudget, setStretchBudget] = useState(profile?.stretchBudget?.toString() || "2000");
@@ -1992,10 +2070,7 @@ function SettingsSheet(props: {
   const [avoidCalibration, setAvoidCalibration] = useState(() =>
     initialCalibrationSelection(profileData, "avoidCalibration", [], avoidCalibrationOptions),
   );
-  const [aiMode, setAiMode] = useState<UserAiSettings["mode"]>(aiSettings?.mode || "managed");
-  const [dailyAiBudget, setDailyAiBudget] = useState(dollarsFromCents(aiSettings?.dailyBudgetCents, "2.50"));
-  const [monthlyAiBudget, setMonthlyAiBudget] = useState(dollarsFromCents(aiSettings?.monthlyBudgetCents, "25"));
-  const [gatewayKeyRef, setGatewayKeyRef] = useState(aiSettings?.gatewayKeyRef || "");
+  const [researchMode, setResearchMode] = useState<ResearchMode>(props.user.researchSettings?.mode || "external_agent");
   const [localError, setLocalError] = useState<string | null>(null);
   const [notifications, setNotifications] = useState(() => initialNotificationSettings(profileData));
   const [sourcePreferences, setSourcePreferences] = useState(() => initialSourcePreferences(props.user.sourceSettings, profileData));
@@ -2017,13 +2092,8 @@ function SettingsSheet(props: {
           className="setup-form setup-grid"
           onSubmit={(event) => {
             event.preventDefault();
-            const nextGatewayKeyRef = aiMode === "byok" ? gatewayKeyRef.trim() : "";
-            if (aiMode === "byok" && !nextGatewayKeyRef) {
-              setLocalError(missingGatewayAliasMessage);
-              return;
-            }
-            if (nextGatewayKeyRef && looksLikeRawProviderKey(nextGatewayKeyRef)) {
-              setLocalError(rawProviderKeyMessage);
+            if (researchMode === "managed" && !props.user.managedResearchEntitlement?.active) {
+              setLocalError("Subscribe to Managed Research before enabling Beachcar-run curation.");
               return;
             }
             setLocalError(null);
@@ -2047,13 +2117,8 @@ function SettingsSheet(props: {
                 sourcePreferences: sourceSettingsInput(sourcePreferences),
                 notifications: notificationSettingsInput(notifications),
               },
+              researchMode,
               sourceSettings: sourceSettingsInput(sourcePreferences),
-              aiSettings: {
-                mode: aiMode,
-                gatewayKeyRef: nextGatewayKeyRef || null,
-                dailyBudgetCents: centsFromDollarInput(dailyAiBudget),
-                monthlyBudgetCents: centsFromDollarInput(monthlyAiBudget),
-              },
             });
           }}
         >
@@ -2088,35 +2153,17 @@ function SettingsSheet(props: {
             <textarea value={avoidNotes} onChange={(event) => setAvoidNotes(event.target.value)} />
           </label>
           <ResearchServiceFields
-            dailyBudget={dailyAiBudget}
-            gatewayKeyRef={gatewayKeyRef}
-            mode={aiMode}
-            monthlyBudget={monthlyAiBudget}
-            usage={props.user.aiUsage || null}
-            setDailyBudget={setDailyAiBudget}
-            setGatewayKeyRef={(value) => {
-              setGatewayKeyRef(value);
-              if (localError) setLocalError(null);
-            }}
+            managedResearchEntitled={Boolean(props.user.managedResearchEntitlement?.active)}
+            mode={researchMode}
+            onOpenPricing={props.onOpenPricing}
             setMode={(mode) => {
-              setAiMode(mode);
+              setResearchMode(mode);
               if (localError) setLocalError(null);
             }}
-            setMonthlyBudget={setMonthlyAiBudget}
           />
           <NotificationSettingsFields value={notifications} onChange={setNotifications} />
           <SourceSettingsFields preferences={sourcePreferences} setPreferences={setSourcePreferences} />
-          <details className="advanced-settings automation-disclosure setup-span">
-            <summary>
-              <span>
-                <strong>Advanced: connect your own agent</strong>
-                <small>Optional. Beachcar's managed daily research works without a token or external agent.</small>
-              </span>
-            </summary>
-            <div className="advanced-settings-body">
-              <AutomationSettingsPanel demoStatus={props.automationStatus} />
-            </div>
-          </details>
+          <AutomationSettingsPanel demoStatus={props.automationStatus} />
           {localError || props.error ? <p className="auth-error setup-span">{localError || props.error}</p> : null}
           <button className="source-link setup-span" disabled={props.isPending} type="submit">
             {props.isPending ? "Saving..." : "Save preferences"}
@@ -2408,7 +2455,7 @@ function AutomationSettingsPanel(props: { demoStatus?: AutomationStatus }) {
 }
 
 function ListView(props: {
-  counts: { all: number; visible: number; ending: number };
+  counts: { all: number; visible: number; ending: number; hidden: number };
   feedbackByKey: Map<string, FeedbackRecord>;
   listings: AuctionListing[];
   selectedIndex: number;
@@ -2425,6 +2472,11 @@ function ListView(props: {
         <button type="button" onClick={() => props.setFilterOpen(true)}>
           Ending soon {props.counts.ending}
         </button>
+        {props.counts.hidden ? (
+          <button type="button" onClick={() => props.setFilterOpen(true)}>
+            Hidden {props.counts.hidden}
+          </button>
+        ) : null}
       </div>
       <div className="listing-list">
         {props.listings.map((listing, index) => {
@@ -2585,9 +2637,12 @@ function DisabledAccountGate(props: { email: string; clerk: BrowserClerk | null 
 }
 
 function OnboardingGate(props: {
+  automationStatus?: AutomationStatus;
   email: string;
   error: string | null;
   isPending: boolean;
+  managedResearchEntitled: boolean;
+  onOpenPricing: () => void;
   onSubmit: (input: {
     displayName?: string;
     niche: string;
@@ -2596,7 +2651,7 @@ function OnboardingGate(props: {
     homeRegion?: string | null;
     timezone: string;
     profile: Record<string, unknown>;
-    aiSettings?: AiSettingsInput;
+    researchMode: ResearchMode;
     sourceSettings?: SourceSettingsInput;
   }) => void;
 }) {
@@ -2608,10 +2663,7 @@ function OnboardingGate(props: {
   const [avoidNotes, setAvoidNotes] = useState("Anything that needs a major rescue before it can be enjoyed.");
   const [tasteCalibration, setTasteCalibration] = useState(() => [...defaultTasteCalibration]);
   const [avoidCalibration, setAvoidCalibration] = useState(() => [...defaultAvoidCalibration]);
-  const [aiMode, setAiMode] = useState<UserAiSettings["mode"]>("managed");
-  const [dailyAiBudget, setDailyAiBudget] = useState("2.50");
-  const [monthlyAiBudget, setMonthlyAiBudget] = useState("25");
-  const [gatewayKeyRef, setGatewayKeyRef] = useState("");
+  const [researchMode, setResearchMode] = useState<ResearchMode>(props.managedResearchEntitled ? "managed" : "external_agent");
   const [localError, setLocalError] = useState<string | null>(null);
   const [notifications, setNotifications] = useState(() => initialNotificationSettings({}));
   const [sourcePreferences, setSourcePreferences] = useState(() => initialSourcePreferences([], {}));
@@ -2619,23 +2671,18 @@ function OnboardingGate(props: {
   return (
     <main className="shell is-loading">
       <section className="setup-card is-wide">
-        <p className="eyebrow">Set up your daily scout</p>
-        <h1>What should Beachcar look for?</h1>
+        <p className="eyebrow">Bring your own agent</p>
+        <h1>Give your agent great taste.</h1>
         <p className="setup-muted">
-          Tell us what fits. Beachcar will research your enabled sources and publish a private daily shortlist for {props.email}. No agent, token, or
-          provider key is required.
+          Beachcar is the private memory and presentation layer for your car hunt. Connect Codex, Claude, or another agent through MCP; it researches
+          the market, learns from your decisions, and publishes a shortlist for {props.email}.
         </p>
         <form
           className="setup-form setup-grid"
           onSubmit={(event) => {
             event.preventDefault();
-            const nextGatewayKeyRef = aiMode === "byok" ? gatewayKeyRef.trim() : "";
-            if (aiMode === "byok" && !nextGatewayKeyRef) {
-              setLocalError(missingGatewayAliasMessage);
-              return;
-            }
-            if (nextGatewayKeyRef && looksLikeRawProviderKey(nextGatewayKeyRef)) {
-              setLocalError(rawProviderKeyMessage);
+            if (researchMode === "managed" && !props.managedResearchEntitled) {
+              setLocalError("Subscribe to Managed Research before enabling Beachcar-run curation.");
               return;
             }
             setLocalError(null);
@@ -2658,13 +2705,8 @@ function OnboardingGate(props: {
                 sourcePreferences: sourceSettingsInput(sourcePreferences),
                 notifications: notificationSettingsInput(notifications),
               },
+              researchMode,
               sourceSettings: sourceSettingsInput(sourcePreferences),
-              aiSettings: {
-                mode: aiMode,
-                gatewayKeyRef: nextGatewayKeyRef || null,
-                dailyBudgetCents: centsFromDollarInput(dailyAiBudget),
-                monthlyBudgetCents: centsFromDollarInput(monthlyAiBudget),
-              },
             });
           }}
         >
@@ -2684,6 +2726,15 @@ function OnboardingGate(props: {
             <span>Stretch room</span>
             <input inputMode="numeric" value={stretchBudget} onChange={(event) => setStretchBudget(event.target.value)} />
           </label>
+          <ResearchServiceFields
+            managedResearchEntitled={props.managedResearchEntitled}
+            mode={researchMode}
+            onOpenPricing={props.onOpenPricing}
+            setMode={(mode) => {
+              setResearchMode(mode);
+              if (localError) setLocalError(null);
+            }}
+          />
           <TasteCalibrationFields
             selectedAvoid={avoidCalibration}
             selectedTaste={tasteCalibration}
@@ -2698,24 +2749,9 @@ function OnboardingGate(props: {
             <span>Extra avoids</span>
             <textarea value={avoidNotes} onChange={(event) => setAvoidNotes(event.target.value)} />
           </label>
-          <ResearchServiceFields
-            dailyBudget={dailyAiBudget}
-            gatewayKeyRef={gatewayKeyRef}
-            mode={aiMode}
-            monthlyBudget={monthlyAiBudget}
-            setDailyBudget={setDailyAiBudget}
-            setGatewayKeyRef={(value) => {
-              setGatewayKeyRef(value);
-              if (localError) setLocalError(null);
-            }}
-            setMode={(mode) => {
-              setAiMode(mode);
-              if (localError) setLocalError(null);
-            }}
-            setMonthlyBudget={setMonthlyAiBudget}
-          />
           <NotificationSettingsFields value={notifications} onChange={setNotifications} />
           <SourceSettingsFields preferences={sourcePreferences} setPreferences={setSourcePreferences} />
+          {researchMode === "external_agent" ? <AutomationSettingsPanel demoStatus={props.automationStatus} /> : null}
           {localError || props.error ? <p className="auth-error setup-span">{localError || props.error}</p> : null}
           <button className="source-link setup-span" disabled={props.isPending} type="submit">
             {props.isPending ? "Saving..." : "Save preferences"}
@@ -2785,107 +2821,68 @@ function CalibrationOptionGrid(props: {
 }
 
 function ResearchServiceFields(props: {
-  mode: UserAiSettings["mode"];
-  dailyBudget: string;
-  monthlyBudget: string;
-  gatewayKeyRef: string;
-  usage?: AiUsageSummary | null;
-  setMode: (mode: UserAiSettings["mode"]) => void;
-  setDailyBudget: (value: string) => void;
-  setMonthlyBudget: (value: string) => void;
-  setGatewayKeyRef: (value: string) => void;
+  mode: ResearchMode;
+  managedResearchEntitled: boolean;
+  onOpenPricing: () => void;
+  setMode: (mode: ResearchMode) => void;
 }) {
-  const isManaged = props.mode === "managed";
-  const [advancedOpen, setAdvancedOpen] = useState(props.mode === "byok");
+  const isExternal = props.mode === "external_agent";
   return (
     <section className="research-service setup-span">
       <div className="setup-section-title">
-        <span>Daily research</span>
-        <small>{props.usage?.budgetExceeded ? "Budget reached" : isManaged ? "Managed by Beachcar" : "Advanced provider"}</small>
+        <span>Who runs the research?</span>
+        <small>{isExternal ? "Your agent · included" : "Beachcar · managed"}</small>
       </div>
-      <div className="managed-service-card">
-        <span className="managed-service-icon" aria-hidden="true">
-          <ShieldCheck size={19} />
-        </span>
-        <span>
-          <strong>{isManaged ? "Your daily shortlist is handled for you" : props.gatewayKeyRef.trim() ? "Your provider alias is active" : "Add your provider alias"}</strong>
-          <small>
-            {isManaged
-              ? "Beachcar checks the sources you enable, applies your taste and feedback, and publishes the best finds. Just review the shortlist and teach it what you like."
-              : "Beachcar runs the same daily research flow using the AI Gateway alias you configured."}
-          </small>
-        </span>
+      <div className="research-mode-grid" role="radiogroup" aria-label="Research service">
+        <button
+          aria-checked={isExternal}
+          className={isExternal ? "research-mode-card is-selected" : "research-mode-card"}
+          onClick={() => props.setMode("external_agent")}
+          role="radio"
+          type="button"
+        >
+          <span className="research-mode-icon" aria-hidden="true">
+            <Bot size={20} />
+          </span>
+          <span>
+            <span className="research-mode-heading">
+              <strong>Connect your own agent</strong>
+              <em>Default</em>
+            </span>
+            <small>Use Codex, Claude, or any MCP client. Your agent searches, reasons, and publishes; Beachcar remembers your taste and presents the results.</small>
+          </span>
+          <span className="research-mode-price">Included</span>
+        </button>
+        <button
+          aria-checked={!isExternal}
+          className={!isExternal ? "research-mode-card is-selected is-managed" : "research-mode-card is-managed"}
+          onClick={() => {
+            if (props.managedResearchEntitled) props.setMode("managed");
+            else props.onOpenPricing();
+          }}
+          role="radio"
+          type="button"
+        >
+          <span className="research-mode-icon" aria-hidden="true">
+            <Sparkles size={20} />
+          </span>
+          <span>
+            <span className="research-mode-heading">
+              <strong>Beachcar Managed Research</strong>
+              {props.managedResearchEntitled ? <em>Active</em> : null}
+            </span>
+            <small>Beachcar runs the daily research workflow for you with hosted AI, source monitoring, cost controls, and automatic publishing.</small>
+          </span>
+          <span className="research-mode-price">
+            {props.managedResearchEntitled ? "Your plan" : `$${managedResearchPrice}/month`}
+          </span>
+        </button>
       </div>
-      {isManaged ? <p className="managed-service-note">No provider key, automation token, or external agent setup is needed.</p> : null}
-      {props.usage ? (
-        <div className="ai-usage-strip">
-          <span>
-            <small>Today</small>
-            <strong>{formatMicrosAsDollars(props.usage.daily.spendMicros)}</strong>
-            <em>{formatAiBudget(props.usage.daily.budgetCents)}</em>
-          </span>
-          <span>
-            <small>Month</small>
-            <strong>{formatMicrosAsDollars(props.usage.monthly.spendMicros)}</strong>
-            <em>{formatAiBudget(props.usage.monthly.budgetCents)}</em>
-          </span>
-        </div>
-      ) : null}
-      <details className="advanced-settings" open={advancedOpen} onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}>
-        <summary>
-          <span>
-            <strong>Advanced: cost controls and AI provider</strong>
-            <small>Optional. Keep Beachcar managed unless you already use an AI Gateway provider alias.</small>
-          </span>
-        </summary>
-        <div className="advanced-settings-body">
-          <div className="segmented-control" aria-label="Daily research provider">
-            <button
-              aria-pressed={props.mode === "managed"}
-              className={props.mode === "managed" ? "is-active" : ""}
-              type="button"
-              onClick={() => props.setMode("managed")}
-            >
-              Beachcar managed
-            </button>
-            <button
-              aria-pressed={props.mode === "byok"}
-              className={props.mode === "byok" ? "is-active" : ""}
-              type="button"
-              onClick={() => props.setMode("byok")}
-            >
-              Gateway alias
-            </button>
-          </div>
-          <p className="advanced-settings-note">
-            {isManaged
-              ? "Recommended. Beachcar operates the research service within the limits below."
-              : "Optional BYOK path for advanced users. Beachcar stores only the gateway alias, never a raw provider key."}
-          </p>
-          <div className="ai-budget-grid">
-            <label>
-              <span>Daily research cap</span>
-              <input inputMode="decimal" value={props.dailyBudget} onChange={(event) => props.setDailyBudget(event.target.value)} />
-            </label>
-            <label>
-              <span>Monthly research cap</span>
-              <input inputMode="decimal" value={props.monthlyBudget} onChange={(event) => props.setMonthlyBudget(event.target.value)} />
-            </label>
-          </div>
-          {props.mode === "byok" ? (
-            <label>
-              <span>AI Gateway alias</span>
-              <input
-                autoComplete="off"
-                placeholder="cf-aig-byok-friend-openai"
-                value={props.gatewayKeyRef}
-                onChange={(event) => props.setGatewayKeyRef(event.target.value)}
-              />
-              <small className="field-help">Paste an AI Gateway alias only. Raw OpenAI or provider keys are rejected.</small>
-            </label>
-          ) : null}
-        </div>
-      </details>
+      <p className="managed-service-note">
+        {isExternal
+          ? "Beachcar never charges for agent-connected curation. Create an OAuth connection or one-time token below, then point your agent at the MCP endpoint."
+          : "Managed Research uses Beachcar's AI Gateway budget. Cancel any time while keeping your profile, feedback, and saved finds."}
+      </p>
     </section>
   );
 }
@@ -3924,6 +3921,57 @@ function DossierDetail(props: { dossier?: AuctionListing["dossier"] }) {
         </section>
       ) : null}
     </>
+  );
+}
+
+function ClerkPricingSheet(props: { clerk: BrowserClerk | null; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const canMount = Boolean(props.clerk?.mountPricingTable);
+
+  useEffect(() => {
+    if (!props.clerk?.mountPricingTable || !ref.current) return;
+    const node = ref.current;
+    props.clerk.mountPricingTable(node, {
+      appearance: {
+        elements: {
+          card: "beachcar-clerk-pricing-card",
+          rootBox: "beachcar-clerk-pricing-root",
+        },
+      },
+    });
+    return () => props.clerk?.unmountPricingTable?.(node);
+  }, [props.clerk]);
+
+  return (
+    <div className="filter-overlay pricing-overlay" role="dialog" aria-modal="true" aria-label="Managed Research plans">
+      <button className="filter-backdrop" type="button" onClick={props.onClose} aria-label="Close pricing" />
+      <section className="filter-sheet pricing-sheet">
+        <div className="sheet-grabber" />
+        <div className="sheet-title">
+          <div>
+            <p className="eyebrow">Optional managed service</p>
+            <strong>Let Beachcar run the research.</strong>
+          </div>
+          <button type="button" onClick={props.onClose}>
+            Done
+          </button>
+        </div>
+        <p className="setup-muted">
+          Managed Research is ${managedResearchPrice}/month. Beachcar runs the hosted agent workflow, monitors sources, applies your feedback, and
+          publishes a fresh private shortlist. Your own agent remains free.
+        </p>
+        {canMount ? (
+          <div className="clerk-pricing-table" ref={ref} />
+        ) : (
+          <div className="pricing-unavailable">
+            <Sparkles size={22} aria-hidden="true" />
+            <strong>Checkout is not available in this environment yet.</strong>
+            <small>The free agent-connected path is fully available. Billing appears here once Clerk Billing is enabled.</small>
+          </div>
+        )}
+        <p className="pricing-footnote">Cancel any time. Your taste profile, feedback, and saved listings stay with you.</p>
+      </section>
+    </div>
   );
 }
 

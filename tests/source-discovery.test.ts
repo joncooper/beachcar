@@ -688,7 +688,7 @@ describe("source discovery", () => {
     });
   });
 
-  it("records explicit deterministic scoring when no dedicated AI Gateway runtime is configured", async () => {
+  it("records explicit heuristic scoring only when AI scoring was not requested", async () => {
     const fetchImpl = async (input: string): Promise<Response> => {
       if (input.includes("/suzuki/samurai/")) return new Response(batLiveHtml("1988 Suzuki Samurai Convertible 5-Speed", "USD $4,890"));
       if (input.includes("carsandbids.com")) return new Response("<title>Just a moment...</title>");
@@ -707,7 +707,7 @@ describe("source discovery", () => {
       model: null,
       totalTokens: 0,
       costMicros: 0,
-      message: "Dedicated AI Gateway runtime is not configured; deterministic heuristic scoring was used.",
+      message: "AI scoring was not requested; heuristic scoring was used.",
       scores: [],
     });
     expect(result.checkedSources).toEqual(
@@ -715,6 +715,22 @@ describe("source discovery", () => {
         expect.objectContaining({ source: "heuristic-scoring", site: "Beachcar heuristic scoring", status: "skipped" }),
       ]),
     );
+  });
+
+  it("refuses managed curation when AI Gateway scoring is unavailable", async () => {
+    const fetchImpl = async (input: string): Promise<Response> => {
+      if (input.includes("/suzuki/samurai/")) return new Response(batLiveHtml("1988 Suzuki Samurai Convertible 5-Speed", "USD $4,890"));
+      if (input.includes("carsandbids.com")) return new Response("<title>Just a moment...</title>");
+      return new Response(`<div class="listings-live"></div><div class="auctions-completed"></div>`);
+    };
+
+    await expect(
+      discoverAndScoreCandidates(
+        context,
+        { runId: "agent-run-managed-without-ai", source: "manual", reason: "test" },
+        { fetchImpl, now: new Date("2026-06-25T12:00:00Z"), requireAiScoring: true, allowPlaceholderFallback: false },
+      ),
+    ).rejects.toThrow("Managed curation is unavailable because AI Gateway is not configured");
   });
 
   it("can apply AI Gateway-style reranking without changing the source parser", async () => {

@@ -5,6 +5,7 @@ import { sanitizeAgentSchedules, type BeachcarAgentScheduleStatus } from "../age
 import {
   createAgentRunRequest,
   createIdempotentAgentRunRequest,
+  getManagedResearchAccess,
   getProfile,
   inactiveAiSettingsError,
   markAgentRunPrepared,
@@ -176,6 +177,27 @@ export class BeachcarAgent extends Agent<Env, BeachcarAgentState, BeachcarAgentP
         updatedAt: new Date().toISOString(),
       });
       console.log(JSON.stringify({ level: "info", message: "scheduled_agent.cancelled_missing_profile", userId: input.userId }));
+      return null;
+    }
+
+    const managedAccess = await getManagedResearchAccess(this.env.DB, input.userId);
+    if (!managedAccess.allowed) {
+      await this.cancelDailySchedules();
+      this.setState({
+        ...this.state,
+        userId: input.userId,
+        scheduleId: null,
+        nextRunAt: null,
+        phase: "idle",
+        updatedAt: new Date().toISOString(),
+      });
+      console.log(
+        JSON.stringify({
+          level: "info",
+          message: "scheduled_agent.cancelled_without_managed_entitlement",
+          userId: input.userId,
+        }),
+      );
       return null;
     }
     const scheduleCron = normalizeCron(profile.scheduleCron) || normalizeCron(input.scheduleCron) || normalizeCron(this.state.scheduleCron) || "0 8 * * *";

@@ -266,6 +266,119 @@ img {
   color: #365f55;
 }
 
+.research-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.research-mode-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: start;
+  align-items: start;
+  gap: 10px;
+  min-height: 168px;
+  border: 1px solid rgba(20, 32, 28, 0.13);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.84);
+  padding: 13px;
+  color: #14201c;
+  text-align: left;
+  transition:
+    transform 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.research-mode-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(30, 95, 82, 0.34);
+  box-shadow: 0 10px 24px rgba(20, 32, 28, 0.08);
+}
+
+.research-mode-card.is-selected {
+  border-color: rgba(30, 95, 82, 0.62);
+  background: linear-gradient(145deg, #fff, rgba(229, 245, 238, 0.92));
+  box-shadow: inset 0 0 0 1px rgba(30, 95, 82, 0.12);
+}
+
+.research-mode-card.is-managed.is-selected {
+  border-color: rgba(158, 107, 32, 0.58);
+  background: linear-gradient(145deg, #fff, rgba(250, 240, 219, 0.9));
+  box-shadow: inset 0 0 0 1px rgba(158, 107, 32, 0.12);
+}
+
+.research-mode-card > span:nth-child(2),
+.research-mode-card strong,
+.research-mode-card small {
+  min-width: 0;
+}
+
+.research-mode-card strong,
+.research-mode-card small {
+  display: block;
+}
+
+.research-mode-card strong {
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.research-mode-card small {
+  margin-top: 5px;
+  color: #596761;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.43;
+}
+
+.research-mode-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 12px;
+  background: #1e5f52;
+  color: #fff;
+}
+
+.research-mode-card.is-managed .research-mode-icon {
+  background: #936b2e;
+}
+
+.research-mode-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.research-mode-heading em {
+  border-radius: 999px;
+  background: rgba(30, 95, 82, 0.1);
+  padding: 3px 7px;
+  color: #1e5f52;
+  font-size: 0.64rem;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.research-mode-price {
+  grid-column: 1 / -1;
+  align-self: end;
+  justify-self: start;
+  border-radius: 999px;
+  background: rgba(20, 32, 28, 0.06);
+  padding: 5px 9px;
+  color: #35443f;
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
 .advanced-settings {
   overflow: hidden;
   border: 1px solid rgba(20, 32, 28, 0.12);
@@ -1955,6 +2068,52 @@ h2 {
   overflow-y: auto;
 }
 
+.pricing-sheet {
+  max-height: min(90vh, 820px);
+  overflow-y: auto;
+  gap: 16px;
+}
+
+.pricing-sheet .sheet-title {
+  align-items: flex-start;
+}
+
+.pricing-sheet .sheet-title .eyebrow {
+  margin-bottom: 4px;
+}
+
+.clerk-pricing-table {
+  min-height: 330px;
+}
+
+.pricing-unavailable {
+  display: grid;
+  justify-items: start;
+  gap: 7px;
+  border: 1px solid rgba(30, 95, 82, 0.16);
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgba(242, 251, 247, 0.95), rgba(255, 255, 255, 0.9));
+  padding: 20px;
+  color: #1e5f52;
+}
+
+.pricing-unavailable strong {
+  color: #14201c;
+}
+
+.pricing-unavailable small,
+.pricing-footnote {
+  color: #5a6862;
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.pricing-footnote {
+  margin: 0;
+  text-align: center;
+}
+
 .sheet-grabber {
   justify-self: center;
   width: 46px;
@@ -2576,6 +2735,14 @@ h2 {
 @media (max-width: 640px) {
   .settings-sheet {
     max-height: calc(100svh - 12px);
+  }
+
+  .research-mode-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .research-mode-card {
+    min-height: 0;
   }
 }
 

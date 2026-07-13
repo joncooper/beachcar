@@ -35,12 +35,8 @@ if (allowRunnerHandoffOnly && explicitRunnerMerge) {
   fail("Choose either --require-runner-merge or --allow-runner-handoff-only, not both.");
 }
 const requireRunnerMerge = !allowRunnerHandoffOnly;
-const requireAiGatewayFlag = hasFlag("--require-ai-gateway");
 const requireHeuristicFlag = hasFlag("--require-heuristic");
-if (requireAiGatewayFlag && requireHeuristicFlag) {
-  fail("Choose either --require-ai-gateway or --require-heuristic, not both.");
-}
-let requireAiGateway = requireAiGatewayFlag;
+if (requireHeuristicFlag) fail("Managed Research requires AI Gateway scoring; --require-heuristic is no longer supported.");
 const timeoutMs = numberArg("--timeout-ms", 5 * 60 * 1_000);
 const runnerTimeoutMs = numberArg("--runner-timeout-ms", timeoutMs);
 const checkpointPath = resolve(".tmp", "managed-production-verification.json");
@@ -101,7 +97,7 @@ const report = {
   requestId,
   configurePilot,
   requireRunnerMerge,
-  aiProofMode: requireAiGatewayFlag ? "ai-gateway" : requireHeuristicFlag ? "heuristic" : "auto-preflight",
+  aiProofMode: "ai-gateway",
   checks: [],
 };
 
@@ -172,6 +168,11 @@ try {
   addCheck("Signed-in pilot email matches the protected ticket", normalizeEmail(meResult.body?.email) === expectedPilotEmail, expectedPilotEmail);
   addCheck("Pilot user is active", meResult.body?.status === "active", meResult.body?.status || "missing status");
   addCheck("Pilot onboarding is complete", meResult.body?.onboarding?.completed === true, meResult.body?.onboarding?.completed ? "complete" : "incomplete");
+  addCheck(
+    "Pilot Clerk session grants managed_research",
+    meResult.body?.managedResearchEntitlement?.active === true,
+    meResult.body?.managedResearchEntitlement?.active ? "active" : "missing or inactive",
+  );
 
   if (pilotConfigurationDrift) {
     if (!configurePilot) throw new Error("Pilot managed/source settings drifted; rerun explicitly with --configure-pilot after reviewing the admin preflight.");
@@ -179,7 +180,11 @@ try {
   }
   const me = meResult.body;
   const configuredSources = enabledSourceNames(me?.sourceSettings);
-  addCheck("Pilot AI settings are managed and active", me?.aiSettings?.mode === "managed" && me?.aiSettings?.status === "active", me?.aiSettings?.mode || "missing");
+  addCheck(
+    "Pilot research mode and AI settings are managed and active",
+    me?.researchSettings?.mode === "managed" && me?.aiSettings?.mode === "managed" && me?.aiSettings?.status === "active",
+    `${me?.researchSettings?.mode || "missing"}; ${me?.aiSettings?.mode || "missing"}`,
+  );
   addCheck(
     "Pilot has every Source Quality v1 source enabled",
     SOURCE_QUALITY_PILOT_SOURCES.every((source) => configuredSources.includes(source)),
@@ -283,19 +288,10 @@ try {
     sourceSummary: summary,
     usage: usage.body,
     agentRunId,
-    requireAiGateway,
   });
   addCheck("Managed pilot AI settings remained active", usage.response.ok && aiProof.settings, `HTTP ${usage.response.status}`);
-  addCheck(
-    requireAiGateway ? "AI Gateway scored this exact run" : "This run explicitly used deterministic heuristic scoring",
-    aiProof.scoring,
-    aiProof.mode,
-  );
-  addCheck(
-    requireAiGateway ? "This exact run has a successful managed AI usage event" : "Heuristic run created no candidate-scoring usage event",
-    aiProof.usageEvent,
-    aiProof.mode,
-  );
+  addCheck("AI Gateway scored this exact run", aiProof.scoring, aiProof.mode);
+  addCheck("This exact run has a successful managed AI usage event", aiProof.usageEvent, aiProof.mode);
   addCheck("Managed budget remains below its limits", aiProof.budgetHealthy, usage.body?.summary?.budgetExceeded === true ? "budget exceeded" : "healthy");
 
   await verifySignedInDom(listings, {
@@ -400,28 +396,14 @@ async function runPublicPreflight() {
     "Admin preflight exposes the effective non-secret runtime mode",
     runtimeModeKnown,
     runtimeModeKnown
-      ? `${runtime.body.runnerMode}; ${runtimeHasAiGateway ? "AI Gateway" : "heuristic"}`
+      ? `${runtime.body.runnerMode}; ${runtimeHasAiGateway ? "AI Gateway" : "managed scoring unavailable"}`
       : `HTTP ${runtime.response.status}; invalid capability response`,
   );
-  const requestedModeMatches =
-    runtimeModeKnown &&
-    (!requireAiGatewayFlag || runtimeHasAiGateway) &&
-    (!requireHeuristicFlag || !runtimeHasAiGateway);
   addCheck(
-    "Expected scoring mode matches production before ticket exchange",
-    requestedModeMatches,
-    requireAiGatewayFlag
-      ? "explicit AI Gateway"
-      : requireHeuristicFlag
-        ? "explicit heuristic"
-        : runtimeHasAiGateway
-          ? "auto-selected AI Gateway"
-          : "auto-selected heuristic",
+    "Managed AI Gateway is configured before ticket exchange",
+    runtimeModeKnown && runtimeHasAiGateway,
+    runtimeHasAiGateway ? "AI Gateway ready" : "managed_research must remain disabled",
   );
-  if (runtimeModeKnown) {
-    requireAiGateway = runtimeHasAiGateway;
-    report.aiProofMode = requireAiGateway ? "ai-gateway" : "heuristic";
-  }
   const sourceCache = await fetchJson(`${baseUrl}/api/admin/source-cache/status`, { headers: adminHeaders }, 3);
   const cache = sourceCache.body?.sources?.bringatrailer;
   addCheck(
@@ -444,15 +426,23 @@ async function runPublicPreflight() {
   addCheck("Admin preflight confirms the pilot is active", pilot?.status === "active", pilot?.status || "missing");
   addCheck("Admin preflight confirms onboarding is complete", Boolean(pilot?.onboardingCompletedAt), pilot?.onboardingCompletedAt ? "complete" : "incomplete");
   addCheck("Admin preflight confirms the budget is healthy", pilot?.aiUsage?.budgetExceeded === false, pilot?.aiUsage?.budgetExceeded === true ? "budget exceeded" : "missing");
+  addCheck(
+    "Admin preflight confirms managed_research entitlement",
+    pilot?.managedResearchEntitlement?.active === true,
+    pilot?.managedResearchEntitlement?.active ? "active" : "missing or inactive",
+  );
 
   const pilotSources = enabledSourceNames(pilot?.sourceSettings);
-  const aiDrift = pilot?.aiSettings?.mode !== "managed" || pilot?.aiSettings?.status !== "active";
+  const aiDrift =
+    pilot?.researchSettings?.mode !== "managed" ||
+    pilot?.aiSettings?.mode !== "managed" ||
+    pilot?.aiSettings?.status !== "active";
   const sourceDrift =
     !SOURCE_QUALITY_PILOT_SOURCES.every((source) => pilotSources.includes(source)) ||
     !hasRequiredRunnerSettings(pilot?.sourceSettings);
   const pilotConfigurationDrift = aiDrift || sourceDrift;
   addCheck(
-    "Admin preflight confirms managed AI and all pilot sources",
+    "Admin preflight confirms managed research and all pilot sources",
     !pilotConfigurationDrift || configurePilot,
     pilotConfigurationDrift
       ? configurePilot
@@ -478,12 +468,16 @@ async function configurePilotState(activePage, currentUser) {
       },
     };
   });
-  const ai = await authorizedJson(activePage, "/api/ai-settings", {
+  const research = await authorizedJson(activePage, "/api/research-settings", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ mode: "managed" }),
   });
-  addCheck("Explicit pilot repair set managed AI mode", ai.response.ok && ai.body?.aiSettings?.mode === "managed", `HTTP ${ai.response.status}`);
+  addCheck(
+    "Explicit pilot repair selected managed research",
+    research.response.ok && research.body?.researchSettings?.mode === "managed" && research.body?.managedResearchEntitlement?.active === true,
+    `HTTP ${research.response.status}`,
+  );
   const sourceResult = await authorizedJson(activePage, "/api/source-settings", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -825,7 +819,8 @@ only on BEACHCAR_DEPLOY_URL.
 All public/admin gates run before ticket exchange. The verifier then queues one
 UUID-idempotent managed Workflow request, follows its exact Agent/run ids, proves
 accepted terminal C&B/Hemmings results, the three-source shortlist, same-origin
-image cache, explicit AI mode, and healthy budget, then synchronizes and reads
+image cache, active managed_research entitlement, required AI Gateway scoring,
+and healthy budget, then synchronizes and reads
 back the daily schedule last.
 
   bun scripts/verify-managed-production.mjs --execute --yes
@@ -834,10 +829,8 @@ Options:
   --execute                    Required; queues one real idempotent managed run.
   --yes                        Required acknowledgement of production effects.
   --url <origin>               Must exactly match BEACHCAR_DEPLOY_URL.
-  --configure-pilot            Explicitly repair managed AI + required source settings.
-  --require-ai-gateway         Require paid AI Gateway scoring and its exact usage event.
-  --require-heuristic          Require explicit no-paid-AI heuristic provenance.
-                                Default selects the effective mode in pre-ticket admin preflight.
+  --configure-pilot            Select managed research + repair required source settings.
+                                Clerk must already grant managed_research.
   --require-runner-merge       Explicitly require the default terminal runner gate.
   --allow-runner-handoff-only  Diagnostic only: accept queued/running runner handoffs.
                                 This is not valid release evidence.

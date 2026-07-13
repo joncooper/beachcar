@@ -27,6 +27,7 @@ import {
   getRunById,
   getLatestAgentRun,
   getLatestRun,
+  getManagedResearchAccess,
   getNextQueuedAgentRun,
   getNextRunnerTask,
   getProfile,
@@ -39,6 +40,7 @@ import {
   listOAuthAccessTokens,
   markAgentRunFailed,
   markAgentRunPublished,
+  managedResearchRequiredError,
   mergeCompletedRunnerTask,
   missingByokAliasError,
   inactiveAiSettingsError,
@@ -54,10 +56,12 @@ import {
   type UserScope,
   upsertAiSettings,
   upsertProfile,
+  upsertResearchSettings,
   upsertSourceSettings,
   upsertFeedback,
 } from "./db";
 import { agentRunRequestConflictMessage, invalidAgentRunRequestIdMessage, normalizeAgentRunRequestId } from "./agent-run-idempotency";
+import { handleClerkBillingWebhook } from "./billing";
 import { errorResponse, jsonResponse, readJson } from "./http";
 import { mirrorImage, prewarmImportedImages, serveImage, uploadImage } from "./image-cache";
 import { automationBundleMarkdown } from "./automation-bundle";
@@ -138,6 +142,10 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url:
     return serveImage(env, decodeURIComponent(imageMatch[1]), url);
   }
 
+  if (url.pathname === "/api/webhooks/clerk") {
+    return handleClerkBillingWebhook(request, env);
+  }
+
   if (url.pathname.startsWith("/api/admin/")) {
     await requirePublisher(request, env);
     return handleAdmin(request, env, ctx, url);
@@ -199,6 +207,19 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url:
     return jsonResponse(await getUserPayload(env.DB, authUser.id));
   }
 
+  if (request.method === "PUT" && url.pathname === "/api/research-settings") {
+    const body = await readJson<{ mode?: unknown }>(request);
+    try {
+      const settings = await upsertResearchSettings(env.DB, authUser.id, body);
+      const profile = await getProfile(env.DB, authUser.id);
+      if (profile) await syncUserAgentSchedule(env, authUser.id, profile);
+      return jsonResponse({ ...(await getUserPayload(env.DB, authUser.id)), researchSettings: settings });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not save research settings";
+      return errorResponse(message, message === managedResearchRequiredError ? 403 : 400);
+    }
+  }
+
   if (request.method === "PUT" && url.pathname === "/api/source-settings") {
     const body = await readJson<{ sources?: unknown }>(request);
     await upsertSourceSettings(env.DB, authUser.id, body);
@@ -213,6 +234,7 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url:
   if (request.method === "POST" && url.pathname === "/api/agent-schedule/sync") {
     const profile = await getProfile(env.DB, authUser.id);
     if (!profile?.onboardingCompletedAt) return errorResponse("Complete onboarding before enabling the daily schedule", 409);
+    if (!(await getManagedResearchAccess(env.DB, authUser.id)).allowed) return errorResponse(managedResearchRequiredError, 403);
     const agent = await getBeachcarAgent(env, authUser.id);
     await agent.syncSchedule({
       userId: authUser.id,
@@ -366,6 +388,7 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url:
       if (message.includes(agentRunRequestConflictMessage)) return errorResponse(agentRunRequestConflictMessage, 409);
       if (message.includes(invalidAgentRunRequestIdMessage)) return errorResponse(invalidAgentRunRequestIdMessage, 400);
       if (message.includes("AI budget exceeded")) return errorResponse(message, 402);
+      if (message === managedResearchRequiredError) return errorResponse(message, 403);
       if (message === missingByokAliasError || message === inactiveAiSettingsError) return errorResponse(message, 400);
       throw error;
     }
@@ -771,8 +794,9 @@ async function getBeachcarAgent(env: Env, userId: string): Promise<DurableObject
 
 async function syncUserAgentSchedule(env: Env, userId: string, profile: UserProfile): Promise<void> {
   if (!profile.onboardingCompletedAt) return;
+  const managedAccess = await getManagedResearchAccess(env.DB, userId);
   const agent = await getBeachcarAgent(env, userId);
-  await agent.syncSchedule({ userId, scheduleCron: profile.scheduleCron, timezone: profile.timezone, enabled: true });
+  await agent.syncSchedule({ userId, scheduleCron: profile.scheduleCron, timezone: profile.timezone, enabled: managedAccess.allowed });
 }
 
 async function agentRunContext(env: Env, agentRun: Awaited<ReturnType<typeof getAgentRunById>>): Promise<unknown> {

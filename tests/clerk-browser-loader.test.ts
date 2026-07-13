@@ -8,6 +8,8 @@ describe("Clerk browser loader", () => {
 
     expect(source).toContain('const clerkBrowserMajorVersion = "6";');
     expect(source).toContain("@clerk/clerk-js@${clerkBrowserMajorVersion}/dist/clerk.browser.js");
+    expect(source).toContain("signIn.authenticateWithRedirect({");
+    expect(source).not.toContain("clerk.authenticateWithRedirect({");
     expect(source).not.toContain('const clerkBrowserVersion = "6.10.4";');
   });
 });

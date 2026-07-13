@@ -9,6 +9,7 @@ type ClerkSession = {
 };
 
 type ClerkSignInResource = {
+  authenticateWithRedirect?: (options: Record<string, unknown>) => Promise<void>;
   create?: (options: Record<string, unknown>) => Promise<unknown>;
   ticket?: (options: { ticket: string }) => Promise<unknown>;
   status?: string | null;
@@ -38,7 +39,6 @@ export type BrowserClerk = {
   openSignIn: (options?: Record<string, unknown>) => void;
   setActive?: (options: { session: string }) => Promise<void>;
   signOut: (options?: Record<string, unknown>) => Promise<void>;
-  authenticateWithRedirect?: (options: Record<string, unknown>) => Promise<void>;
   mountUserButton?: (node: HTMLElement, props?: Record<string, unknown>) => void;
   unmountUserButton?: (node: HTMLElement) => void;
   mountPricingTable?: (node: HTMLDivElement, props?: Record<string, unknown>) => void;
@@ -169,23 +169,13 @@ function stripTicketFromUrl(params: URLSearchParams): void {
 }
 
 export async function signInWithGoogle(clerk: BrowserClerk | null): Promise<void> {
-  if (!clerk) return;
+  const signIn = clerk?.client?.signIn;
+  if (!signIn?.authenticateWithRedirect) throw new Error("Google sign-in is not available");
   const redirectUrl = window.location.href;
-  if (clerk.authenticateWithRedirect) {
-    try {
-      await clerk.authenticateWithRedirect({
-        strategy: "oauth_google",
-        redirectUrl,
-        redirectUrlComplete: redirectUrl,
-      });
-      return;
-    } catch {
-      // Fall back to the hosted modal if Google OAuth is not enabled yet.
-    }
-  }
-  clerk.openSignIn({
-    forceRedirectUrl: redirectUrl,
-    signUpForceRedirectUrl: redirectUrl,
+  await signIn.authenticateWithRedirect({
+    strategy: "oauth_google",
+    redirectUrl,
+    redirectUrlComplete: redirectUrl,
   });
 }
 

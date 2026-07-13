@@ -1062,6 +1062,7 @@ function AuthenticatedApp(props: { clerkPublishableKey: string }) {
   const [photoTouchStart, setPhotoTouchStart] = useState<{ x: number; y: number } | null>(null);
   const [accountActionPending, setAccountActionPending] = useState(false);
   const [runRequestPending, setRunRequestPending] = useState(false);
+  const [signInError, setSignInError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!auth.isLoaded || !auth.isSignedIn || !auth.clerk) return;
@@ -1114,6 +1115,15 @@ function AuthenticatedApp(props: { clerkPublishableKey: string }) {
       setError(inviteError instanceof Error ? inviteError.message : "Could not accept invite");
     } finally {
       setAccountActionPending(false);
+    }
+  }
+
+  async function startGoogleSignIn() {
+    setSignInError(null);
+    try {
+      await signInWithGoogle(auth.clerk);
+    } catch (signInFailure) {
+      setSignInError(signInFailure instanceof Error ? signInFailure.message : "Could not start Google sign-in");
     }
   }
 
@@ -1423,8 +1433,8 @@ function AuthenticatedApp(props: { clerkPublishableKey: string }) {
           <p className="eyebrow">Private Auction Watch</p>
           <h1>{appName}</h1>
           <p>Sign in with Google to review today&apos;s shortlist and save your stars, skips, and avoid signals.</p>
-          {auth.error ? <p className="auth-error">{auth.error}</p> : null}
-          <button className="source-link" type="button" onClick={() => void signInWithGoogle(auth.clerk)}>
+          {auth.error || signInError ? <p className="auth-error">{auth.error || signInError}</p> : null}
+          <button className="source-link" type="button" onClick={() => void startGoogleSignIn()}>
             Sign in with Google
           </button>
         </section>

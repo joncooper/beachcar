@@ -30,3 +30,7 @@ ios/BeachcarApp/Resources/Assets.xcassets/SurreyHero.imageset/
 docs/screenshots/ios-brand-signin.png
 docs/screenshots/ios-agent-dossier.png
 docs/screenshots/ios-todays-finds.png
+
+# Local video masters are too large for GitHub and may contain review-only audio.
+docs/build-week/Beachcar-Build-Week-internal-review.mp4
+docs/build-week/Beachcar-Build-Week-final.mp4

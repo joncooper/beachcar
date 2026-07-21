@@ -1,4 +1,59 @@
-# Beachcar Build Week rough cut
+# Beachcar Build Week video
+
+## Final internal review
+
+The current editorial master is [Beachcar-Build-Week-internal-review.mp4](../Beachcar-Build-Week-internal-review.mp4), with an uploadable [SRT caption file](../Beachcar-Build-Week-internal-review.srt).
+
+- Duration: **161.8 seconds (2:41.8)**
+- Video: **H.264 High, 1920×1080, 30 fps, Rec.709**
+- Audio: **AAC mono, 48 kHz**, ElevenLabs Chris, normalized to approximately **−17 LUFS / −1.4 dBTP**
+- Tracks: **2** (one enabled video track, one enabled audio track)
+- Captions: **47** matching burned-in and SRT cues
+- Validation: `/usr/bin/avmediainfo` reported **0 media errors**
+
+This file is **internal review only**. Its Chris narration was generated while the ElevenLabs account was on the free tier. ElevenLabs requires a paid plan for commercial use and says that upgrading does not retroactively license earlier free-tier output. Before competition upload, upgrade to at least Starter, regenerate the same nine sections, rebuild, normalize, and name that licensed export `Beachcar-Build-Week-final.mp4`.
+
+The final editor uses rights-safe web replay captures and iPhone Simulator captures from `.tmp/video/captures`. It contains no listing-gallery image. The iPhone handoff uses the generated Surrey art and synthetic `friend@example.com` data. Source names visible in the deterministic research contract are plain-text context labels rather than copied marketplace branding.
+
+### Rebuild the edit
+
+The builder expects nine ordered Chris MP3s in a private working directory:
+
+```text
+01-outcome.mp3
+02-alerts.mp3
+03-changed.mp3
+04-gpt.mp3
+05-continuity.mp3
+06-five.mp3
+07-learning.mp3
+08-codex.mp3
+09-close.mp3
+```
+
+On macOS:
+
+```sh
+mkdir -p /tmp/beachcar-swift-module-cache
+
+SWIFT_MODULECACHE_PATH=/tmp/beachcar-swift-module-cache \
+CLANG_MODULE_CACHE_PATH=/tmp/beachcar-swift-module-cache \
+swift docs/build-week/video-src/build_final_cut.swift \
+  "$PWD" \
+  "$PWD/.tmp/video/audio/chris/sections-fast" \
+  "$PWD/.tmp/video/captures" \
+  "$PWD/docs/build-week/Beachcar-Build-Week-internal-review.mp4"
+
+ffmpeg -i docs/build-week/Beachcar-Build-Week-internal-review.mp4 \
+  -map 0:v:0 -map 0:a:0 -c:v copy \
+  -af 'loudnorm=I=-16:TP=-1.5:LRA=11' \
+  -c:a aac -b:a 192k -ar 48000 -ac 1 -movflags +faststart \
+  docs/build-week/Beachcar-Build-Week-internal-review-normalized.mp4
+```
+
+`build_final_cut.swift` derives all section, shot, and caption timing from the actual MP3 durations, fails above 175 seconds, writes the companion SRT, and requires access to the macOS H.264 encoder. The checked internal master used the 1.12× Chris speed setting so the delivery remained natural and safely below three minutes.
+
+## Original rough cut
 
 The playable rough cut is [Beachcar-Build-Week-rough-cut.mp4](../Beachcar-Build-Week-rough-cut.mp4).
 

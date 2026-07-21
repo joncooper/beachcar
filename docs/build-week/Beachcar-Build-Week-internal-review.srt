@@ -1,0 +1,187 @@
+1
+00:00:01,000 --> 00:00:06,963
+This is a 1960 Willys DJ-3A Surrey: tiny, open-air, and unapologetically pink.
+
+2
+00:00:06,963 --> 00:00:10,566
+Earlier, before this Build Week extension, Beachcar surfaced it.
+
+3
+00:00:10,566 --> 00:00:13,276
+I didn't know to search for it.
+
+4
+00:00:13,276 --> 00:00:16,464
+I bought it. That's the clearest proof.
+
+5
+00:00:16,664 --> 00:00:19,500
+Alerts can match make, year, and price.
+
+6
+00:00:19,500 --> 00:00:23,646
+My taste is harder: joyful, mechanically simple, useful for slow beach days,
+
+7
+00:00:23,646 --> 00:00:25,323
+charming instead of precious.
+
+8
+00:00:25,323 --> 00:00:29,438
+Beachcar turns that preference into an agent that can act on it.
+
+9
+00:00:29,638 --> 00:00:32,239
+Beachcar already had an iPhone review experience.
+
+10
+00:00:32,239 --> 00:00:36,799
+For Build Week, I extended it with taste coaching and a desktop handoff.
+
+11
+00:00:36,799 --> 00:00:39,675
+Local Codex connects to Beachcar's hosted MCP,
+
+12
+00:00:39,675 --> 00:00:43,562
+where taste, feedback, sources, and published runs become durable memory.
+
+13
+00:00:43,762 --> 00:00:49,207
+Inside the product, GPT-5.6 is the judgment engine.
+
+14
+00:00:49,207 --> 00:00:54,032
+Running in your own Codex, it reads the brief, plans the search,
+
+15
+00:00:54,032 --> 00:00:56,883
+uses your signed-in browser, compares auction evidence,
+
+16
+00:00:56,883 --> 00:01:00,428
+and explains fit, value, uncertainty, and risk.
+
+17
+00:01:00,628 --> 00:01:03,603
+This deterministic replay makes the contract inspectable.
+
+18
+00:01:03,603 --> 00:01:07,383
+One fixture carries the same run identifier through setup, research,
+
+19
+00:01:07,383 --> 00:01:10,288
+publication, verification, and the review state.
+
+20
+00:01:10,288 --> 00:01:13,578
+Separately, a golden-path smoke test publishes and reads back
+
+21
+00:01:13,578 --> 00:01:17,254
+a synthetic run through the hosted MCP.
+
+22
+00:01:17,254 --> 00:01:21,874
+In actual use, local Codex, the signed-in browser, and MCP
+
+23
+00:01:21,874 --> 00:01:25,549
+are designed to add zero Beachcar AI usage.
+
+24
+00:01:25,549 --> 00:01:27,124
+Credentials stay local.
+
+25
+00:01:27,124 --> 00:01:30,799
+OpenAI costs stay with the user's Codex.
+
+26
+00:01:30,999 --> 00:01:32,908
+The goal isn't another feed.
+
+27
+00:01:32,908 --> 00:01:34,787
+The replay carries five fixture cars;
+
+28
+00:01:34,787 --> 00:01:38,692
+each candidate has a reason, caveat, and source in the contract.
+
+29
+00:01:38,692 --> 00:01:41,187
+The real Surrey proves the taste problem.
+
+30
+00:01:41,187 --> 00:01:44,975
+This local path reasons from character and context, not just keywords.
+
+31
+00:01:45,175 --> 00:01:47,375
+Then the loop gets personal.
+
+32
+00:01:47,375 --> 00:01:49,881
+Love the Surrey, and tomorrow's plan prioritizes
+
+33
+00:01:49,881 --> 00:01:53,029
+open-air oddballs, playful color, and slow-car charm.
+
+34
+00:01:53,029 --> 00:01:56,551
+Mark an anonymous performance SUV as “Never again,”
+
+35
+00:01:56,551 --> 00:01:59,090
+and Codex stops spending attention there.
+
+36
+00:01:59,090 --> 00:02:02,442
+Feedback becomes inspectable memory, not a hidden profile.
+
+37
+00:02:02,642 --> 00:02:08,532
+I used Codex with GPT-5.6 to build this Build Week extension.
+
+38
+00:02:08,532 --> 00:02:12,167
+It audited the repository, helped choose an honest local-agent architecture,
+
+39
+00:02:12,167 --> 00:02:15,667
+implemented iPhone-to-desktop onboarding and the scoped MCP workflow,
+
+40
+00:02:15,667 --> 00:02:18,494
+drove the browser and iOS Simulator,
+
+41
+00:02:18,494 --> 00:02:20,682
+and strengthened the golden-path tests.
+
+42
+00:02:20,682 --> 00:02:22,870
+I made the product decisions.
+
+43
+00:02:22,870 --> 00:02:25,394
+Codex turned them into tested software.
+
+44
+00:02:25,594 --> 00:02:29,587
+Beachcar is for Apps for Your Life because it measures success differently.
+
+45
+00:02:29,587 --> 00:02:32,042
+Not more listings, clicks, or engagement.
+
+46
+00:02:32,042 --> 00:02:33,669
+One unusually good decision.
+
+47
+00:02:33,669 --> 00:02:36,775
+Your Codex. Your taste. The one.

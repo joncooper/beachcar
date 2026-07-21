@@ -14,25 +14,25 @@ Apps for Your Life
 
 ## Short description
 
-Beachcar starts with the feeling of the car you want, even when you cannot name it. Your local Codex learns your taste, researches through the browser you already control, and sends a few evidence-backed opinions to Beachcar. I built it for one-to-two-mile family errands in my tiny beach town. After a couple of weeks, it surfaced the strange pink 1960 Willys Surrey I did not know existed. I bought it.
+Beachcar starts with the feeling of the car you want, even when you cannot name it. Your local Codex becomes your taste agent: it searches in the browser you already use and sends Beachcar a handful of cars worth opening, with reasons, risks, and source links. I built it for one- or two-mile trips with my kids in our tiny beach town. Two weeks later, Beachcar found a ridiculous pink 1960 Willys DJ-3A Surrey I did not know existed. I bought it.
 
 ## Inspiration
 
-All summer, I am taking my kids one or two miles at a time: to the beach, camp, friends, and ice cream. I wanted a beach car that was open, simple, weird, and unlike anything else in town. I could describe the feeling, but I could not name a make or model.
+Every summer, I drive my kids one or two miles at a time—to the beach, camp, friends, and ice cream. I wanted a beach car that was open, simple, weird, and unlike anything else in town. I could describe the feeling, but I could not name a make or model.
 
 Most car sites require the answer before they will help with the search. Beachcar starts with the feeling instead. Its clearest proof is the pink Surrey that is now my actual car.
 
 ## What it does
 
-Beachcar remembers qualities and constraints that do not fit neatly into search filters. Local Codex turns that taste into a research plan, uses public or user-authorized pages in the browser the user controls, respects source access and reuse limits, discards weak matches, and calls Beachcar's user-scoped MCP to publish a small shortlist.
+Beachcar remembers the qualities that do not fit neatly into search filters. Local Codex turns that taste into a plan, searches public or user-authorized pages in the browser the user already uses, skips weak matches, and sends a small shortlist back through Beachcar's remote MCP.
 
-The review experience explains why each car fits, what makes it special, what the market suggests, and what could go wrong. Love, Pass, and Never again become explicit steering for the next search. The user remains responsible for logins, browsing access, judgment, and any purchase. Beachcar never bids or buys.
+Each pick says why it fits, what makes it special, what the market suggests, what could go wrong, and where it came from. Love, Pass, and Never again change the next hunt. The user stays responsible for logins, judgment, and any purchase. Beachcar never bids or buys.
 
 ## How Codex and GPT-5.6 are used
 
-GPT-5.6 is the judgment layer inside the user's local Codex. It turns nuanced taste and imperfect marketplace evidence into targeted research, comparisons, concise dossiers, and honest uncertainty. Codex follows the Beachcar skill, uses the user's signed-in browser, reads and writes scoped Beachcar state through MCP, publishes a shortlist, and verifies what Beachcar should show.
+GPT-5.6 helps the user's local Codex make sense of nuanced taste and messy marketplace listings. Codex follows the Beachcar skill, works in the user's signed-in browser, uses Beachcar's MCP to remember the brief and feedback, publishes a shortlist, and checks what Beachcar should show.
 
-Codex with GPT-5.6 was also the primary Build Week collaborator. It helped audit the existing project, choose the local-agent architecture, implement and test the coached setup and MCP loop, run component-level browser and iOS Simulator checks, define consent boundaries, and assemble the submission package. I made the product, privacy, and claim decisions.
+Codex with GPT-5.6 was also my primary Build Week collaborator. It helped me choose the local-agent architecture, build and test the coached setup and MCP loop, check the browser and iPhone experience, define the consent boundaries, and make this submission. I made the product, privacy, and claim decisions.
 
 ## Optional Garage Session
 
@@ -42,7 +42,7 @@ That consent and review policy is implemented in the skill. A completed weekly s
 
 ## Meaningful Build Week extension
 
-Beachcar existed before the challenge, and the Surrey discovery and purchase are treated as a prior case study. The submission claims only the meaningful extension built after the July 13, 2026 9:00 a.m. PT start: coached local-Codex setup, the Beachcar skill, signed-in local-browser research guidance, the scoped MCP workflow, explicit taste calibration and feedback steering, the deterministic judge replay, the consent-first Garage Session policy, and the competition proof package.
+Beachcar existed before Build Week; the Surrey is the real-world case study. During Build Week, I made that experience repeatable for someone else: coached Codex setup, the Beachcar skill and MCP, feedback that sharpens the next hunt, a no-login demo, and the opt-in Garage Session.
 
 The deterministic replay demonstrates the product contract with fixed data and is publicly hosted as a no-login static judge experience. It does not claim to be the original Surrey run, a live scrape, or live iPhone/MCP continuity.
 
@@ -54,8 +54,8 @@ Its success metric is not more listings or more time browsing. It is one unusual
 
 ## Submission fields
 
-- Public repository: https://github.com/joncooper/beachcar
-- Submitted revision: `[PRE-SUBMISSION: final pushed commit hash]`
+- Public submission branch: https://github.com/joncooper/beachcar/tree/codex/agent-connected-subscriptions
+- Submitted revision: use the exact commit URL attached to the Devpost entry
 - Local working-project instructions: [judge-guide.md](judge-guide.md)
 - Working-project access: https://beachcar-build-week-demo.jon-cooper.workers.dev/demo
 - Public YouTube demo: `[PRE-UPLOAD: final public YouTube URL]`
@@ -75,23 +75,24 @@ Its success metric is not more listings or more time browsing. It is one unusual
 ```text
 I wanted a tiny beach-town car for one-to-two-mile trips with my kids. I could describe the feeling - open, simple, weird, joyful - but I could not name the car.
 
-So I built Beachcar. My local Codex learns my taste, researches through the browser I already control, and uses Beachcar's MCP to turn a noisy market into a few evidence-backed opinions.
+So I built Beachcar. My local Codex becomes my taste agent: it searches in the browser I already use, while Beachcar's remote MCP remembers my taste and feedback. Instead of another feed, I get a handful of cars worth opening, with reasons, risks, and source links.
 
-After a couple of weeks, it surfaced a pink 1960 Willys DJ-3A Surrey I did not know existed. I made the decision and bought it. Beachcar did not bid or purchase the car.
+After a couple of weeks, Beachcar found a pink 1960 Willys DJ-3A Surrey I did not know existed. I made the decision and bought it. Beachcar did not bid or purchase the car.
 
-GPT-5.6 supplies the judgment inside Codex, and Codex also helped me build the Build Week extension: coached setup, the local-agent skill, the scoped MCP workflow, explicit feedback learning, the judge replay, and the opt-in Garage Session review gate.
+GPT-5.6 helps my local Codex make sense of taste and messy listings. For Build Week, Codex also helped me build and test the coached setup, local skill, remote MCP loop, and feedback that changes the next hunt. There is also an opt-in path where a user's Codex can propose one small Beachcar improvement; nothing is shared until that user approves it.
 
-Beachcar existed before Build Week, and the Surrey is a prior real-world case study. The competition work is the meaningful local-Codex product extension and proof package described in the repository.
+The Surrey discovery happened before Build Week; it is the real-world case study behind this extension.
 
-Project repository: https://github.com/joncooper/beachcar
-Working project: https://beachcar-build-week-demo.jon-cooper.workers.dev/demo
+Submission branch: https://github.com/joncooper/beachcar/tree/codex/agent-connected-subscriptions
+Fixed no-login judge replay: https://beachcar-build-week-demo.jon-cooper.workers.dev/demo
 Car case study: https://bringatrailer.com/listing/1960-jeep-dj-3a/
 Selected car photography used with the selling dealer's permission; no credit required.
+Narration uses the ElevenLabs Chris voice.
 
 Built for OpenAI Build Week 2026 - Apps for Your Life.
 ```
 
-### Chapters for the 1:40.80 cut
+### Chapters for the 1:40.83 cut
 
 ```text
 00:00 Tiny beach-town problem
@@ -120,17 +121,17 @@ These rounded chapter boundaries keep every chapter at least 10 seconds long and
 
 The submission deadline is **July 21, 2026 at 5:00 p.m. PDT / 8:00 p.m. EDT**.
 
-- [x] Watch and independently audit the exact 100.80-second master from beginning to end with sound and captions.
+- [x] Watch and independently audit the exact 100.83-second master from beginning to end with sound and captions.
 - [x] Confirm the cut visibly demonstrates the working project through the privacy-scrubbed Teach → Research interaction.
 - [x] Confirm the selected real-car files, public video/thumbnail/deck/repository/site/demo uses, cropped or animated derivatives, and that no credit is required.
 - [ ] Upload the burned-caption master to YouTube as **Public**, add the chapters, leave YouTube's SRT track disabled, and confirm picture, sound, and captions in a signed-out window. Attach the SRT only if a captionless master is exported instead.
-- [ ] Replace every `[PRE-UPLOAD: ...]` and `[PRE-SUBMISSION: ...]` field; do not guess a public URL.
+- [ ] Replace every `[PRE-UPLOAD: ...]` field after signed-out verification; do not guess a public URL.
 - [ ] Push or merge the complete Build Week branch, confirm the repository is public, and verify that a fresh clone of the submitted revision contains `/demo`, setup, and tests.
 - [x] Verify the isolated working-project URL, root redirect, all five scene URLs, and exact real-photo asset signed out.
 - [x] Confirm the primary task/session ID from the active Codex task metadata; enter `019f8178-f7a2-7301-b9be-f5b0af997b70` and select **Apps for Your Life**.
 - [x] Explain in audio what was built, how Codex helped build it, and how GPT-5.6 works inside the product.
 - [x] Keep the eligibility boundary visible in the written entry: existing project and Surrey case study before the event; meaningful local-agent extension after the start.
-- [x] State only that Beachcar surfaced the Surrey and Jon bought it. Never say the agent bid or purchased.
+- [x] State only that Beachcar found the Surrey and Jon bought it. Never say the agent bid or purchased.
 - [x] Do not claim a friend TestFlight end-to-end pass, live run continuity, recurring OAuth, or a deployed Garage Session extension; the separate static `/demo` is now verified.
 - [x] Keep the public disclosure accurate: this repository review records the owner's representation of dealer permission and did not independently inspect the written license or credit terms.
 - [ ] Submit before 5:00 p.m. PDT and reopen the public entry once to verify every link.

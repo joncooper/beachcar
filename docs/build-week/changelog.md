@@ -7,10 +7,10 @@ Beachcar is an existing project. This record separates the pre-challenge product
 - Challenge start: **July 13, 2026 at 9:00 a.m. PT / noon ET**.
 - Last committed baseline before the start: `e8321d0`, July 13 at 10:48:21 a.m. ET, `Add invite-only managed research pilot`.
 - First commit after the start: `16bf7ec`, July 13 at 12:24:11 p.m. ET, `Use GPT-4.1 mini for managed research`.
-- Frozen audited artifact commit: `87b54ef1a5fd0fcf6cc9ea1e90b9a43595eb36fd`, July 21 at 3:22:17 p.m. ET, `Finalize the Beachcar Build Week submission`.
-- Final publicly submitted revision: `[PRE-SUBMISSION: paste the reachable pushed commit hash after release]`.
+- Previous audited artifact commit: `bb7645d5ae52da946baa5f16e0f9736841d0ec45`, July 21, `Publish the Beachcar judge demo handoff`.
+- Final publicly submitted revision: use the exact commit URL attached to the Devpost entry.
 
-Repository visibility is not the same as submission visibility. At this audit, the public repository exists and defaults to `main` at `b8cd9ca`; the remote Build Week branch is at `158c7bc`; and the frozen local artifact commit is `87b54ef`, five commits ahead of that remote branch. A Git push dry run confirmed that publishing the branch would be a fast-forward from `158c7bc` to `87b54ef`. The local hashes below are evidence only until the final revision is actually pushed and verified from a public fresh clone.
+Repository visibility is not the same as submission visibility. The public repository still defaults to an older `main`, so the submission uses the public [`codex/agent-connected-subscriptions`](https://github.com/joncooper/beachcar/tree/codex/agent-connected-subscriptions) branch and the exact release commit linked from Devpost. Judges should not be sent to the repository root alone.
 
 The timestamp boundary establishes what was committed when. Eligibility is narrower than chronology: only the meaningful extension described below is presented as Build Week work.
 
@@ -24,7 +24,7 @@ Before the challenge opened, Beachcar already had:
 - Cloudflare-backed storage and an early agent/MCP direction;
 - experiments with managed research and owner-funded cloud inference.
 
-The pink 1960 Willys DJ-3A Surrey discovery and purchase are also treated as prior case-study proof. Beachcar surfaced the car; Jon made the decision and bought it. The submission does not claim that an event-period run found or purchased the Surrey.
+The pink 1960 Willys DJ-3A Surrey discovery and purchase are also treated as prior case-study proof. Beachcar found the car; Jon made the decision and bought it. The submission does not claim that an event-period run found or purchased the Surrey.
 
 ## Meaningful Build Week extension
 
@@ -53,6 +53,7 @@ The pink 1960 Willys DJ-3A Surrey discovery and purchase are also treated as pri
 | `2358146` | Jul 21, 12:51 a.m. | Setup ZIP, friend test plan, rights checklist, handoff UI, deck, rough cut, and supporting tests | Package and test plan; not evidence that a friend completed it |
 | `fbc9969` | Jul 21, 12:54 p.m. | Chris-narrated final-cut builder, timed narration source, internal captions, and artifact documentation | Build source; public YouTube upload still external |
 | `87b54ef` | Jul 21, 3:22 p.m. | Final-film build source and verified local-master metadata, captions, thumbnail, final deck, deterministic judge replay, local skill, installer hardening, native identity assets, tests, and release documentation | Audited artifact commit; the ignored MP4 remains a local upload artifact. The static demo is deployed separately from this tree; public branch push and YouTube upload remain external |
+| `bb7645d` | Jul 21 | Public static judge demo handoff and release links | Public Build Week branch baseline; the final release commit is linked from Devpost |
 
 Any later local or uncommitted work counts only after it is reviewed, committed, pushed, and included in the exact repository revision submitted to judges. A local artifact is not evidence of a public deployment or completed external flow.
 

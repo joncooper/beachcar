@@ -414,36 +414,8 @@ private func drawWorkingReplay(
         NSBezierPath(rect: NSRect(x: 0, y: 0, width: width, height: height)).fill()
     }
 
-    roundedRect(
-        NSRect(x: 192, y: 894, width: 624, height: 64),
-        radius: 32,
-        color: NSColor(calibratedWhite: 0.02, alpha: 0.92)
-    )
-    drawText(
-        "WORKING REPLAY · LOCAL · NO LOGIN",
-        rect: NSRect(x: 222, y: 911, width: 564, height: 34),
-        font: .monospacedSystemFont(ofSize: 22, weight: .bold),
-        color: pink,
-        alignment: .center
-    )
-
-    let stagePanel = NSRect(x: 1234, y: 894, width: 494, height: 64)
-    roundedRect(stagePanel, radius: 32, color: NSColor(calibratedWhite: 0.02, alpha: 0.92))
-    let stageLabels = ["01  TEACH", "02  RESEARCH"]
-    for index in 0..<2 {
-        let segment = NSRect(x: 1244 + CGFloat(index) * 237, y: 903, width: 227, height: 46)
-        if stage == index {
-            roundedRect(segment, radius: 23, color: pink)
-        }
-        drawText(
-            stageLabels[index],
-            rect: NSRect(x: segment.minX + 8, y: segment.minY + 12, width: segment.width - 16, height: 26),
-            font: .monospacedSystemFont(ofSize: 18, weight: .bold),
-            color: stage == index ? ink : paper,
-            alignment: .center
-        )
-    }
-
+    // The captures already identify themselves as a deterministic replay.
+    // Keep their upper copy unobstructed instead of adding a second label layer.
     let clickPoint = stage == 0
         ? NSPoint(x: 422, y: 62)
         : NSPoint(x: 615, y: 62)

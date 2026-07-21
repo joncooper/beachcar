@@ -7,20 +7,20 @@
 <h3 align="center">Your Codex. Your taste. Your car.</h3>
 
 <p align="center">
-  <strong>A personal auction scout that researches through your signed-in browser, publishes an evidence-backed shortlist, and learns from every swipe.</strong>
+  <strong>A personal car scout that learns what delights you, searches from the browser you already use, and returns a handful of cars worth opening.</strong>
 </p>
 
 <p align="center">
   OpenAI Build Week 2026 · Apps for Your Life
 </p>
 
-Beachcar is for people who love charming, unusual cars but do not want auction hunting to become a second job. You teach it the difference between merely matching your filters and actually feeling right. Your local Codex does the open-ended research with the browser sessions you control. Beachcar supplies durable taste memory, a user-scoped MCP server, and a polished iPhone review experience.
+Beachcar is for people who love charming, unusual cars but do not want auction hunting to become a second job. You teach it why a car feels right, not just which filters it matches. Your local Codex does the open-ended research in the browser you already use. Beachcar remembers your taste and feedback, gives Codex remote MCP tools, and turns the results into a polished iPhone shortlist.
 
 The result is deliberately small: a few candidates with fit reasoning, market context, bid discipline, risks, sources, and honest uncertainty—not an endless feed of links.
 
 ## It found the one
 
-After a couple of weeks of real use, Beachcar surfaced a [pink 1960 Willys DJ-3A Surrey](https://bringatrailer.com/listing/1960-jeep-dj-3a/). I bought it.
+After a couple of weeks of real use, Beachcar found a [pink 1960 Willys DJ-3A Surrey](https://bringatrailer.com/listing/1960-jeep-dj-3a/). I bought it.
 
 Beachcar did not make the decision or place the bid. It did the searching, taste matching, research, and narrowing that made one extraordinary human decision possible. That is the product thesis in one car: a personal agent should learn enough about you to find the thing no keyword alert would know to recommend—and give you enough evidence to act with confidence.
 
@@ -60,7 +60,7 @@ The split preserves agency: the user owns the browser login, Codex subscription,
   <tr>
     <td align="center" width="33%"><img src="docs/build-week/deck-preview/slide-04.png" alt="Beachcar taste onboarding on iPhone" width="390"></td>
     <td align="center" width="33%"><img src="docs/build-week/deck-preview/slide-05.png" alt="Local Codex, signed-in browser, Beachcar MCP, and iPhone architecture" width="390"></td>
-    <td align="center" width="33%"><img src="docs/build-week/deck-preview/slide-08.png" alt="The real pink 1960 Willys Surrey Beachcar surfaced and its user bought" width="390"></td>
+    <td align="center" width="33%"><img src="docs/build-week/deck-preview/slide-08.png" alt="The real pink 1960 Willys Surrey Beachcar found and its user bought" width="390"></td>
   </tr>
   <tr>
     <td valign="top"><strong>Calibrate.</strong><br>Durable taste is richer than filters.</td>
@@ -78,7 +78,7 @@ The no-secret judge experience is a fixed, clearly labeled replay of the product
 To run the exact same replay locally, run `bun run dev`, then open [`http://127.0.0.1:5173/demo`](http://127.0.0.1:5173/demo).
 
 1. Open the hosted demo or local route above.
-2. **Proof** introduces the real Surrey Beachcar surfaced and its user bought.
+2. **Proof** introduces the real Surrey Beachcar found and its user bought.
 3. **Teach** turns plain-language taste into durable memory.
 4. **Research** shows the exact local Codex, signed-in browser, and MCP tool sequence represented by the fixture.
 5. **Review** shows five clearly labeled fixture picks with reasons, caveats, market notes, and source slots.

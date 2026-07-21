@@ -29,7 +29,7 @@ Do not describe the permission as written, independently verified, blanket, or p
 
 - Car: 1960 Willys DJ-3A Surrey
 - Public case-study listing: https://bringatrailer.com/listing/1960-jeep-dj-3a/
-- Safe factual wording: **Beachcar surfaced the Surrey; Jon made the decision and bought it.**
+- Safe factual wording: **Beachcar found the Surrey; Jon made the decision and bought it.**
 - Unsafe wording: Beachcar bid, purchased, completed the transaction, or obtained rights to every item on the listing page.
 
 The listing URL may be included as a factual source link. The recorded dealer-photo permission does not by itself authorize reproduction of the Bring a Trailer logo, page layout, prose, comments, usernames, video-player chrome, music, or unrelated thumbnails.
@@ -90,7 +90,7 @@ Public copy states that selected car photography is used with the selling dealer
 - [x] No auction logo, page chrome, copied listing prose, comments, usernames, unrelated thumbnails, or photographer watermark appears in the final master.
 - [x] No password, token, email address, notification, browser profile, face, plate, or private location appears without intent and permission.
 - [x] Chris narration is covered by the owner's active ElevenLabs Creator subscription; the final master uses no music.
-- [x] Public copy says Beachcar surfaced the car and Jon bought it; it never says the agent bid or purchased.
+- [x] Public copy says Beachcar found the car and Jon bought it; it never says the agent bid or purchased.
 - [x] The enumerated scope and no-credit fields are resolved without publishing private correspondence; duration, territory, and takedown terms remain deliberately unstated.
 
 If any gate fails at upload time, pause publication or replace the affected asset. Do not broaden the recorded permission to rescue a deadline.

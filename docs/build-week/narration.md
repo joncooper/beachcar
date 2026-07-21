@@ -41,7 +41,7 @@ I built Beachcar to find one weird little car for my family. Now your Codex can 
 
 - Use only real photographs of the purchased Surrey. Do not use generated Surrey art or a generated-car product capture.
 - Do not show the complete Surrey, the purchase result, or `I BOUGHT IT` text before section four. Early frames may use tight real-car details that do not give away the whole silhouette.
-- A short privacy-scrubbed working replay may appear during the Build Week explanation when it is plainly labeled `WORKING REPLAY · LOCAL · NO LOGIN`; keep deterministic result claims and technical contract detail in the judge surface.
+- A short privacy-scrubbed fixed replay may appear during the Build Week explanation. Keep its own `DETERMINISTIC REPLAY` label visible and unobstructed; keep technical contract detail in the judge surface.
 - The Surrey discovery predates Build Week. Record that provenance in the submission notes; do not clutter the spoken story with eligibility language.
-- Do not imply that Beachcar bid or purchased the car. Beachcar surfaced it; the owner made the decision and bought it.
+- Do not imply that Beachcar bid or purchased the car. Beachcar found it; the owner made the decision and bought it.
 - Keep the Garage Session consent visible: opt-in, one bounded change, user review before anything leaves the local worktree, and no automatic shipping.

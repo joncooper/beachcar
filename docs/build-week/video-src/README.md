@@ -4,14 +4,14 @@
 
 The upload master is the local production file `docs/build-week/Beachcar-Build-Week-final.mp4`. It is intentionally ignored by Git and is not a repository download. After upload, use the verified public YouTube URL as the film link. The repository retains a reference/localization [SRT companion](../Beachcar-Build-Week-final.srt) and [YouTube thumbnail](../Beachcar-Build-Week-thumbnail.jpg).
 
-- Duration: **100.80 seconds (1:40.80)**
+- Duration: **100.83 seconds (1:40.83)**
 - Video: **H.264 High, 1920×1080, CFR 30 fps, Rec.709**
 - Audio: **AAC mono, 48 kHz**, ElevenLabs Chris, generated under the active Creator subscription
 - Loudness: **−16.7 LUFS / −1.4 dBTP**
 - Captions: **26** burned-in cues, with matching SRT timing retained for reference, localization, or a separately exported captionless master
 - Picture: seven permission-covered real photographs of the purchased Surrey, two privacy-reviewed iPhone captures, and two privacy-scrubbed captures of the working local demo replay
 
-The film contains no generated car, auction-page capture, dummy email, password, token, or private notification. The product-proof beat is an overt editorial board made from real detail photographs—not a simulated live result—and clearly communicates fit, price doubt, and summer risk without contradicting the narration. During “Codex helped me build Beachcar too,” the film shows the actual working local `/demo` replay moving from Teach to Research, with an explicit local/no-login label and click cue. The reveal caption begins at **55.258s** and the first complete-Surrey frame lands at **55.500s**. The purchase captions are waveform-aligned too: “I bought it” runs **62.963–64.618s**, and “This is actually my car now” begins at **64.618s**. The real outdoor payoff changes angle at the start of the spoken purchase line. The closing lockup includes **APPS FOR YOUR LIFE**. The older internal review and Samantha rough cut remain historical editing artifacts only.
+The film contains no generated car, auction-page capture, dummy email, password, token, or private notification. The product-proof beat is an overt editorial board made from real detail photographs—not a simulated live result—and clearly communicates fit, price doubt, and summer risk without contradicting the narration. During “Codex helped me build Beachcar too,” the film shows the fixed local `/demo` replay moving from Teach to Research. The capture's own `DETERMINISTIC REPLAY` label stays visible, and the cursor/ripple cue does not cover its page copy. The reveal caption begins at **55.258s** and the first complete-Surrey frame lands at **55.500s**. The purchase captions are waveform-aligned too: “I bought it” runs **62.963–64.618s**, and “This is actually my car now” begins at **64.618s**. The real outdoor payoff changes angle at the start of the spoken purchase line. The closing lockup includes **APPS FOR YOUR LIFE**. The older internal review and Samantha rough cut remain historical editing artifacts only.
 
 **Caption upload warning:** the MP4 already contains burned-in captions. The SRT is a timing reference and localization source; do not enable it alongside this master on YouTube, or viewers will see duplicate captions. Export a captionless master before using the SRT as a selectable YouTube caption track.
 

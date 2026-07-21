@@ -1,193 +1,139 @@
 # Beachcar
 
 <p align="center">
-  <img src="assets/brand/beachcar-icon.png" alt="Beachcar app icon" width="104">
+  <img src="assets/brand/beachcar-icon.png" alt="Beachcar app icon: a pink 1960 Willys DJ-3A Surrey" width="128">
 </p>
 
-<h3 align="center">An AI auction scout that researches the market, explains its judgment, and learns your taste.</h3>
+<h3 align="center">Your Codex. Your taste. The one.</h3>
 
 <p align="center">
-  <em>SwiftUI + Cloudflare Agents, Workflows, Durable Objects, Containers, D1, R2, Clerk, and a React PWA.</em>
+  <strong>A personal auction scout that researches through your signed-in browser, publishes an evidence-backed shortlist, and learns from every swipe.</strong>
 </p>
 
-Beachcar is a private AI auction scout I built for people who love charming, unusual cars but do not want auction hunting to become a second job.
+<p align="center">
+  OpenAI Build Week 2026 · Apps for Your Life
+</p>
 
-Each day it searches live marketplaces, reconciles messy listing data, evaluates candidates against one person's budget, location, taste, and prior feedback, then publishes a deliberately small shortlist. Every pick arrives with an opinionated dossier: why it fits, what the market says, what could go wrong, and where to stop bidding.
+Beachcar is for people who love charming, unusual cars but do not want auction hunting to become a second job. You teach it the difference between merely matching your filters and actually feeling right. Your local Codex does the open-ended research with the browser sessions you control. Beachcar supplies durable taste memory, a user-scoped MCP server, and a polished iPhone review experience.
 
-This is an end-to-end agentic product—not a chat wrapper. By default, a person connects the agent they already trust—Codex, Claude, or another MCP client—and Beachcar becomes that agent's durable taste memory, research workspace, and publishing surface. An optional managed tier runs Beachcar's hosted Agent, Workflow, browser runner, and AI Gateway scorer for subscribers. Both paths produce the same inspectable private product in native iOS and on the web.
+The result is deliberately small: a few candidates with fit reasoning, market context, bid discipline, risks, sources, and honest uncertainty—not an endless feed of links.
 
-## The product
+## It found the one
+
+After a couple of weeks of real use, Beachcar surfaced a [pink 1960 Willys DJ-3A Surrey](https://bringatrailer.com/listing/1960-jeep-dj-3a/). I bought it.
+
+Beachcar did not make the decision or place the bid. It did the searching, taste matching, research, and narrowing that made one extraordinary human decision possible. That is the product thesis in one car: a personal agent should learn enough about you to find the thing no keyword alert would know to recommend—and give you enough evidence to act with confidence.
+
+## The loop
+
+```mermaid
+flowchart LR
+    A["Teach Beachcar<br/>taste · budget · constraints"] --> B["Local Codex + GPT-5.6<br/>researches the signed-in web"]
+    B --> C["Beachcar MCP<br/>stores candidates + evidence"]
+    C --> D["iPhone shortlist<br/>reasons · risks · bid discipline"]
+    D --> E["Love · Like · Pass · Never again"]
+    E --> A
+```
+
+1. **Teach it what “right” means.** The iPhone onboarding captures region, radius, budget, use case, sources, practical constraints, and the hard-to-filter qualities that make a car lovable.
+2. **Hand the brief to Codex.** Beachcar coaches the user through connecting the bundled skill and hosted MCP on a desktop. The user signs into auction sites in their own browser; credentials never go to Beachcar.
+3. **Let GPT-5.6 exercise judgment.** Codex uses the saved profile and prior feedback to plan research, compare messy evidence, explain fit, surface uncertainty, and decide which few candidates deserve attention.
+4. **Publish, then verify.** Codex submits source-backed candidates through Beachcar's MCP, publishes the run, and verifies the exact shortlist the user will see.
+5. **Make tomorrow better.** Like, Love, Pass, and Never again become durable preference events that steer the next run.
+
+## Why Codex and GPT-5.6 matter
+
+This is not a hosted chatbot with a car-themed prompt. The user runs Codex locally because it is the right place to combine personal judgment, an authenticated browser, recurring work, and specialized tools.
+
+| Capability | Role in Beachcar |
+| --- | --- |
+| **Codex** | Orchestrates the research loop, follows the Beachcar skill, uses the user's local browser, calls the hosted MCP, and can run again on a personal schedule. |
+| **GPT-5.6** | Converts nuanced taste and imperfect marketplace evidence into a research plan, comparative judgment, concise dossiers, and explicit uncertainty. |
+| **Beachcar MCP** | Exposes user-scoped setup context, memory, candidate submission, publication, verification, and event history without storing an OpenAI key. |
+| **SwiftUI app** | Turns agent output into a focused, tactile decision surface and captures high-signal feedback for the next run. |
+
+The split preserves agency: the user owns the browser login, Codex subscription, model choice, and cadence. Beachcar specializes in memory, evidence, feedback, and presentation. The legacy hosted-research experiments remain in this repository, but they are not the Build Week submission path and are not required for the demo.
+
+## Product experience
 
 <table>
   <tr>
     <td align="center" width="33%"><img src="docs/screenshots/ios-taste-onboarding.png" alt="Beachcar taste onboarding in the iPhone simulator" width="290"></td>
-    <td align="center" width="33%"><img src="docs/screenshots/ios-agent-dossier.png" alt="Beachcar AI listing dossier in the iPhone simulator" width="290"></td>
+    <td align="center" width="33%"><img src="docs/screenshots/ios-agent-dossier.png" alt="Beachcar listing dossier in the iPhone simulator" width="290"></td>
     <td align="center" width="33%"><img src="docs/screenshots/ios-todays-finds.png" alt="Beachcar daily shortlist in the iPhone simulator" width="290"></td>
   </tr>
   <tr>
-    <td valign="top"><strong>1. Teach it what matters.</strong><br>Region, radius, budget, use case, sources, and taste become durable research context.</td>
-    <td valign="top"><strong>2. Get judgment, not links.</strong><br>Each pick includes fit reasoning, valuation, bid discipline, watch-outs, and a source-backed dossier.</td>
-    <td valign="top"><strong>3. Review a shortlist, not a feed.</strong><br>Listings and photos have distinct navigation, with search, filters, and explicit progress.</td>
+    <td valign="top"><strong>Calibrate.</strong><br>Durable taste is richer than filters.</td>
+    <td valign="top"><strong>Understand.</strong><br>Fit, valuation, watch-outs, confidence, and sources stay beside the recommendation.</td>
+    <td valign="top"><strong>Decide.</strong><br>A tiny shortlist keeps the agent accountable for every pick.</td>
   </tr>
 </table>
 
-<p align="center"><sub>Real captures from the current SwiftUI app running in the iPhone simulator; listing media was loaded from the project's live-source research output.</sub></p>
+The review model is intentionally fast and physical. Swipe right to **Like**, farther right to **Love it**; swipe left to **Pass**, farther left for **Never again**. Scroll down for the full dossier. Tap a photo for a separate zoomable gallery. Those judgments are not engagement signals—they are research instructions.
 
-The interaction model is intentionally fast and physical. Swipe right to **Like**, farther right to **Love it**; swipe left to **Pass**, farther left for **Never again**. Scroll down to read the full dossier. Tap a photo to enter a separate zoomable gallery, then swipe decisively up or down to return. Those judgment gestures do more than organize the current deck—they become preference memory for the next research run.
+## Judge path
 
-## Why I built it
+The deterministic judge experience is designed to show one complete loop without paid infrastructure or private auction credentials:
 
-Auction alerts are good at finding matches and bad at exercising judgment. A keyword can locate every old 4x4; it cannot tell whether a particular one is charming rather than compromised, fairly priced rather than merely cheap, or plausible for school runs and beach days.
+1. Open the iPhone app and complete the short taste calibration.
+2. Follow the desktop handoff to connect Beachcar to Codex.
+3. Watch Codex load the profile, research with GPT-5.6, and publish through MCP.
+4. See the verified shortlist appear in Beachcar with evidence and risks intact.
+5. Mark one candidate **Love it** and another **Never again**.
+6. Start the next plan and see Codex explicitly use both signals.
 
-Beachcar explores a more useful relationship between a person and an agent:
+See [the Build Week judge guide](docs/build-week/judge-guide.md) for the final access details and [the submission plan](docs/build-week/submission-plan.md) for the evidence checklist.
 
-- The person defines taste, constraints, and risk tolerance.
-- The agent does open-ended research and narrows the field.
-- The product exposes evidence and uncertainty instead of presenting magic.
-- Lightweight feedback compounds into better future decisions.
+## Build Week extension
 
-The goal is not maximum engagement. It is a few unusually good decisions, delivered at the right time.
+Beachcar existed before Build Week. The eligible submission is the meaningful extension built after the event opened: the local-Codex default, user-owned browser research, the Beachcar skill and MCP onboarding, the learning-loop demo, the new Surrey-led identity, and the judge-facing proof package.
 
-## Two ways to use it
+- **Baseline:** [`e8321d0`](https://github.com/joncooper/beachcar/commit/e8321d0c27edd0d21aca2936ef04ae601e0ef4af), July 13, 2026 at 10:48 a.m. ET.
+- **Primary Codex task:** `019f8178-f7a2-7301-b9be-f5b0af997b70`.
+- **Detailed before/after record:** [Build Week changelog](docs/build-week/changelog.md).
 
-| Agent-connected | Managed Research |
-| --- | --- |
-| **Included by default.** Connect a personal Codex automation, Claude, or any OAuth-capable MCP client. The agent reads the profile and feedback, researches with its own tools, and publishes through Beachcar. | **Planned launch price: $29/month.** Beachcar runs the hosted research loop: schedules, source monitoring, browser handoffs, required AI Gateway judgment, publication, and cost controls. |
-| The user controls the model, tools, cadence, and AI spend. Beachcar stores no provider key. | Beachcar pays the inference and infrastructure bill. The `managed_research` Clerk feature gates every manual, scheduled, and in-flight hosted run. |
+Codex accelerated repository analysis, product implementation, native and web UI iteration, automated tests, visual identity work, and submission collateral. The important human decisions remained human: rejecting the hosted-cost story, insisting on a user-owned browser, choosing a tiny evidence-backed shortlist, defining the feedback semantics, and recognizing that the car Beachcar found is the honest emotional proof.
 
-The agent-connected path has no Beachcar-managed AI fee and is not a degraded recommendation engine. It is the default architecture: bring a capable agent and let Beachcar specialize in memory, evidence, feedback, and a highly crafted review experience. The paid tier buys convenience, not access to one's own data.
-
-## What makes it agentic
-
-```mermaid
-flowchart LR
-    A["Taste, budget, feedback"] --> M["Beachcar memory + MCP"]
-    X["Your Codex, Claude, or MCP agent"] <--> M
-    X --> R["Research with agent-owned tools"]
-    S["Managed subscriber"] --> B["Beachcar Agent + durable Workflow"]
-    B --> R2["Source adapters + browser runner + AI Gateway"]
-    R --> P["Publish evidence + dossiers"]
-    R2 --> P
-    P --> I["SwiftUI app"]
-    P --> J["React PWA"]
-    I --> L["Like · Love · Pass · Avoid"]
-    J --> L
-    L --> A
-```
-
-| Agent capability | How Beachcar uses it |
-| --- | --- |
-| **Autonomy** | A connected personal agent can plan and publish through MCP; subscribers can also use time-zone-aware schedules and signed-in “Run now” requests. |
-| **Tool use** | Source modules inspect auction feeds and pages; browser-heavy work can hand off to an isolated Cloudflare Container runner. |
-| **Durable execution** | Cloudflare Workflows coordinate discovery, scoring, publication, image warming, and terminal status across long-running work. |
-| **Memory** | Per-user feedback and preference events are loaded into later runs, changing both ranking and suppression. |
-| **Judgment** | Candidates are assessed for fit, value, practical constraints, risk, novelty, and confidence—not only keyword similarity. |
-| **Observability** | Users and operators can inspect source checks, candidate counts, runner handoffs, failures, usage, and the exact published result. |
-| **Interoperability** | A hosted Streamable HTTP MCP surface with OAuth makes Codex, Claude, and other capable agents first-class clients of the same user-scoped product state. |
-
-That traceability is deliberate. Source failure is not the same as “nothing worth showing,” missing location is not silently treated as local, and a runner handoff is not reported as a completed run. Every run retains its workflow identity, source diagnostics, candidate funnel, final publication, and human-readable errors.
-
-## Design decisions I care about
-
-- **A shortlist beats a feed.** Scarcity keeps the agent accountable for each recommendation.
-- **Reasons belong beside the recommendation.** Fit, market context, confidence, and watch-outs are part of the core object—not an expandable AI garnish.
-- **Taste is richer than filters.** “Open-air, charming, kid-plausible” is useful context even when it cannot be reduced to a checkbox.
-- **Missing data should look missing.** The UI distinguishes no photo, failed loading, unknown location, and weak valuation evidence.
-- **The default should preserve agency.** Users bring the agent and tools they already pay for; Beachcar does not force everyone onto a mediocre shared inference path.
-- **Convenience should be an honest upgrade.** The managed tier pays for hosted research and required model-backed judgment. If that scorer is unavailable, Beachcar fails the run instead of publishing deterministic filler.
-- **Agent access should still feel productized.** OAuth, scoped tokens, setup context, publishing tools, verification, and event history make MCP a polished path rather than an integration appendix.
-
-## Built as a real product
-
-Beachcar spans the product surface, agent runtime, data plane, authentication, operations, and release pipeline.
-
-| Surface | Implementation |
-| --- | --- |
-| **Native app** | SwiftUI, Clerk authentication, offline run cache, progressive gesture coaching, bounded zoom/pan, matched photo transitions, beta gesture calibration, privacy-gated diagnostics, accessibility-aware layouts, and internal TestFlight distribution. |
-| **Web app** | Mobile-first React PWA for onboarding, review, preferences, run history, status, account controls, administration, and aggregated beta calibration analysis. |
-| **Agent runtime** | Cloudflare Agents + Durable Objects for per-user state, Workflows for durable orchestration, and Containers for browser/Codex-backed jobs. |
-| **Data + media** | D1 for user-scoped product and run state; R2 plus Cloudflare Images for cached `thumb`, `deck`, and `full` photo variants. |
-| **Identity + privacy** | Invite-only Clerk access, pilot and future subscription entitlements, verified billing-webhook support, user-scoped reads and writes, hashed automation tokens, OAuth metadata, export and deletion, plus an explicit boundary between auction-taste memory and short-lived product diagnostics. |
-| **Operations** | Guarded D1 migrations, private recovery artifacts, staged container rollout, strict configuration checks, production smoke tests, and managed-path verification. |
-
-The current verification suite includes **163 Vitest tests** across the web/Worker surface and **44 native tests**: 24 end-to-end XCUITests plus 20 gesture, coaching, tuning, privacy, persistence, and gallery-policy unit tests.
-
-## A typical daily run
-
-1. By default, a connected agent loads setup context and feedback through MCP, researches with its own tools, submits candidates, and publishes a verified run.
-2. For a subscriber, a schedule or signed-in request starts Beachcar's per-user Agent and durable Workflow after rechecking the `managed_research` entitlement and AI budget.
-3. Source adapters gather candidates; browser-dependent work can move to the isolated Container runner.
-4. Managed runs require successful AI Gateway judgment before publication. Failed or unavailable scoring cannot silently become heuristic recommendations.
-5. Beachcar publishes the run to D1, mirrors and warms image variants in R2, and records source-by-source diagnostics.
-6. The person reviews in iOS or the PWA; that feedback becomes memory for whichever agent runs next.
-
-## System map: runtime architecture
-
-The earlier loop describes the product behavior. This view shows the runtime boundaries and the repository area that owns each moving part.
+## Architecture
 
 ```mermaid
 flowchart TB
-    subgraph surfaces["Product surfaces"]
-        IOS["Native SwiftUI app<br/>ios/BeachcarApp"]
-        WEB["React PWA<br/>src/client"]
-        CLIENT["Codex, Claude, or MCP client<br/>default curation path"]
+    subgraph person["User-owned environment"]
+        IOS["Beachcar for iPhone"]
+        CODEX["Local Codex · GPT-5.6"]
+        BROWSER["Signed-in browser"]
     end
 
-    subgraph edge["Cloudflare Worker · src/worker"]
-        ASSETS["PWA assets"]
-        API["JSON API<br/>auth + user scoping"]
-        MCP["Hosted MCP + OAuth"]
-        TRIGGER["Subscriber schedule + Run now"]
-        DOMAIN["User-scoped domain + image services"]
+    subgraph beachcar["Beachcar on Cloudflare"]
+        API["Identity + user-scoped API"]
+        MCP["Hosted MCP"]
+        MEMORY[("Taste · feedback · runs")]
+        WEB["Desktop setup coach + PWA"]
     end
 
-    subgraph runtime["Stateful agent runtime · src/worker"]
-        AGENT["Per-user Beachcar Agent<br/>Durable Object"]
-        FLOW["Beachcar Run Workflow<br/>durable orchestration"]
-        SOURCES["Source adapters<br/>discovery + normalization"]
-        RUNNER["Browser / Codex runner<br/>runner/ · Container"]
-    end
+    MARKETS["Auction sources"]
 
-    subgraph storage["Cloudflare data plane"]
-        D1[("D1<br/>users · runs · listings · memory · beta diagnostics")]
-        R2[("R2<br/>private image cache")]
-        IMAGES["Image transforms<br/>thumb · deck · full"]
-    end
-
-    subgraph services["External services"]
-        CLERK["Clerk<br/>identity + billing"]
-        MARKETS["Auction sources<br/>BaT · Cars & Bids · Hemmings"]
-        MODEL["AI Gateway / model<br/>required for managed judgment"]
-    end
-
-    IOS --> API
-    WEB --> ASSETS
-    WEB --> API
-    CLIENT --> MCP
-    IOS -. sign in .-> CLERK
-    WEB -. sign in .-> CLERK
-    API -. verifies tokens .-> CLERK
-    CLERK -. feature + webhook .-> API
-    API --> DOMAIN
-    MCP --> DOMAIN
-    CLIENT --> MARKETS
-    API --> TRIGGER
-    TRIGGER --> AGENT
-    AGENT --> FLOW
-    FLOW --> SOURCES
-    FLOW --> RUNNER
-    FLOW --> DOMAIN
-    SOURCES --> MARKETS
-    RUNNER --> MARKETS
-    RUNNER --> MODEL
-    FLOW --> MODEL
-    DOMAIN --> D1
-    DOMAIN -->|mirror originals| R2
-    DOMAIN -->|prewarm + serve| IMAGES
-    IMAGES <--> R2
+    IOS <--> API
+    WEB <--> API
+    CODEX <--> MCP
+    CODEX <--> BROWSER
+    BROWSER --> MARKETS
+    MCP <--> MEMORY
+    API <--> MEMORY
 ```
 
-The Worker is the trust boundary: it verifies identity, scopes every read and write to a user, and exposes the same product state to iOS, the PWA, and MCP clients. The default agent-connected path reaches that state through OAuth and scoped MCP tools. The managed branch additionally checks Clerk's feature claim at request time, persists webhook-backed entitlement state for background schedules, and rechecks access inside the Workflow before spending inference budget.
+The Worker is the trust boundary. It verifies identity, scopes every read and write, and exposes the same product state to iOS, the web coach, and MCP clients. Auction credentials stay in the user's browser. OpenAI credentials stay with Codex. Beachcar stores neither.
+
+## Built as a real product
+
+| Surface | Implementation |
+| --- | --- |
+| **Native app** | SwiftUI, Clerk sign-in, resumable taste onboarding, desktop-Codex handoff, offline run cache, progressive gesture coaching, accessible layouts, and TestFlight distribution. |
+| **Desktop + web** | React PWA for setup coaching, onboarding, review, preferences, status, account controls, and deterministic demo states. |
+| **Agent interface** | A Beachcar daily-run skill plus hosted Streamable HTTP MCP with scoped setup, memory, submission, publication, and verification tools. |
+| **Data + media** | Cloudflare Worker, D1 user-scoped state, and R2 image cache/variants. |
+| **Identity + privacy** | Clerk authentication, hashed tokens, OAuth metadata, export/delete, and a strict separation between auction-taste memory and product diagnostics. |
+| **Verification** | Vitest coverage for Worker/web contracts plus native builds and XCUITests for onboarding, review, gestures, persistence, and the signed-out brand story. |
 
 ## Run it locally
 
@@ -196,56 +142,44 @@ The web and Worker code use Bun; the native app uses XcodeGen so the Xcode proje
 ```bash
 bun install
 cp .env.example .env.local
-```
-
-Add the Clerk values described in `.env.example`, then verify the web and Worker surfaces:
-
-```bash
 bun run typecheck
 bun run test
-bun run build
+VITE_CLERK_PUBLISHABLE_KEY=pk_test_build_validation bun run build
 ```
 
-Run the local Worker integration preflight:
-
-```bash
-bun run preflight:local
-```
-
-Build and launch the iOS app:
+Build the native app:
 
 ```bash
 bun run ios:generate
 bun run ios:build
-bun run ios:sim
 ```
 
-For configuration details, see the focused guides instead of treating this README as an operator manual:
+Focused guides:
 
 - [Native iOS development and TestFlight](docs/ios.md)
-- [Cloudflare architecture and guarded deployment](docs/cloudflare.md)
+- [Hosted MCP and local Codex setup](docs/remote-mcp-friend-automation.md)
 - [Publishing contract and dossier schema](docs/publishing.md)
-- [Hosted MCP and bring-your-own-agent path](docs/remote-mcp-friend-automation.md)
-- [Managed Research pricing and unit economics](docs/pricing.md)
+- [Cloudflare architecture and guarded deployment](docs/cloudflare.md)
 - [Scraping and compliance notes](docs/scraping-and-compliance.md)
 
 ## Repository map
 
 ```text
-ios/                 Native SwiftUI app, unit tests, and XCUITests
-src/client/          React PWA
-src/worker/          API, Agent, Workflow, MCP, and data layer
-runner/              Isolated browser / Codex Container runner
-migrations/          D1 schema history
-automation/          Research and operator fallback playbooks
-scripts/             Build, release, migration, and verification tooling
-docs/                Architecture and operations guides
+.agents/skills/       Beachcar's local Codex research skill
+ios/                  Native SwiftUI app and tests
+src/client/           Desktop coach and React PWA
+src/worker/           API, MCP, product state, and legacy hosted experiments
+migrations/           D1 schema history
+scripts/              Build, release, migration, and verification tooling
+docs/build-week/      Judge guide, changelog, submission copy, and demo plan
 ```
 
 ## Project status
 
-Beachcar is running as a private friend beta: the Worker/PWA is deployed and the native app is distributed through internal TestFlight. Agent-connected curation through MCP is the product default. Managed Research is entering a free, allowlisted pilot with checkout intentionally disabled; the future subscription boundary is implemented but will not be activated until real-user quality and cost evidence justify it. The default niche is beach cars and runabouts, but the profile, feedback, orchestration, and publication model are deliberately reusable for other high-consideration searches.
+Beachcar is a personal project and private friend beta. The Build Week path uses the user's local Codex and browser; it does not require Beachcar-funded inference or cloud scraping. The app's first niche is beach cars and runabouts, but the memory, evidence, feedback, and publication model can support other high-consideration searches.
 
 ## Responsible use
 
-Auction sites are living systems with their own terms and rate limits. Beachcar uses explicit source modules, conservative access patterns, operator-owned credentials where required, and a private image cache. Anyone adapting the project is responsible for respecting access controls, marketplace terms, and image rights.
+Auction sites are living systems with their own terms, access controls, and rate limits. Beachcar uses conservative, user-directed research and only accesses signed-in pages through a browser session the user controls. Anyone adapting the project is responsible for marketplace terms and image rights. Third-party auction photography is not included in public competition collateral unless its use has been explicitly cleared.
+
+MIT licensed. See [LICENSE](LICENSE).

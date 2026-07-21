@@ -47,20 +47,20 @@ The current final cut is 100.80 seconds (1:40.80), with a matching timing-refere
 | Item | Status on July 21 | Submission treatment |
 | --- | --- | --- |
 | Actual 1960 Willys Surrey purchase | Owner states that Beachcar surfaced the car and that he bought it; the public listing identifies the car | Use as a pre-Build Week case study. Never say Beachcar bid or purchased |
-| Public repository | The repository is verified public and defaults to `main`; the final Build Week revision is not yet recorded as publicly reachable | Push or merge the complete revision, fill `[PRE-SUBMISSION: final pushed commit]`, then verify it from a fresh public clone |
+| Public repository | The repository is verified public and defaults to `main`; frozen artifact commit `87b54ef` remains local, and a push dry run confirmed a fast-forward of the public feature branch from `158c7bc` | Push the complete revision, fill `[PRE-SUBMISSION: final pushed commit]`, then verify the exact commit from a fresh public clone |
 | Exact local judge path | Implemented at `/demo?scene=...`; no account or secret required | Lead judges through the commands in `judge-guide.md` |
 | Deterministic replay | Implemented as a five-scene fixed fixture with focused tests | Label it as replay, not live research or the original Surrey run; rerun the suite after final identity changes |
 | Local Codex skill and Beachcar MCP | Implemented in the repository with scoped tools and tests | Describe the contract and supported token path without claiming a friend completed it |
 | Explicit feedback steering | Implemented in the fixture, product state, and tests | Demonstrate Love and Never again changing the next plan |
 | Garage Session policy | Implemented in the skill as separate opt-in, isolated local work, and a review gate | Do not claim a scheduled clean-slate user session has passed |
-| Final video package | Local 100.80-second MP4, SRT, thumbnail, narration, and build source exist; the frozen cut visibly moves the working local replay from Teach to Research | Upload the exact frozen master and verify the public URL; do not attach the SRT to this burned-caption master |
-| Hosted working-project URL | Not verified for the exact submitted revision | Keep as a pre-submission field; never infer it from local `/demo` |
+| Final video package | Local 100.80-second MP4, SRT, thumbnail, narration, and build source exist; strict decode, A/V, caption, privacy, and independent visual-story audits passed on exact SHA-256 `d05db715...`; the cut visibly moves the working local replay from Teach to Research | Upload the exact frozen master and verify the public URL; do not attach the SRT to this burned-caption master |
+| Hosted working-project URL | `https://beachcar-build-week-demo.jon-cooper.workers.dev/demo` is live on isolated static Worker version `91ede9db...`; root redirect, all five scenes, Beachcar title/manifest, and the exact hero-photo hash passed signed-out verification | Use this URL as working-project access; never deploy the production Worker config for this purpose |
 | Friend TestFlight full end-to-end | Test plan exists; completed pass not established | Do not list as proof or require it for the fast judge path |
 | Live Codex -> MCP -> iPhone continuity | Intended and testable; a matching live run receipt is not established | Do not imply the video or replay proves it |
 | Recurring authentication | Revocable reduced-scope automation token path is supported; OAuth lacks refresh tokens | Describe OAuth as interactive only; do not claim recurring OAuth |
 | Public/deployed Garage Session extension | No completed external contribution or deployment established | Present the consent-first local workflow, not a shipped extension |
-| Dealer photo permission | Owner represents that the selling dealer granted permission | Disclose that written scope and credit terms were not independently inspected |
-| `/feedback` task ID | `019f8178-f7a2-7301-b9be-f5b0af997b70` is the current candidate | Verify it is the literal ID accepted or returned by `/feedback` before submission |
+| Dealer photo permission | Owner confirms that the selling dealer's permission covers the selected images in the public film, thumbnail, deck, repository/site/demo, and cropped or animated derivatives; no credit is required | Public disclosure still notes that the written permission itself was not independently inspected |
+| `/feedback` task ID | `019f8178-f7a2-7301-b9be-f5b0af997b70` was confirmed from the active task metadata on July 21 | Enter this exact value in the submission form |
 
 ## How this addresses the judging criteria
 
@@ -85,7 +85,6 @@ Safe to say:
 
 Do not say without new evidence:
 
-- that the public site serves the submitted `/demo` revision;
 - that a friend completed the entire TestFlight -> desktop -> Codex -> MCP -> iPhone journey;
 - that a live run ID was observed continuously across Codex, MCP verification, and iPhone;
 - that OAuth survives an unattended recurring run;
@@ -113,27 +112,23 @@ The competition claim is the meaningful extension after that boundary: coached l
 
 ## Deadline execution order
 
-1. Resolve the covered real-car files, uses, edits, and exact credit from the private permission record. If the scope or credit cannot be confirmed, exclude or replace affected media before any public push, deployment, or upload.
-2. Freeze and push the final repository revision. Recheck that the public `main` branch contains the promised setup and test paths.
+1. Keep the owner-confirmed seven-image scope, public uses, derivative permission, and no-credit requirement recorded in `photo-permissions.md`; do not broaden it.
+2. Freeze and push the final repository revision. Recheck that the submitted public revision contains the promised setup and test paths.
 3. Run the judge path from a clean public clone, open all five scene links, and make the focused replay/MCP/installer tests green.
 4. Watch the local production master `docs/build-week/Beachcar-Build-Week-final.mp4` once with sound, inspect captions, confirm the 1:40.80 duration, and verify the working Teach → Research interaction remains legible.
 5. Upload the exact burned-caption master to YouTube as Public with the description, chapters, and thumbnail in [submission-copy.md](submission-copy.md). Do not attach the SRT unless a separate captionless master is exported. Verify playback in a signed-out window.
-6. Fill the verified working-project access, public YouTube URL, final pushed commit, and exact credit line. Leave no bracketed pre-upload field in the submitted entry.
-7. Verify the candidate `/feedback` task ID, then enter it with the repository URL, working access, and category in Devpost.
+6. Fill the public YouTube URL and final pushed commit. Working-project access, rights scope, and no-credit status are already verified.
+7. Enter the confirmed task/session ID `019f8178-f7a2-7301-b9be-f5b0af997b70` with the repository URL, working access, and category in Devpost.
 8. Read the written entry once for the forbidden claims above, then submit before **5:00 p.m. PDT**.
 9. Reopen the entry and every public link immediately after submission.
 
 ## External-only blockers
 
 - public YouTube upload and final playback verification;
-- final visual confirmation or recut showing a clear working-project demo;
 - push or merge of the final Build Week revision and verification from a public fresh clone;
-- a working-project URL for the exact submitted revision, if Devpost requires remote access beyond the local path;
-- final photo-credit and license-scope confirmation from the private dealer/photographer record;
-- confirmation that the candidate task ID is the literal value accepted or returned by `/feedback`;
 - clean-slate friend TestFlight end-to-end evidence;
 - live same-run continuity across Codex, Beachcar MCP, and iPhone;
 - a real scheduled recurring run and refresh-capable OAuth proof;
 - any actual Garage Session contribution or deployment.
 
-The public upload, working-project footage gate, pushed revision, working-project access, and rights/credit confirmation affect the immediate submission package. The remaining product validations should stay labeled future work rather than being rushed into a claim.
+The public upload, pushed revision, and working-project access affect the immediate submission package. The remaining product validations should stay labeled future work rather than being rushed into a claim.

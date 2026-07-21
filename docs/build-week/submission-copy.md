@@ -44,7 +44,7 @@ That consent and review policy is implemented in the skill. A completed weekly s
 
 Beachcar existed before the challenge, and the Surrey discovery and purchase are treated as a prior case study. The submission claims only the meaningful extension built after the July 13, 2026 9:00 a.m. PT start: coached local-Codex setup, the Beachcar skill, signed-in local-browser research guidance, the scoped MCP workflow, explicit taste calibration and feedback steering, the deterministic judge replay, the consent-first Garage Session policy, and the competition proof package.
 
-The deterministic replay demonstrates the product contract with fixed data. It does not claim to be the original Surrey run, a live scrape, live iPhone/MCP continuity, or a deployed public demo.
+The deterministic replay demonstrates the product contract with fixed data and is publicly hosted as a no-login static judge experience. It does not claim to be the original Surrey run, a live scrape, or live iPhone/MCP continuity.
 
 ## Impact and novelty
 
@@ -57,11 +57,11 @@ Its success metric is not more listings or more time browsing. It is one unusual
 - Public repository: https://github.com/joncooper/beachcar
 - Submitted revision: `[PRE-SUBMISSION: final pushed commit hash]`
 - Local working-project instructions: [judge-guide.md](judge-guide.md)
-- Working-project access: `[PRE-SUBMISSION: verified hosted URL, or a permanent GitHub link at the final pushed commit to judge-guide.md and its local startup path]`
+- Working-project access: https://beachcar-build-week-demo.jon-cooper.workers.dev/demo
 - Public YouTube demo: `[PRE-UPLOAD: final public YouTube URL]`
 - Surrey case study: https://bringatrailer.com/listing/1960-jeep-dj-3a/
-- Candidate primary Codex task ID: `019f8178-f7a2-7301-b9be-f5b0af997b70` — `[PRE-SUBMISSION: provisional only; use it in the entry only after /feedback literally accepts or returns this value]`
-- Photo credit: `[PRE-UPLOAD: exact dealer/photographer credit, or "none required" only after the terms are confirmed]`
+- Primary Codex task/session ID: `019f8178-f7a2-7301-b9be-f5b0af997b70` — confirmed from the active task metadata on July 21; this is the identifier to enter in the `/feedback` Session ID field
+- Photo credit: none required; selected car photography used with the selling dealer's permission, as confirmed by the owner
 - License: MIT
 
 ## YouTube upload kit
@@ -84,9 +84,9 @@ GPT-5.6 supplies the judgment inside Codex, and Codex also helped me build the B
 Beachcar existed before Build Week, and the Surrey is a prior real-world case study. The competition work is the meaningful local-Codex product extension and proof package described in the repository.
 
 Project repository: https://github.com/joncooper/beachcar
-Working project: [PRE-UPLOAD: VERIFIED HOSTED URL, OR https://github.com/joncooper/beachcar/blob/<FINAL_PUSHED_COMMIT>/docs/build-week/judge-guide.md]
+Working project: https://beachcar-build-week-demo.jon-cooper.workers.dev/demo
 Car case study: https://bringatrailer.com/listing/1960-jeep-dj-3a/
-Photo credit: [PRE-UPLOAD: EXACT REQUIRED CREDIT, OR "NONE REQUIRED" ONLY AFTER CONFIRMATION]
+Selected car photography used with the selling dealer's permission; no credit required.
 
 Built for OpenAI Build Week 2026 - Apps for Your Life.
 ```
@@ -109,7 +109,7 @@ These rounded chapter boundaries keep every chapter at least 10 seconds long and
 - Thumbnail master: local production file `docs/build-week/Beachcar-Build-Week-thumbnail.jpg` (not a public repository link until tracked and pushed)
 - Video master: local production file `docs/build-week/Beachcar-Build-Week-final.mp4` (intentionally ignored by Git; upload it to YouTube and use the verified public YouTube URL in the entry)
 - SRT companion: `docs/build-week/Beachcar-Build-Week-final.srt` is a timing reference and localization source. The MP4 already has burned-in captions, so do **not** attach the SRT to that upload. Use the SRT only with a separately exported captionless master.
-- Working-project fallback: if there is no verified hosted experience, use a permanent final-commit GitHub permalink to `docs/build-week/judge-guide.md`; the local MP4 path is neither a film URL nor working-project access.
+- Working-project fallback: the hosted replay above is verified; a permanent final-commit GitHub permalink to `docs/build-week/judge-guide.md` remains the local-run fallback. The local MP4 path is neither a film URL nor working-project access.
 - Before upload, inspect the thumbnail and every video frame for required credit, uncleared auction chrome, private data, and generated-car imagery.
 
 ### Tags
@@ -120,17 +120,17 @@ These rounded chapter boundaries keep every chapter at least 10 seconds long and
 
 The submission deadline is **July 21, 2026 at 5:00 p.m. PDT / 8:00 p.m. EDT**.
 
-- [ ] Watch the exact 100.80-second master from beginning to end with sound and captions.
-- [ ] Confirm the cut visibly demonstrates the working project, not only the story or static editorial boards. If it does not, add real replay or product interaction footage before upload.
-- [ ] Resolve the exact covered real-car files, uses, edits, and required credit from the private permission record before any public push or upload that contains them; otherwise substitute cleared media.
+- [x] Watch and independently audit the exact 100.80-second master from beginning to end with sound and captions.
+- [x] Confirm the cut visibly demonstrates the working project through the privacy-scrubbed Teach → Research interaction.
+- [x] Confirm the selected real-car files, public video/thumbnail/deck/repository/site/demo uses, cropped or animated derivatives, and that no credit is required.
 - [ ] Upload the burned-caption master to YouTube as **Public**, add the chapters, leave YouTube's SRT track disabled, and confirm picture, sound, and captions in a signed-out window. Attach the SRT only if a captionless master is exported instead.
-- [ ] Replace every `[PRE-UPLOAD: ...]` and `[PRE-SUBMISSION: ...]` field; do not guess a URL or credit line.
+- [ ] Replace every `[PRE-UPLOAD: ...]` and `[PRE-SUBMISSION: ...]` field; do not guess a public URL.
 - [ ] Push or merge the complete Build Week branch, confirm the repository is public, and verify that a fresh clone of the submitted revision contains `/demo`, setup, and tests.
-- [ ] Either verify a working-project URL for the submitted revision or use the exact local judge path without implying a hosted `/demo` exists.
-- [ ] Verify that the candidate task ID is the literal value accepted or returned by `/feedback`, then include it and select **Apps for Your Life**.
-- [ ] Explain in audio what was built, how Codex helped build it, and how GPT-5.6 works inside the product.
-- [ ] Keep the eligibility boundary visible in the written entry: existing project and Surrey case study before the event; meaningful local-agent extension after the start.
-- [ ] State only that Beachcar surfaced the Surrey and Jon bought it. Never say the agent bid or purchased.
-- [ ] Do not claim a friend TestFlight end-to-end pass, live run continuity, recurring OAuth, a deployed extension, or a public `/demo` until separately verified.
-- [ ] Keep the public disclosure accurate: this repository review records the owner's representation of dealer permission and did not independently inspect the written license or credit terms.
+- [x] Verify the isolated working-project URL, root redirect, all five scene URLs, and exact real-photo asset signed out.
+- [x] Confirm the primary task/session ID from the active Codex task metadata; enter `019f8178-f7a2-7301-b9be-f5b0af997b70` and select **Apps for Your Life**.
+- [x] Explain in audio what was built, how Codex helped build it, and how GPT-5.6 works inside the product.
+- [x] Keep the eligibility boundary visible in the written entry: existing project and Surrey case study before the event; meaningful local-agent extension after the start.
+- [x] State only that Beachcar surfaced the Surrey and Jon bought it. Never say the agent bid or purchased.
+- [x] Do not claim a friend TestFlight end-to-end pass, live run continuity, recurring OAuth, or a deployed Garage Session extension; the separate static `/demo` is now verified.
+- [x] Keep the public disclosure accurate: this repository review records the owner's representation of dealer permission and did not independently inspect the written license or credit terms.
 - [ ] Submit before 5:00 p.m. PDT and reopen the public entry once to verify every link.

@@ -6,12 +6,18 @@ The Build Week extension packages that path for another user. Local Codex interv
 
 ## Fastest working-project path
 
-This is the exact judge path in the current local project. It requires no Beachcar account, auction login, TestFlight build, cloud deployment, or secret. Before submitting these instructions, the final audited revision must be pushed to the public repository's default branch and tested from a fresh clone; the Build Week commits are not judge-visible merely because the repository itself is public.
+Open the verified, no-login static replay:
+
+**https://beachcar-build-week-demo.jon-cooper.workers.dev/demo**
+
+Cloudflare Worker version `91ede9db-4ec2-458b-984f-6ecd0bdd37c5` serves only the static judge package. The root redirects to `/demo`; all five scene URLs were verified signed out with browser-style HTML requests on July 21. It has no Clerk binding, Worker code, database, storage, AI, schedule, route, workflow, or container.
+
+The exact same replay also runs locally without a Beachcar account, auction login, TestFlight build, cloud secret, or paid service. Before submitting these instructions, the final audited revision must be pushed to a public repository branch, linked by its exact commit, and tested from a fresh clone of that revision.
 
 Prerequisite: [Bun](https://bun.sh/) installed.
 
 ```bash
-git clone https://github.com/joncooper/beachcar.git
+git clone --branch codex/agent-connected-subscriptions --single-branch https://github.com/joncooper/beachcar.git
 cd beachcar
 bun install
 bun run dev -- --port 5173 --strictPort
@@ -31,7 +37,7 @@ Use the on-screen controls, left/right arrows, number keys 1-5, or `R` to reset.
 4. `http://127.0.0.1:5173/demo?scene=review` - a fixed, evidence-shaped shortlist rather than an endless feed.
 5. `http://127.0.0.1:5173/demo?scene=learn` - Love and Never again becoming explicit input to the next plan.
 
-The route is a deterministic replay: a fixed local fixture designed to make the product contract easy to inspect. It is not a recording of the run that found the Surrey, a live scrape, a live MCP session, or proof of a deployed `/demo` URL.
+The route is a deterministic replay: a fixed fixture designed to make the product contract easy to inspect. Its public hosting is verified, but it is not a recording of the run that found the Surrey, a live scrape, or a live MCP session.
 
 ## Optional repository checks
 
@@ -89,20 +95,20 @@ That policy is inspectable in the skill. A real scheduled Garage Session complet
 | Claim | Current evidence | Boundary |
 | --- | --- | --- |
 | The Surrey outcome is real | Jon states that Beachcar surfaced the 1960 Willys Surrey and that he bought it; the public [case-study listing](https://bringatrailer.com/listing/1960-jeep-dj-3a/) identifies the car | Beachcar did not bid or purchase; the discovery is a pre-Build Week case study |
-| The judge replay works locally | `/demo` route, fixture, and controls are implemented; focused tests are included | Fixed replay, not live research or a deployed public demo; rerun the focused suite after the final identity freeze |
+| The judge replay is publicly reachable | The isolated static Worker serves `/demo`; root redirect and all five scene URLs passed signed-out checks on version `91ede9db...`; focused tests are included | Fixed replay, not live research or a production-account flow |
 | The local-agent/MCP contract is implemented | Skill, installer, MCP tools, and contract tests in the current Build Week branch | The final revision still must be pushed; no claim that a friend's full remote flow or live continuity has passed |
 | Feedback can steer the next plan | Explicit feedback fields, fixture transformation, and tests | Replay evidence is deterministic, not a production capture |
 | Garage Session is consent-first | Detailed skill policy with separate opt-in, isolation, review packet, and no-send gate | No claim of a completed scheduled friend session |
 | Public video package exists locally | The local working tree contains a 100.80-second MP4 with a visible working Teach → Research replay, matching timing-reference SRT, and thumbnail | These local-only assets are not a public upload; the final YouTube URL is a pre-upload field |
-| Real-car photo use has a permission basis | Owner represents that the selling dealer granted permission | Written license, exact scope, and credit terms were not independently inspected |
+| Real-car photo use has a permission basis | Owner represents that the selling dealer granted permission for the selected images across the public film, thumbnail, deck, repository/site/demo, and cropped or animated derivatives, with no credit required | The written permission itself was not independently inspected |
 
 ## Submission access fields
 
 - Public repository: https://github.com/joncooper/beachcar
 - Submitted revision: `[PRE-SUBMISSION: final pushed commit hash; confirm it is reachable from the repository URL]`
 - Local working-project path: the commands and `127.0.0.1` URL above
-- Working-project access: `[PRE-SUBMISSION: verified hosted URL, or a permanent GitHub link at the final pushed commit to this guide and its exact local path]`
+- Working-project access: https://beachcar-build-week-demo.jon-cooper.workers.dev/demo
 - Public YouTube URL: `[PRE-UPLOAD: paste after the final 100.80-second cut is public and playable]`
-- Candidate primary Codex task ID for `/feedback`: `019f8178-f7a2-7301-b9be-f5b0af997b70` - `[PRE-SUBMISSION: verify this is the literal ID accepted or returned by /feedback]`
+- Primary Codex task/session ID for the `/feedback` field: `019f8178-f7a2-7301-b9be-f5b0af997b70` - confirmed from the active task metadata on July 21
 
 Do not substitute an unverified deployment, TestFlight invitation, or private URL for one of these fields.

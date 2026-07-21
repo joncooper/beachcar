@@ -20,7 +20,7 @@ Release-candidate freeze: **2026-07-21 EDT**. Hash the exact files again if any 
 | `public/beachcar-wheel-real.webp` | 35,154 | `b12e26fd095977ed1a526335abb4e66fd5214d93cc19d77153827d6d76886281` | Deterministic web crop of the selected real wheel photograph. |
 | `assets/brand/beachcar-icon.png` | 977,879 | `b444419b95754b40d05396451b58880fbcfdd223ebe6f8f788743bc66d2be856` | Deterministic real-wheel icon source used for generated web/iOS sizes. |
 
-The film, thumbnail, deck, web identity, and iOS identity are conditionally releasable on the owner's representation of dealer permission. Before public upload or push, confirm the exact covered files, platforms, edits, icon/thumbnail uses, and required credit described in [photo-permissions.md](photo-permissions.md). No written license or credit terms were independently inspected for this public record.
+The film, thumbnail, deck, repository/site/demo identity, and selected derivative assets are releasable on the owner's confirmation that the selling dealer granted permission for those uses, including crops and animation, with no credit required. The written permission itself was not independently inspected for this public record. See [photo-permissions.md](photo-permissions.md).
 
 ## Final master media facts
 
@@ -39,14 +39,15 @@ The film, thumbnail, deck, web identity, and iOS identity are conditionally rele
 
 The synthetic-era deck, rough cut, old internal-review captions, and their obsolete builder/narration sources were removed from the judge-facing tracked tree. Local backups are retained under ignored `.tmp/build-week-retired/`, and every removed file remains recoverable from Git history. They are not submission candidates.
 
-## External release fields
+## Release fields and fixed identifiers
 
-These values cannot be frozen until publication:
+The public release values remain open until publication; the local artifact and task identifiers are already fixed:
 
 - Submitted Git revision: `[PRE-SUBMISSION: final pushed commit]`
 - Public film access: `[PRE-UPLOAD: public, signed-out-verified YouTube URL; the ignored local MP4 path is not a submission link]`
-- Working-project access: `[PRE-SUBMISSION: verified hosted URL, or permanent final-commit GitHub permalink to judge-guide.md]`
-- Candidate `/feedback` task ID: `019f8178-f7a2-7301-b9be-f5b0af997b70` — `[PRE-SUBMISSION: unverified; include only the literal value accepted or returned by /feedback]`
+- Working-project access: `https://beachcar-build-week-demo.jon-cooper.workers.dev/demo` — verified signed out on static Worker version `91ede9db-4ec2-458b-984f-6ecd0bdd37c5`; root redirect and all five scenes return the expected HTML experience
+- Frozen audited artifact commit: `87b54ef1a5fd0fcf6cc9ea1e90b9a43595eb36fd` (local until pushed)
+- Primary Codex task/session ID for the `/feedback` field: `019f8178-f7a2-7301-b9be-f5b0af997b70` — confirmed from the active task metadata on July 21
 - TestFlight build and owner/friend evidence: `[UNCLAIMED UNTIL A REAL CLEAN-SLATE PASS]`
 
-Do not replace these fields with an unpushed commit, private URL, remembered identifier, or unverified deployment.
+Do not replace the remaining release fields with an unpushed commit, private URL, or unverified deployment.

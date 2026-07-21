@@ -1,12 +1,12 @@
 # Beachcar Build Week media permissions
 
-Status: **The current cut relies on the owner's representation that the selling dealer granted permission to use the Surrey gallery photographs for the Build Week submission and YouTube video. No written license or credit terms were independently inspected for this record.**
+Status: **The current cut relies on the owner's representation that the selling dealer granted permission to use the seven selected Surrey gallery photographs for the public Build Week video, thumbnail, deck, repository/site/demo, and cropped or animated derivatives. On July 21, the owner confirmed that no credit is required. The written permission itself was not independently inspected for this record.**
 
 This file is a production and disclosure record, not legal advice. A public listing is not itself a license, and buying the car does not automatically transfer copyright in listing photographs.
 
 ## Recorded permission basis
 
-On July 21, 2026, the owner of the 1960 Willys DJ-3A Surrey represented that the selling dealer gave permission to use photographs from the car's listing gallery publicly in the OpenAI Build Week submission and its YouTube video.
+On July 21, 2026, the owner of the 1960 Willys DJ-3A Surrey represented that the selling dealer gave permission to use the seven selected photographs from the car's listing gallery in the public OpenAI Build Week video, thumbnail, deck, repository/site/demo, and cropped or animated derivatives. The owner further confirmed that no credit is required.
 
 The owner reports that the visible gallery contains 87 photographs. The submission uses seven selected local masters, not the full gallery. The gallery count does not define the license scope, and the final selection must be identified by filename or other unambiguous image reference.
 
@@ -17,10 +17,10 @@ For this repository review, no one independently inspected:
 - the original email, message, or signed license;
 - whether the dealer owns each photograph or has authority from the photographer;
 - the exact image subset covered;
-- whether YouTube, Devpost, the project site, repository, deck, press, or competition promotion are all covered;
-- whether cropping, animation, titles, resizes, thumbnails, and app/site identity use are allowed;
+- the private wording by which YouTube, Devpost, the project site, repository, deck, and competition-promotion uses were granted;
+- the private wording by which cropping, animation, titles, resizes, thumbnails, and site/demo identity use were granted;
 - duration, territory, sublicensing, platform-hosting, promotional reuse, or takedown terms;
-- the exact dealer, photographer, or source credit;
+- the private wording confirming that no dealer, photographer, or source credit is required;
 - whether the permission covers marks, listing copy, comments, seller identity, or auction-page design.
 
 Do not describe the permission as written, independently verified, blanket, or perpetual unless the private evidence is later inspected and supports those words. Keep private correspondence, signatures, email addresses, and phone numbers out of the public repository.
@@ -54,11 +54,11 @@ If any file is outside the dealer-authorized set, replace it with a confirmed im
 
 | Asset | Basis currently recorded | Public-use decision |
 | --- | --- | --- |
-| Seven Surrey gallery masters above | Owner-represented dealer permission; written scope and credit not inspected | **Conditional use on that representation**, subject to the pre-upload terms and credit check |
-| Local `docs/build-week/Beachcar-Build-Week-final.mp4` | Embeds the selected real photos and creator-produced product captures; not tracked in Git | Conditional on every embedded photo and capture passing this gate before public upload |
-| Local `docs/build-week/Beachcar-Build-Week-thumbnail.jpg` | Derived from the real-car submission identity; not yet tracked in Git | Conditional on the same photo scope and credit terms as the film |
-| `public/beachcar-surrey-real.webp` and the iPhone `BeachcarSurrey` image | Deterministic resize of the studio hero | Conditional on permission covering web/app identity use, not just the video |
-| `public/beachcar-wheel-real.webp`, `assets/brand/beachcar-icon.png`, and generated icon sizes | Deterministic crops/resizes of the wheel detail | Conditional on permission covering crops, icons, and web/app identity use |
+| Seven Surrey gallery masters above | Owner-confirmed dealer permission; written permission not independently inspected; no credit required | **Releasable on the owner's representation** for the confirmed public surfaces and derivatives |
+| Local `docs/build-week/Beachcar-Build-Week-final.mp4` | Embeds the selected real photos and creator-produced product captures; not tracked in Git | Releasable after the already-completed privacy and frame audit |
+| Local `docs/build-week/Beachcar-Build-Week-thumbnail.jpg` | Derived from the real-car submission identity | Releasable under the same confirmed permission as the film |
+| `public/beachcar-surrey-real.webp` and the iPhone `BeachcarSurrey` image | Deterministic resize of the studio hero | Releasable as repository/site/demo identity under the owner's confirmed scope; no TestFlight publication is claimed here |
+| `public/beachcar-wheel-real.webp`, `assets/brand/beachcar-icon.png`, and generated icon sizes | Deterministic crops/resizes of the wheel detail | Releasable as confirmed cropped derivative and repository/site/demo identity |
 | Generated or synthetic Surrey art, including `surrey-key-art` variants | Generated or uncertain car imagery | **Excluded** from the public film, thumbnail, and embedded product captures |
 | Fresh Beachcar, Codex, MCP, browser-control, and iPhone captures | Creator-produced product footage | Allowed after secrets, privacy, marks, and embedded-image review |
 | Creator-shot post-purchase footage | Depends on camera operator and visible/audible content | Allowed only after clearing people, property, plates, and ambient media |
@@ -66,31 +66,31 @@ If any file is outside the dealer-authorized set, replace it with a confirmed im
 | Chris narration | Project record says it was generated under the owner's active ElevenLabs Creator subscription | Allowed for the current cut subject to the applicable paid-plan terms; terms not independently audited here |
 | Music and sound effects | None selected | No music by default until a public-use license is recorded |
 
-## Pre-upload fields
+## Permission record fields
 
-Resolve these from the private permission record before making the video public. Do not infer or invent an answer.
+The owner confirmed the release-relevant scope below. Private correspondence stays outside the repository.
 
-- Permission evidence location: `[PRE-UPLOAD: private record location; do not paste private correspondence here]`
-- Authorized party: `[PRE-UPLOAD: dealer/photographer/entity authorized to grant the use]`
-- Covered files: `[PRE-UPLOAD: confirm the seven filenames above or list the exact approved subset]`
-- Covered uses: `[PRE-UPLOAD: YouTube, Devpost, project site, repository/deck, app/site identity, and competition promotion as actually granted]`
-- Allowed edits: `[PRE-UPLOAD: crop, resize, animate, overlay titles, thumbnail/icon use as actually granted]`
-- Duration/territory/takedown terms: `[PRE-UPLOAD: exact terms, or "not specified" only if the permission record confirms that]`
-- Required credit: `[PRE-UPLOAD: exact dealer/photographer credit, or "none required" only after confirmation]`
+- Permission evidence location: private record retained by the owner; not published in the repository
+- Authorized party: the selling dealer, as represented by the owner; private identity omitted here
+- Covered files: the seven selected local masters listed above
+- Covered uses: public video, thumbnail, deck, repository/site/demo, and competition submission
+- Allowed edits: crops, resizes, animation, titles, thumbnail treatment, and site/demo derivatives
+- Duration/territory/takedown terms: not stated in this public record
+- Required credit: none required
 
-The same exact credit must be copied into the YouTube description and any other required surface. If the terms cannot be confirmed, the public copy must continue to say only that use is based on the owner's representation, and the safest release choice is to substitute creator-owned media.
+Public copy states that selected car photography is used with the selling dealer's permission and that no credit is required. It does not describe the permission as written, independently verified, blanket, or perpetual.
 
 ## Final frame and rights gate
 
-- [ ] Every real-car frame maps to one of the seven confirmed files above or separately cleared creator-shot footage.
-- [ ] The final permission record covers each platform and promotional use actually planned.
-- [ ] Cropping, animation, titles, thumbnail use, and app/site identity crops are within the granted scope.
-- [ ] The exact credit line is readable where required and appears verbatim in the YouTube description.
-- [ ] No generated car appears in the film, thumbnail, end card, or embedded phone/web capture.
-- [ ] No auction logo, page chrome, copied listing prose, comments, usernames, unrelated thumbnails, or photographer watermark slips into the edit.
-- [ ] No password, token, email address, notification, browser profile, face, plate, or private location appears without intent and permission.
-- [ ] Narration and any later sound have publication rights covering YouTube, Devpost, and competition promotion.
-- [ ] Public copy says Beachcar surfaced the car and Jon bought it; it never says the agent bid or purchased.
-- [ ] Every `[PRE-UPLOAD: ...]` field is resolved from evidence, not memory or assumption.
+- [x] Every real-car frame maps to one of the seven confirmed files above or separately cleared creator-produced footage.
+- [x] The owner confirms permission for the seven selected images in the public video, thumbnail, deck, repository/site/demo, and cropped or animated derivatives.
+- [x] Cropping, animation, titles, thumbnail use, and repository/site/demo derivatives are within the owner-confirmed scope.
+- [x] No credit is required; the public description records permission without inventing an attribution.
+- [x] No generated car appears in the film, thumbnail, end card, or embedded phone/web capture.
+- [x] No auction logo, page chrome, copied listing prose, comments, usernames, unrelated thumbnails, or photographer watermark appears in the final master.
+- [x] No password, token, email address, notification, browser profile, face, plate, or private location appears without intent and permission.
+- [x] Chris narration is covered by the owner's active ElevenLabs Creator subscription; the final master uses no music.
+- [x] Public copy says Beachcar surfaced the car and Jon bought it; it never says the agent bid or purchased.
+- [x] The enumerated scope and no-credit fields are resolved without publishing private correspondence; duration, territory, and takedown terms remain deliberately unstated.
 
 If any gate fails at upload time, pause publication or replace the affected asset. Do not broaden the recorded permission to rescue a deadline.

@@ -9,7 +9,7 @@ const buildWeekAssetsDir = path.join(assetsDir, "build-week");
 const buildEnv = await loadEnv();
 const publishableKey = buildEnv.VITE_CLERK_PUBLISHABLE_KEY;
 const managedResearchCheckoutEnabled = buildEnv.VITE_MANAGED_RESEARCH_CHECKOUT_ENABLED === "true" ? "true" : "false";
-const appName = buildEnv.VITE_APP_NAME || "Beach Car Watch";
+const appName = buildEnv.VITE_APP_NAME || "Beachcar";
 const appShortName = buildEnv.VITE_APP_SHORT_NAME || "Beachcar";
 
 if (!publishableKey) {

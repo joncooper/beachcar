@@ -73,9 +73,11 @@ The review model is intentionally fast and physical. Swipe right to **Like**, fa
 
 ## Judge path
 
-The no-secret judge experience is a fixed, clearly labeled replay of the product contract. It runs locally without paid infrastructure or private auction credentials and never presents itself as a captured production run:
+The no-secret judge experience is a fixed, clearly labeled replay of the product contract. It is live at **[beachcar-build-week-demo.jon-cooper.workers.dev/demo](https://beachcar-build-week-demo.jon-cooper.workers.dev/demo)**, needs no account or private auction credential, and never presents itself as a captured production run.
 
-1. Run `bun run dev`, then open [`http://127.0.0.1:5173/demo`](http://127.0.0.1:5173/demo).
+To run the exact same replay locally, run `bun run dev`, then open [`http://127.0.0.1:5173/demo`](http://127.0.0.1:5173/demo).
+
+1. Open the hosted demo or local route above.
 2. **Proof** introduces the real Surrey Beachcar surfaced and its user bought.
 3. **Teach** turns plain-language taste into durable memory.
 4. **Research** shows the exact local Codex, signed-in browser, and MCP tool sequence represented by the fixture.
@@ -86,14 +88,14 @@ Automated coverage verifies the replay state and the MCP contract separately. Th
 
 See [the Build Week judge guide](docs/build-week/judge-guide.md) for the evaluation path and [the submission plan](docs/build-week/submission-plan.md) for the evidence checklist.
 
-The repository also includes the [final real-photo judge deck](docs/build-week/Beachcar-Build-Week-final.pptx), [timed storyboard](docs/build-week/storyboard.md), [submission copy and YouTube kit](docs/build-week/submission-copy.md), [artifact manifest](docs/build-week/artifact-manifest.md), and [two-round owner/friend acceptance guide](docs/build-week/friend-e2e-test.md). The 1:41 Creator-tier Chris narration cut is a local, Git-ignored upload master—not a repository download. Its current hash is recorded in the manifest and must be re-frozen after any rebuild; the submission should use the verified public YouTube URL as the film link and, absent a verified hosted experience, a permanent final-commit permalink to the [judge guide](docs/build-week/judge-guide.md) for working-project access.
+The repository also includes the [final real-photo judge deck](docs/build-week/Beachcar-Build-Week-final.pptx), [timed storyboard](docs/build-week/storyboard.md), [submission copy and YouTube kit](docs/build-week/submission-copy.md), [artifact manifest](docs/build-week/artifact-manifest.md), and [two-round owner/friend acceptance guide](docs/build-week/friend-e2e-test.md). The 1:41 Creator-tier Chris narration cut is a local, Git-ignored upload master—not a repository download. Its current hash is recorded in the manifest and must be re-frozen after any rebuild; the submission should use the verified public YouTube URL as the film link and the hosted replay above as working-project access.
 
 ## Build Week extension
 
 Beachcar existed before Build Week. The eligible submission is the meaningful extension built after the event opened: the local-Codex default, user-owned browser research, the Beachcar skill and MCP onboarding, the learning-loop demo, the new Surrey-led identity, and the judge-facing proof package.
 
 - **Baseline:** [`e8321d0`](https://github.com/joncooper/beachcar/commit/e8321d0c27edd0d21aca2936ef04ae601e0ef4af), July 13, 2026 at 10:48 a.m. ET.
-- **Candidate primary Codex task:** `019f8178-f7a2-7301-b9be-f5b0af997b70` (provisional; include it in the entry only after `/feedback` literally accepts or returns this value).
+- **Primary Codex task/session:** `019f8178-f7a2-7301-b9be-f5b0af997b70` (confirmed from the active task metadata on July 21; use it in the `/feedback` Session ID field).
 - **Detailed before/after record:** [Build Week changelog](docs/build-week/changelog.md).
 
 Codex accelerated repository analysis, product implementation, native and web UI iteration, automated tests, visual identity work, and submission collateral. The important human decisions remained human: rejecting the hosted-cost story, insisting on a user-owned browser, choosing a tiny evidence-backed shortlist, defining the feedback semantics, and recognizing that the car Beachcar found is the honest emotional proof.

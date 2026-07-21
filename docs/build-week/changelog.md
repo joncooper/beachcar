@@ -7,9 +7,10 @@ Beachcar is an existing project. This record separates the pre-challenge product
 - Challenge start: **July 13, 2026 at 9:00 a.m. PT / noon ET**.
 - Last committed baseline before the start: `e8321d0`, July 13 at 10:48:21 a.m. ET, `Add invite-only managed research pilot`.
 - First commit after the start: `16bf7ec`, July 13 at 12:24:11 p.m. ET, `Use GPT-4.1 mini for managed research`.
-- Final audited submission commit: `[PRE-SUBMISSION: paste the pushed commit hash after the repository is frozen]`.
+- Frozen audited artifact commit: `87b54ef1a5fd0fcf6cc9ea1e90b9a43595eb36fd`, July 21 at 3:22:17 p.m. ET, `Finalize the Beachcar Build Week submission`.
+- Final publicly submitted revision: `[PRE-SUBMISSION: paste the reachable pushed commit hash after release]`.
 
-Repository visibility is not the same as submission visibility. At this audit, the public repository exists and defaults to `main` at `b8cd9ca`, while the local Build Week branch is at `fbc9969` and four commits ahead of its remote tracking branch. The hashes below are local evidence until the final branch is pushed or merged and verified from a public fresh clone.
+Repository visibility is not the same as submission visibility. At this audit, the public repository exists and defaults to `main` at `b8cd9ca`; the remote Build Week branch is at `158c7bc`; and the frozen local artifact commit is `87b54ef`, five commits ahead of that remote branch. A Git push dry run confirmed that publishing the branch would be a fast-forward from `158c7bc` to `87b54ef`. The local hashes below are evidence only until the final revision is actually pushed and verified from a public fresh clone.
 
 The timestamp boundary establishes what was committed when. Eligibility is narrower than chronology: only the meaningful extension described below is presented as Build Week work.
 
@@ -51,12 +52,13 @@ The pink 1960 Willys DJ-3A Surrey discovery and purchase are also treated as pri
 | `ec284a8` | Jul 20, 11:52 p.m. | Installable skill, reduced-scope recurring token path, expanded MCP contract, five-scene replay, and tests | Deterministic/local proof; no friend E2E or public deployment claim |
 | `2358146` | Jul 21, 12:51 a.m. | Setup ZIP, friend test plan, rights checklist, handoff UI, deck, rough cut, and supporting tests | Package and test plan; not evidence that a friend completed it |
 | `fbc9969` | Jul 21, 12:54 p.m. | Chris-narrated final-cut builder, timed narration source, internal captions, and artifact documentation | Build source; public YouTube upload still external |
+| `87b54ef` | Jul 21, 3:22 p.m. | Final-film build source and verified local-master metadata, captions, thumbnail, final deck, deterministic judge replay, local skill, installer hardening, native identity assets, tests, and release documentation | Audited artifact commit; the ignored MP4 remains a local upload artifact. The static demo is deployed separately from this tree; public branch push and YouTube upload remain external |
 
 Any later local or uncommitted work counts only after it is reviewed, committed, pushed, and included in the exact repository revision submitted to judges. A local artifact is not evidence of a public deployment or completed external flow.
 
 ## Codex collaboration
 
-Candidate primary Codex task ID: `019f8178-f7a2-7301-b9be-f5b0af997b70`. It must be verified as the literal value accepted or returned by `/feedback` before submission.
+Primary Codex task/session ID: `019f8178-f7a2-7301-b9be-f5b0af997b70`. It was confirmed from the active task metadata on July 21. The [official FAQ](https://openai.devpost.com/details/faqs) calls this the `/feedback` Session ID; in Codex Desktop, `/status` can display the same task identifier when `/feedback` opens the feedback dialog.
 
 Codex with GPT-5.6 helped:
 
@@ -85,11 +87,10 @@ The local `/demo` route is intentionally deterministic. It uses fixed data to de
 - the shape of a deliberately small shortlist;
 - Love and Never again becoming explicit next-plan signals.
 
-It does **not** demonstrate a live scrape, a live remote MCP session, the historical Surrey discovery, a matching run on iPhone, a hosted public `/demo`, or a completed friend TestFlight journey. Committed tests cover the fixture and contracts, and the final working tree must rerun them after identity changes; even a green suite would not turn the fixture into live continuity evidence.
+It does **not** demonstrate a live scrape, a live remote MCP session, the historical Surrey discovery, a matching run on iPhone, or a completed friend TestFlight journey. The same fixed fixture is now publicly reachable at `https://beachcar-build-week-demo.jon-cooper.workers.dev/demo` on isolated static Worker version `91ede9db-4ec2-458b-984f-6ecd0bdd37c5`. Committed tests cover the fixture and contracts; even a green suite or public hosting does not turn the fixture into live continuity evidence.
 
 ## Not claimed as complete
 
-- public deployment of the exact submitted replay revision;
 - public YouTube upload and final URL;
 - clean-slate friend TestFlight end-to-end completion;
 - one live run ID observed across local Codex, MCP verification, and iPhone;

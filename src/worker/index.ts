@@ -271,14 +271,14 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url:
     return jsonResponse({
       ...automationEndpoints(request),
       oauth: {
-        status: "authorization_code_ready",
+        status: "metadata_ready",
         protectedResourceMetadataEndpoint: mcpProtectedResourceMetadataEndpoint(request),
         authorizationServerMetadataEndpoint: oauthAuthorizationServerMetadataEndpoint(request),
         authorizationEndpoint: oauthAuthorizationEndpoint(request),
         tokenEndpoint: oauthTokenEndpoint(request),
         registrationEndpoint: oauthRegistrationEndpoint(request),
         message:
-          "OAuth protected-resource discovery and authorization-code + PKCE endpoints are available. Scoped automation tokens remain available for preview clients that cannot complete OAuth yet.",
+          "OAuth metadata is available for interactive evaluation, but recurring Codex should use a reduced-scope, revocable automation token until browser consent and refresh have passed a deployed expiry test.",
       },
       defaultScopes: defaultAutomationScopes,
       tokens: await listAutomationTokens(env.DB, authUser.id),

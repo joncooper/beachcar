@@ -54,6 +54,7 @@ import {
 } from "./api";
 import { signInWithGoogle, useClerkBrowser } from "./clerk-browser";
 import type { BrowserClerk } from "./clerk-browser";
+import { BuildWeekDemo } from "./build-week/BuildWeekDemo";
 import type {
   AdminUserSummary,
   AdminOpsSummary,
@@ -657,6 +658,9 @@ function splitConcernText(value?: string): string[] {
 }
 
 export function App(props: { clerkPublishableKey: string }) {
+  if (window.location.pathname === "/demo") {
+    return <BuildWeekDemo />;
+  }
   const searchParams = new URLSearchParams(window.location.search);
   const demoMode = import.meta.env.DEV || isLocalDemoHost() ? searchParams.get("demo") : null;
   if (searchParams.get("admin") === "1") {

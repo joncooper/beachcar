@@ -1,4 +1,4 @@
 interface:
   display_name: "Beachcar Daily Run"
-  short_description: "Gather and publish Beachcar runs through hosted MCP"
-  default_prompt: "Use $beachcar-daily-run with the hosted Beachcar MCP endpoint to gather candidates, publish today's run, verify it, and record any AI/browser usage."
+  short_description: "Run a scoped local Beachcar search and publish it"
+  default_prompt: "Use $beachcar-daily-run with my reduced-scope Beachcar automation token to calibrate my taste, research with my logged-in local browser, then publish and verify today's shortlist. For a recurring run, first confirm this Mac is awake and Codex is running."

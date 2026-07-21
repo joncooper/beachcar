@@ -528,7 +528,6 @@ async function smokeAccountExportAndDeletion() {
   assert(account.user?.managedResearchEntitlement?.active === true, "Expected account export to include the managed entitlement.");
   assert(account.user?.aiUsage?.daily?.spendMicros >= 170000, "Expected account export user payload to include AI usage summary.");
   assert(Array.isArray(account.aiUsageEvents) && account.aiUsageEvents.some((event) => event.gatewayId === "local-smoke-gateway"), "Expected account export to include AI usage events.");
-  assert(Array.isArray(account.aiUsageEvents) && account.aiUsageEvents.some((event) => event.gatewayRequestId === mcpRun.gatewayRequestId), "Expected account export to include MCP-recorded AI usage events.");
   assert(Array.isArray(account.runs) && account.runs.some((run) => run.id === friendPublished.progress.publishedRunId), "Expected account export to include the Workflow-published run.");
   assert(Array.isArray(account.runs) && account.runs.some((run) => run.id === mcpRun.runId), "Expected account export to include the MCP-published run.");
   assert(Array.isArray(account.automationTokens) && account.automationTokens.some((token) => token.id === mcpRun.tokenId && token.revokedAt), "Expected account export to include revoked automation tokens.");
@@ -586,6 +585,7 @@ async function smokeRemoteMcp(friendEmail) {
   assert(metadata.resource === status.mcpEndpoint, "Expected protected-resource metadata to describe the MCP endpoint as the resource.");
   assert(Array.isArray(metadata.authorization_servers) && metadata.authorization_servers.includes(baseUrl), "Expected protected-resource metadata to advertise this authorization server.");
   assert(Array.isArray(metadata.scopes_supported) && metadata.scopes_supported.includes("runs:publish"), "Expected protected-resource metadata to list MCP scopes.");
+  assert(Array.isArray(metadata.scopes_supported) && metadata.scopes_supported.includes("setup:write"), "Expected metadata to list the taste-calibration write scope.");
   assert(Array.isArray(metadata.bearer_methods_supported) && metadata.bearer_methods_supported.includes("header"), "Expected metadata to advertise header bearer tokens.");
   const authServer = await requestJson("/.well-known/oauth-authorization-server", { email: friendEmail });
   assert(authServer.authorization_endpoint === `${baseUrl}/oauth/authorize`, "Expected authorization-server metadata to advertise the authorization endpoint.");
@@ -606,26 +606,47 @@ async function smokeRemoteMcp(friendEmail) {
   const created = await requestJson("/api/automation/tokens", {
     email: friendEmail,
     method: "POST",
-    body: { label: "Local smoke cloud agent" },
+    body: { label: "Local smoke Codex" },
   });
   assert(created.token?.startsWith("bcauto_"), "Expected automation token secret to be returned once.");
   assert(created.record?.id, "Expected automation token creation to return a redacted record.");
+  assert(created.record?.scopes?.includes("setup:write"), "Expected fresh automation tokens to include the taste-calibration write scope.");
 
   const tools = await mcpRequest(created.token, "tools/list");
   assert(Array.isArray(tools.tools) && tools.tools.some((tool) => tool.name === "publish_run"), "Expected MCP tools/list to expose publish_run.");
+  assert(Array.isArray(tools.tools) && tools.tools.some((tool) => tool.name === "save_taste_calibration"), "Expected MCP tools/list to expose save_taste_calibration.");
+  assert(
+    tools.tools.every((tool) => typeof tool.annotations?.readOnlyHint === "boolean" && typeof tool.annotations?.destructiveHint === "boolean"),
+    "Expected every MCP tool to advertise read-only and destructive annotations.",
+  );
 
   const setup = await mcpTool(created.token, "get_setup_context", {});
   assert(setup.user?.email === friendEmail, "Expected MCP setup context to be scoped to the friend.");
+  const aiUsageBefore = aiUsageAccountingSnapshot(setup);
+  const calibration = await mcpTool(created.token, "save_taste_calibration", {
+    showMore: ["open-air", "simple"],
+    avoid: ["rust", "salvage"],
+    notes: "Open summer cars that are easy to maintain.",
+    avoidNotes: "No title stories or structural corrosion.",
+  });
+  assert(calibration.ok === true, "Expected save_taste_calibration to succeed.");
+  assert(calibration.profile?.profile?.tasteCalibration?.includes("open-air"), "Expected taste calibration to persist through MCP.");
+  assert(calibration.profile?.profile?.avoidCalibration?.includes("rust"), "Expected avoid calibration to persist through MCP.");
   const batCache = await mcpTool(created.token, "search_bat_cache", { terms: ["samurai"], limit: 5 });
   assert(batCache.mode === "d1_cache", "Expected search_bat_cache to use the D1 source cache.");
   assert(["hit", "miss", "refreshed", "stale_refresh_failed"].includes(batCache.cacheStatus), "Expected search_bat_cache to report cache status.");
   assert(batCache.status?.source === "bringatrailer", "Expected search_bat_cache to return Bring a Trailer cache status.");
 
   const runId = `mcp-smoke-${Date.now()}`;
-  const published = await mcpTool(created.token, "publish_run", {
-    runId,
-    reportMarkdown: "Local smoke MCP run.",
-    sourceSummary: { smoke: true, source: "remote-mcp-smoke" },
+  const plan = await mcpTool(created.token, "plan_daily_research", { reason: "local Codex golden-path smoke" });
+  assert(plan.executionPolicy?.id === "local-codex-browser-v1", "Expected plan_daily_research to return the stable local Codex policy.");
+  assert(plan.executionPolicy?.executor === "local-codex", "Expected local Codex to be the daily research executor.");
+  assert(plan.executionPolicy?.browserSession === "user-signed-in-local-browser", "Expected research to use the user's signed-in local browser.");
+  assert(plan.executionPolicy?.cloudAgent === false, "Expected the daily research plan to forbid a cloud agent.");
+  assert(plan.executionPolicy?.managedAiAccounting === "none", "Expected local Codex research to use no Beachcar managed AI accounting.");
+  assert(plan.executionPolicy?.usageAccounting === "explicit-known-external-cost-only", "Expected record_usage to require an explicit, known external cost.");
+
+  const submitted = await mcpTool(created.token, "submit_candidates", {
     listings: [
       {
         section: "Strong fits",
@@ -637,29 +658,47 @@ async function smokeRemoteMcp(friendEmail) {
         total: "$11,025 incl. buyer fee estimate",
         location: "Northeast",
         timeLeft: "manual smoke",
-        why: "Exercises remote MCP publish_run without a live source fetch.",
+        why: "Exercises the local Codex MCP golden path without a live source fetch.",
         concerns: "Synthetic smoke listing; do not treat as a real auction.",
-        images: [],
+        images: [`${baseUrl}/icon-512.png`],
       },
     ],
   });
+  assert(submitted.ok === true, `Expected submit_candidates to accept the golden candidate; warnings: ${JSON.stringify(submitted.warnings || [])}`);
+  assert(submitted.listingCount === 1 && submitted.listings?.length === 1, "Expected submit_candidates to return exactly one normalized listing.");
+
+  const published = await mcpTool(created.token, "publish_run", {
+    runId,
+    reportMarkdown: "Local smoke MCP run.",
+    sourceSummary: {
+      smoke: true,
+      source: "remote-mcp-smoke",
+      execution: "local-codex-browser",
+      browserSession: "user-signed-in-local-browser",
+      managedAiUsageRecorded: false,
+    },
+    listings: submitted.listings,
+  });
   assert(published.import?.runId === runId, "Expected MCP publish_run to import the requested run id.");
+  assert(published.import?.listingCount === submitted.listingCount, "Expected publish_run to import the submitted listing count.");
+
+  const verified = await mcpTool(created.token, "verify_latest_run", {});
+  assert(verified.summary?.id === runId, "Expected verify_latest_run to read back the published run id.");
+  assert(verified.summary?.listingCount === submitted.listingCount, "Expected verify_latest_run to read back the published listing count.");
+  assert(verified.latestRun?.listings?.length === submitted.listingCount, "Expected verify_latest_run to return the published listings.");
+
   const latestAfterMcp = await requestJson("/api/runs/latest", { email: friendEmail });
   assert(latestAfterMcp.id === runId, "Expected MCP-published run to become the friend's latest run.");
+  assert(latestAfterMcp.listings?.length === submitted.listingCount, "Expected the app API to expose the same published listing count.");
+  assert(latestAfterMcp.sourceSummary?.execution === "local-codex-browser", "Expected the published run to identify local Codex browser execution.");
+  assert(latestAfterMcp.sourceSummary?.managedAiUsageRecorded === false, "Expected the published run to declare zero managed AI accounting.");
 
-  const gatewayRequestId = `mcp-smoke-usage-${Date.now()}`;
-  const usage = await mcpTool(created.token, "record_usage", {
-    provider: "local-smoke",
-    model: "none",
-    operation: "remote-mcp-smoke",
-    status: "cached",
-    gatewayRequestId,
-    inputTokens: 12,
-    outputTokens: 4,
-    costMicros: 0,
-    metadata: { smoke: true },
-  });
-  assert(usage.event?.gatewayRequestId === gatewayRequestId, "Expected MCP record_usage to write an AI usage event.");
+  const setupAfter = await mcpTool(created.token, "get_setup_context", {});
+  const aiUsageAfter = aiUsageAccountingSnapshot(setupAfter);
+  assert(
+    JSON.stringify(aiUsageAfter) === JSON.stringify(aiUsageBefore),
+    `Expected the local Codex MCP golden path to add zero Beachcar AI usage; before=${JSON.stringify(aiUsageBefore)} after=${JSON.stringify(aiUsageAfter)}`,
+  );
 
   const events = await requestJson("/api/automation/events", { email: friendEmail });
   assert(Array.isArray(events.events) && events.events.some((event) => event.eventType === "tool.publish_run"), "Expected automation events to include publish_run.");
@@ -671,11 +710,23 @@ async function smokeRemoteMcp(friendEmail) {
   const revokedStatus = await requestJson("/api/automation/status", { email: friendEmail });
   assert(revokedStatus.tokens.some((token) => token.id === created.record.id && token.revokedAt), "Expected automation status to show the revoked token.");
 
-  return { runId, tokenId: created.record.id, oauthAccessTokenId: oauthRun.oauthAccessTokenId, gatewayRequestId };
+  return { runId, tokenId: created.record.id, oauthAccessTokenId: oauthRun.oauthAccessTokenId };
+}
+
+function aiUsageAccountingSnapshot(setupContext) {
+  return {
+    recentEventCount: Array.isArray(setupContext.recentAiUsageEvents) ? setupContext.recentAiUsageEvents.length : 0,
+    dailyEventCount: setupContext.aiUsage?.daily?.eventCount ?? 0,
+    dailySpendMicros: setupContext.aiUsage?.daily?.spendMicros ?? 0,
+    dailyTotalTokens: setupContext.aiUsage?.daily?.totalTokens ?? 0,
+    monthlyEventCount: setupContext.aiUsage?.monthly?.eventCount ?? 0,
+    monthlySpendMicros: setupContext.aiUsage?.monthly?.spendMicros ?? 0,
+    monthlyTotalTokens: setupContext.aiUsage?.monthly?.totalTokens ?? 0,
+  };
 }
 
 async function smokeOAuthMcp(friendEmail, resource) {
-  const scope = "setup:read sources:read runs:publish usage:write events:read";
+  const scope = "setup:read setup:write sources:read runs:publish usage:write events:read";
   const redirectUri = "http://127.0.0.1:8787/oauth/callback-smoke";
   const registered = await requestJson("/oauth/register", {
     method: "POST",

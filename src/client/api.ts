@@ -23,6 +23,7 @@ import type {
   ResearchMode,
   UserPayload,
   OAuthAccessTokenRecord,
+  AutomationScope,
 } from "../shared/types";
 
 const latestRunCachePrefix = "beachcar-watch:last-run";
@@ -107,11 +108,11 @@ export async function getAutomationStatus(): Promise<AutomationStatus> {
   return requestJson<AutomationStatus>("/api/automation/status");
 }
 
-export async function createAutomationToken(label: string): Promise<AutomationTokenCreateResult> {
+export async function createAutomationToken(label: string, scopes?: AutomationScope[]): Promise<AutomationTokenCreateResult> {
   return requestJson<AutomationTokenCreateResult>("/api/automation/tokens", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ label }),
+    body: JSON.stringify({ label, ...(scopes ? { scopes } : {}) }),
   });
 }
 

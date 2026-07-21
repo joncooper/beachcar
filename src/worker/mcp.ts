@@ -15,6 +15,7 @@ import {
   recordAutomationEvent,
   touchAutomationToken,
   touchOAuthAccessToken,
+  upsertProfile,
   type AuthenticatedAutomationToken,
   type UserScope,
 } from "./db";
@@ -39,19 +40,39 @@ interface McpSession {
   scope: UserScope;
 }
 
+export const localCodexExecutionPolicy = {
+  id: "local-codex-browser-v1",
+  executor: "local-codex",
+  browserSession: "user-signed-in-local-browser",
+  cloudAgent: false,
+  managedAiAccounting: "none",
+  usageAccounting: "explicit-known-external-cost-only",
+} as const;
+
+export const localCodexResearchSteps = [
+  "Run this plan from Codex on the user's desktop.",
+  "Use public source tools first. For rendered or authenticated sites, use the user's signed-in local Codex browser and ask the user to sign in when needed.",
+  "Never hand browsing or research to a cloud agent.",
+  "Validate each candidate against budget, location, title/rust/project risk, and the feedback steering lists.",
+  "Call submit_candidates before publish_run when candidate data came from browser research, scraping, or manual extraction.",
+  "Do not call record_usage for local Codex or local browser work. Only call it when the user explicitly asks to record a real, known external cost.",
+  "Call publish_run once with the final shortlist, then call verify_latest_run and confirm the run id and listing count.",
+] as const;
+
 export const mcpToolDefinitions = [
   {
     name: "get_setup_context",
-    description: "Read the signed-in friend's Beachcar setup context: profile, source settings, AI budget status, feedback steering, and latest run summary.",
+    description: "Read the signed-in user's Beachcar setup context: profile, source settings, AI budget status, feedback steering, and latest run summary.",
     inputSchema: {
       type: "object",
       properties: {},
       additionalProperties: false,
     },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
     name: "plan_daily_research",
-    description: "Create a practical daily research plan from the user's profile, enabled sources, feedback, and current budget constraints.",
+    description: "Create a local-Codex research plan that uses the user's signed-in local browser, never a cloud browsing agent.",
     inputSchema: {
       type: "object",
       properties: {
@@ -59,6 +80,31 @@ export const mcpToolDefinitions = [
       },
       additionalProperties: false,
     },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  {
+    name: "save_taste_calibration",
+    description: "Save a confirmed taste calibration for this user's local Beachcar automation. This updates only taste/avoid memory and never enables managed research or a cloud schedule.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        showMore: {
+          type: "array",
+          items: { type: "string", enum: ["open-air", "simple", "kid-plausible", "small-4x4", "no-reserve", "quirky-clean"] },
+          description: "Structured tastes to seek out.",
+        },
+        avoid: {
+          type: "array",
+          items: { type: "string", enum: ["rust", "salvage", "heavy-project", "overbuilt", "fragile", "price-chasing"] },
+          description: "Structured deal-breakers to avoid.",
+        },
+        notes: { type: "string", description: "Optional plain-language tastes, priorities, or examples." },
+        avoidNotes: { type: "string", description: "Optional plain-language deal-breakers." },
+      },
+      required: ["showMore", "avoid"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
     name: "search_bat_cache",
@@ -76,6 +122,7 @@ export const mcpToolDefinitions = [
       },
       additionalProperties: false,
     },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
   {
     name: "submit_candidates",
@@ -88,6 +135,7 @@ export const mcpToolDefinitions = [
       required: ["listings"],
       additionalProperties: false,
     },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
     name: "publish_run",
@@ -104,10 +152,11 @@ export const mcpToolDefinitions = [
       },
       additionalProperties: false,
     },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
   {
     name: "record_usage",
-    description: "Record AI/token/cost usage for this user's external automation run.",
+    description: "Record a real, known external AI cost only when the user explicitly asks. Never use this for local Codex or local browser work.",
     inputSchema: {
       type: "object",
       properties: {
@@ -130,6 +179,7 @@ export const mcpToolDefinitions = [
       },
       additionalProperties: false,
     },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
   {
     name: "verify_latest_run",
@@ -139,6 +189,7 @@ export const mcpToolDefinitions = [
       properties: {},
       additionalProperties: false,
     },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
     name: "list_automation_events",
@@ -150,6 +201,7 @@ export const mcpToolDefinitions = [
       },
       additionalProperties: false,
     },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
 ] as const;
 
@@ -161,7 +213,7 @@ export async function handleMcpRequest(request: Request, env: Env, ctx: Executio
       endpoint: new URL("/mcp", request.url).toString(),
       protectedResourceMetadataEndpoint: mcpProtectedResourceMetadataEndpoint(request),
       authorization: "Bearer automation token from Beachcar Preferences > Connect Automation",
-      tools: mcpToolDefinitions.map(({ name, description }) => ({ name, description })),
+      tools: mcpToolDefinitions.map(({ name, description, annotations }) => ({ name, description, annotations })),
     });
   }
 
@@ -238,6 +290,7 @@ async function callTool(
 ): Promise<Record<string, unknown>> {
   if (name === "get_setup_context") return getSetupContext(session, env);
   if (name === "plan_daily_research") return planDailyResearch(session, env, args);
+  if (name === "save_taste_calibration") return saveTasteCalibration(session, env, args);
   if (name === "search_bat_cache") return searchBatPublicFeed(session, env, args);
   if (name === "submit_candidates") return submitCandidates(session, env, args);
   if (name === "publish_run") return publishRun(session, env, ctx, args);
@@ -302,13 +355,8 @@ async function planDailyResearch(session: McpSession, env: Env, args: Record<str
     })),
     feedbackSteering: feedback.steering,
     latestRun: latestRunSummary(latestRun),
-    steps: [
-      "Use source tools for public feeds first; use a browser-capable cloud agent for sites that require rendered pages or user sessions.",
-      "Validate each candidate against budget, location, title/rust/project risk, and the feedback steering lists.",
-      "Call submit_candidates before publish_run if the candidate payload was produced from scraped or handwritten data.",
-      "Call record_usage for every model/tool harness call with token and cost estimates.",
-      "Call publish_run once with the final shortlist, then verify_latest_run.",
-    ],
+    executionPolicy: localCodexExecutionPolicy,
+    steps: localCodexResearchSteps,
     publishContract: {
       endpoint: "MCP tool publish_run",
       requiredListingFields: ["site", "title", "url", "lane", "section", "bid", "total", "why", "concerns", "images"],
@@ -316,6 +364,41 @@ async function planDailyResearch(session: McpSession, env: Env, args: Record<str
       dossierGuidance: "Attach an optional `dossier` object (rich detail from the listing page) to power the app's full per-car view; every field is optional, invalid types are dropped, and valueScore is a 0..1 CHEAP..RICH position. See docs/publishing.md.",
       imageGuidance: "Include useful source image URLs; Beachcar will mirror and serve cached thumb/deck/full variants.",
     },
+  };
+}
+
+const tasteCalibrationIds = new Set(["open-air", "simple", "kid-plausible", "small-4x4", "no-reserve", "quirky-clean"]);
+const avoidCalibrationIds = new Set(["rust", "salvage", "heavy-project", "overbuilt", "fragile", "price-chasing"]);
+
+async function saveTasteCalibration(session: McpSession, env: Env, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+  assertScope(session, "setup:write");
+  const showMore = calibrationIds(args.showMore, tasteCalibrationIds, "showMore");
+  const avoid = calibrationIds(args.avoid, avoidCalibrationIds, "avoid");
+  const notes = boundedCalibrationNote(args.notes, "notes");
+  const avoidNotes = boundedCalibrationNote(args.avoidNotes, "avoidNotes");
+  const existingProfile = recordFromUnknown(session.user.profile?.profile);
+  const profile = await upsertProfile(env.DB, session.token.userId, {
+    profile: {
+      ...existingProfile,
+      tasteNotes: calibrationNarrative("Selected tastes", showMore, notes),
+      avoidNotes: calibrationNarrative("Selected avoids", avoid, avoidNotes),
+      tasteNotesFreeform: notes,
+      avoidNotesFreeform: avoidNotes,
+      tasteCalibration: showMore,
+      avoidCalibration: avoid,
+      localCodexTasteUpdatedAt: new Date().toISOString(),
+    },
+  });
+  await recordToolEvent(env, session, "tool.save_taste_calibration", {
+    tasteCount: showMore.length,
+    avoidCount: avoid.length,
+    hasTasteNotes: Boolean(notes),
+    hasAvoidNotes: Boolean(avoidNotes),
+  });
+  return {
+    ok: true,
+    profile,
+    calibration: { showMore, avoid, notes, avoidNotes },
   };
 }
 
@@ -602,6 +685,27 @@ function arrayFromUnknown(value: unknown): unknown[] {
 
 function stringValue(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function calibrationIds(value: unknown, allowed: Set<string>, field: string): string[] {
+  if (!Array.isArray(value)) throw new Error(`${field} must be an array`);
+  const values = value.map((item) => stringValue(item)).filter(Boolean);
+  if (values.length > 12) throw new Error(`${field} may contain at most 12 items`);
+  const unique = [...new Set(values)];
+  const invalid = unique.find((item) => !allowed.has(item));
+  if (invalid) throw new Error(`${field} contains an unsupported calibration id: ${invalid}`);
+  return unique;
+}
+
+function boundedCalibrationNote(value: unknown, field: string): string {
+  if (value === undefined || value === null) return "";
+  if (typeof value !== "string") throw new Error(`${field} must be a string`);
+  return value.trim().slice(0, 1_000);
+}
+
+function calibrationNarrative(label: string, selected: string[], notes: string): string {
+  const calibration = selected.length ? `${label}: ${selected.join(", ")}.` : "";
+  return [notes, calibration].filter(Boolean).join(" ");
 }
 
 function limitFromUnknown(value: unknown, fallback: number, max: number): number {

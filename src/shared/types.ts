@@ -348,7 +348,7 @@ export interface AiUsageEventRecord {
   createdAt: string;
 }
 
-export type AutomationScope = "setup:read" | "sources:read" | "runs:publish" | "usage:write" | "events:read";
+export type AutomationScope = "setup:read" | "setup:write" | "sources:read" | "runs:publish" | "usage:write" | "events:read";
 
 export interface AutomationTokenRecord {
   id: string;

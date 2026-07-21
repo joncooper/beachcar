@@ -415,7 +415,7 @@ export interface AuthenticatedAutomationToken {
   automationTokenId?: string | null;
 }
 
-export const defaultAutomationScopes: AutomationScope[] = ["setup:read", "sources:read", "runs:publish", "usage:write", "events:read"];
+export const defaultAutomationScopes: AutomationScope[] = ["setup:read", "setup:write", "sources:read", "runs:publish", "events:read"];
 export const managedResearchFeature = "managed_research" as const;
 export const managedResearchRequiredError = "Managed Research subscription required";
 export const missingByokAliasError = "BYOK mode requires an AI Gateway key alias";
@@ -3682,7 +3682,7 @@ function parseAutomationScopes(value: string): AutomationScope[] {
 }
 
 function isAutomationScope(value: unknown): value is AutomationScope {
-  return value === "setup:read" || value === "sources:read" || value === "runs:publish" || value === "usage:write" || value === "events:read";
+  return value === "setup:read" || value === "setup:write" || value === "sources:read" || value === "runs:publish" || value === "usage:write" || value === "events:read";
 }
 
 async function getOAuthAccessTokenById(db: D1Database, userId: string, id: string): Promise<OAuthAccessTokenRecord | null> {

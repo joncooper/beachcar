@@ -99,7 +99,7 @@ That policy is inspectable in the skill. A real scheduled Garage Session complet
 | The local-agent/MCP contract is implemented | Skill, installer, MCP tools, and contract tests in the public Build Week branch | No claim that a friend's full remote flow or live continuity has passed |
 | Feedback can steer the next plan | Explicit feedback fields, fixture transformation, and tests | Replay evidence is deterministic, not a production capture |
 | Garage Session is consent-first | Detailed skill policy with separate opt-in, isolation, review packet, and no-send gate | No claim of a completed scheduled friend session |
-| Public video package exists locally | The local working tree contains a 100.83-second MP4 with a visible fixed Teach → Research replay, matching timing-reference SRT, and thumbnail | The local MP4 is not a submission link; use the public YouTube URL below after signed-out verification |
+| The public film is reachable | The exact audited 100.83-second master is public at [youtu.be/hE89cMBgJCw](https://youtu.be/hE89cMBgJCw); anonymous YouTube oEmbed resolution and the public custom-thumbnail rendition were verified after publication | The ignored local MP4 is the frozen upload source, not a repository download |
 | Real-car photo use has a permission basis | Owner represents that the selling dealer granted permission for the selected images across the public film, thumbnail, deck, repository/site/demo, and cropped or animated derivatives, with no credit required | The written permission itself was not independently inspected |
 
 ## Submission access fields
@@ -108,7 +108,7 @@ That policy is inspectable in the skill. A real scheduled Garage Session complet
 - Submitted revision: use the exact commit URL attached to the Devpost entry
 - Local working-project path: the commands and `127.0.0.1` URL above
 - Working-project access: https://beachcar-build-week-demo.jon-cooper.workers.dev/demo
-- Public YouTube URL: `[PRE-UPLOAD: paste after the final 100.83-second cut is public and playable]`
+- Public YouTube URL: https://youtu.be/hE89cMBgJCw
 - Primary Codex task/session ID for the `/feedback` field: `019f8178-f7a2-7301-b9be-f5b0af997b70` - confirmed from the active task metadata on July 21
 
 Do not substitute an unverified deployment, TestFlight invitation, or private URL for one of these fields.

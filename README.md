@@ -14,6 +14,10 @@
   OpenAI Build Week 2026 · Apps for Your Life
 </p>
 
+<p align="center">
+  <strong><a href="https://youtu.be/hE89cMBgJCw">Watch the 1:41 film</a> · <a href="https://beachcar-build-week-demo.jon-cooper.workers.dev/demo">Try the no-login demo</a></strong>
+</p>
+
 Beachcar is for people who love charming, unusual cars but do not want auction hunting to become a second job. You teach it why a car feels right, not just which filters it matches. Your local Codex does the open-ended research in the browser you already use. Beachcar remembers your taste and feedback, gives Codex remote MCP tools, and turns the results into a polished iPhone shortlist.
 
 The result is deliberately small: a few candidates with fit reasoning, market context, bid discipline, risks, sources, and honest uncertainty—not an endless feed of links.
@@ -88,7 +92,7 @@ Automated coverage verifies the replay state and the MCP contract separately. Th
 
 See [the Build Week judge guide](docs/build-week/judge-guide.md) for the evaluation path and [the submission plan](docs/build-week/submission-plan.md) for the evidence checklist.
 
-The repository also includes the [final real-photo judge deck](docs/build-week/Beachcar-Build-Week-final.pptx), [timed storyboard](docs/build-week/storyboard.md), [submission copy and YouTube kit](docs/build-week/submission-copy.md), [artifact manifest](docs/build-week/artifact-manifest.md), and [two-round owner/friend acceptance guide](docs/build-week/friend-e2e-test.md). The 1:41 Creator-tier Chris narration cut is a local, Git-ignored upload master—not a repository download. Its current hash is recorded in the manifest and must be re-frozen after any rebuild; the submission should use the verified public YouTube URL as the film link and the hosted replay above as working-project access.
+The repository also includes the [final real-photo judge deck](docs/build-week/Beachcar-Build-Week-final.pptx), [timed storyboard](docs/build-week/storyboard.md), [submission copy and YouTube kit](docs/build-week/submission-copy.md), [artifact manifest](docs/build-week/artifact-manifest.md), and [two-round owner/friend acceptance guide](docs/build-week/friend-e2e-test.md). The 1:41 Creator-tier Chris narration cut is a local, Git-ignored master—not a repository download. Its exact hash is recorded in the manifest; the finished film is [public on YouTube](https://youtu.be/hE89cMBgJCw), and the hosted replay above is the working-project access path.
 
 ## Build Week extension
 

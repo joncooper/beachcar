@@ -7,7 +7,7 @@ Beachcar is an existing project. This record separates the pre-challenge product
 - Challenge start: **July 13, 2026 at 9:00 a.m. PT / noon ET**.
 - Last committed baseline before the start: `e8321d0`, July 13 at 10:48:21 a.m. ET, `Add invite-only managed research pilot`.
 - First commit after the start: `16bf7ec`, July 13 at 12:24:11 p.m. ET, `Use GPT-4.1 mini for managed research`.
-- Previous audited artifact commit: `bb7645d5ae52da946baa5f16e0f9736841d0ec45`, July 21, `Publish the Beachcar judge demo handoff`.
+- Public creative-release baseline: `f651add2668f1e05b8f61468598409a141a3ff26`, July 21, `Polish the Beachcar release package`.
 - Final publicly submitted revision: use the exact commit URL attached to the Devpost entry.
 
 Repository visibility is not the same as submission visibility. The public repository still defaults to an older `main`, so the submission uses the public [`codex/agent-connected-subscriptions`](https://github.com/joncooper/beachcar/tree/codex/agent-connected-subscriptions) branch and the exact release commit linked from Devpost. Judges should not be sent to the repository root alone.
@@ -54,6 +54,7 @@ The pink 1960 Willys DJ-3A Surrey discovery and purchase are also treated as pri
 | `fbc9969` | Jul 21, 12:54 p.m. | Chris-narrated final-cut builder, timed narration source, internal captions, and artifact documentation | Build source; public YouTube upload still external |
 | `87b54ef` | Jul 21, 3:22 p.m. | Final-film build source and verified local-master metadata, captions, thumbnail, final deck, deterministic judge replay, local skill, installer hardening, native identity assets, tests, and release documentation | Audited artifact commit; the ignored MP4 remains a local upload artifact. The static demo is deployed separately from this tree; public branch push and YouTube upload remain external |
 | `bb7645d` | Jul 21 | Public static judge demo handoff and release links | Public Build Week branch baseline; the final release commit is linked from Devpost |
+| `f651add` | Jul 21 | Agency-style copy, thumbnail, and final-film overlap polish | Public creative-release baseline; the later metadata-only commit records the verified YouTube URL |
 
 Any later local or uncommitted work counts only after it is reviewed, committed, pushed, and included in the exact repository revision submitted to judges. A local artifact is not evidence of a public deployment or completed external flow.
 
@@ -92,11 +93,10 @@ It does **not** demonstrate a live scrape, a live remote MCP session, the histor
 
 ## Not claimed as complete
 
-- public YouTube upload and final URL;
 - clean-slate friend TestFlight end-to-end completion;
 - one live run ID observed across local Codex, MCP verification, and iPhone;
 - unattended recurring OAuth or refresh-token support;
 - a completed scheduled Garage Session or deployed extension;
 - independent inspection of the dealer/photographer's written photo license or credit terms.
 
-These remain external validation or release tasks. They are not silently promoted into Build Week achievements.
+These remain external product-validation tasks. They are not silently promoted into Build Week achievements.

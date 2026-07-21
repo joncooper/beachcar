@@ -58,7 +58,7 @@ Its success metric is not more listings or more time browsing. It is one unusual
 - Submitted revision: use the exact commit URL attached to the Devpost entry
 - Local working-project instructions: [judge-guide.md](judge-guide.md)
 - Working-project access: https://beachcar-build-week-demo.jon-cooper.workers.dev/demo
-- Public YouTube demo: `[PRE-UPLOAD: final public YouTube URL]`
+- Public YouTube demo: https://youtu.be/hE89cMBgJCw
 - Surrey case study: https://bringatrailer.com/listing/1960-jeep-dj-3a/
 - Primary Codex task/session ID: `019f8178-f7a2-7301-b9be-f5b0af997b70` — confirmed from the active task metadata on July 21; this is the identifier to enter in the `/feedback` Session ID field
 - Photo credit: none required; selected car photography used with the selling dealer's permission, as confirmed by the owner
@@ -107,11 +107,11 @@ These rounded chapter boundaries keep every chapter at least 10 seconds long and
 
 ### Local upload assets
 
-- Thumbnail master: local production file `docs/build-week/Beachcar-Build-Week-thumbnail.jpg` (not a public repository link until tracked and pushed)
-- Video master: local production file `docs/build-week/Beachcar-Build-Week-final.mp4` (intentionally ignored by Git; upload it to YouTube and use the verified public YouTube URL in the entry)
+- Thumbnail master: tracked production file `docs/build-week/Beachcar-Build-Week-thumbnail.jpg`; the same artwork is serving on the public YouTube video
+- Video master: local production file `docs/build-week/Beachcar-Build-Week-final.mp4` (intentionally ignored by Git); the exact audited master is public at https://youtu.be/hE89cMBgJCw
 - SRT companion: `docs/build-week/Beachcar-Build-Week-final.srt` is a timing reference and localization source. The MP4 already has burned-in captions, so do **not** attach the SRT to that upload. Use the SRT only with a separately exported captionless master.
 - Working-project fallback: the hosted replay above is verified; a permanent final-commit GitHub permalink to `docs/build-week/judge-guide.md` remains the local-run fallback. The local MP4 path is neither a film URL nor working-project access.
-- Before upload, inspect the thumbnail and every video frame for required credit, uncleared auction chrome, private data, and generated-car imagery.
+- Final inspection found no required credit, uncleared auction chrome, private data, generated-car imagery, or overlapping on-screen copy.
 
 ### Tags
 
@@ -124,9 +124,9 @@ The submission deadline is **July 21, 2026 at 5:00 p.m. PDT / 8:00 p.m. EDT**.
 - [x] Watch and independently audit the exact 100.83-second master from beginning to end with sound and captions.
 - [x] Confirm the cut visibly demonstrates the working project through the privacy-scrubbed Teach → Research interaction.
 - [x] Confirm the selected real-car files, public video/thumbnail/deck/repository/site/demo uses, cropped or animated derivatives, and that no credit is required.
-- [ ] Upload the burned-caption master to YouTube as **Public**, add the chapters, leave YouTube's SRT track disabled, and confirm picture, sound, and captions in a signed-out window. Attach the SRT only if a captionless master is exported instead.
-- [ ] Replace every `[PRE-UPLOAD: ...]` field after signed-out verification; do not guess a public URL.
-- [ ] Push or merge the complete Build Week branch, confirm the repository is public, and verify that a fresh clone of the submitted revision contains `/demo`, setup, and tests.
+- [x] Upload the burned-caption master to YouTube as **Public**, add the chapters and custom thumbnail, leave YouTube's SRT track disabled, and verify the public video without the signed-in Studio session.
+- [x] Replace every pre-upload field with the verified public URL.
+- [x] Push the complete Build Week branch and confirm its release revision is publicly reachable; the exact final metadata commit goes in Devpost.
 - [x] Verify the isolated working-project URL, root redirect, all five scene URLs, and exact real-photo asset signed out.
 - [x] Confirm the primary task/session ID from the active Codex task metadata; enter `019f8178-f7a2-7301-b9be-f5b0af997b70` and select **Apps for Your Life**.
 - [x] Explain in audio what was built, how Codex helped build it, and how GPT-5.6 works inside the product.

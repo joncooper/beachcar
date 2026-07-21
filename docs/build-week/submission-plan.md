@@ -47,13 +47,13 @@ The current final cut is 100.83 seconds (1:40.83), with a matching timing-refere
 | Item | Status on July 21 | Submission treatment |
 | --- | --- | --- |
 | Actual 1960 Willys Surrey purchase | Owner states that Beachcar found the car and that he bought it; the public listing identifies the car | Use as a pre-Build Week case study. Never say Beachcar bid or purchased |
-| Public repository | The Build Week branch is public at `codex/agent-connected-subscriptions`; `bb7645d` is the previous audited implementation commit | Push the final release revision and attach its exact commit URL to Devpost; do not send judges to the older default `main` |
+| Public repository | The Build Week branch is public at `codex/agent-connected-subscriptions`; `f651add` is the public creative-release baseline | Attach the exact final metadata commit URL to Devpost; do not send judges to the older default `main` |
 | Exact local judge path | Implemented at `/demo?scene=...`; no account or secret required | Lead judges through the commands in `judge-guide.md` |
 | Deterministic replay | Implemented as a five-scene fixed fixture with focused tests | Label it as replay, not live research or the original Surrey run; rerun the suite after final identity changes |
 | Local Codex skill and Beachcar MCP | Implemented in the repository with scoped tools and tests | Describe the contract and supported token path without claiming a friend completed it |
 | Explicit feedback steering | Implemented in the fixture, product state, and tests | Demonstrate Love and Never again changing the next plan |
 | Garage Session policy | Implemented in the skill as separate opt-in, isolated local work, and a review gate | Do not claim a scheduled clean-slate user session has passed |
-| Final video package | Local 100.83-second MP4, SRT, thumbnail, narration, and build source exist; strict decode, A/V, caption, privacy, and independent visual-story audits passed on exact SHA-256 `1d8246ac...`; the cut visibly moves the fixed local replay from Teach to Research without covering its page copy | Upload the exact frozen master and verify the public URL; do not attach the SRT to this burned-caption master |
+| Final video package | Exact SHA-256 `1d8246ac...` passed strict decode, A/V, caption, privacy, and independent visual-story audits; that master is public at `https://youtu.be/hE89cMBgJCw` with the audited custom thumbnail | Use the verified public URL; do not attach the SRT to this burned-caption master |
 | Hosted working-project URL | `https://beachcar-build-week-demo.jon-cooper.workers.dev/demo` is live on isolated static Worker version `91ede9db...`; root redirect, all five scenes, Beachcar title/manifest, and the exact hero-photo hash passed signed-out verification | Use this URL as working-project access; never deploy the production Worker config for this purpose |
 | Friend TestFlight full end-to-end | Test plan exists; completed pass not established | Do not list as proof or require it for the fast judge path |
 | Live Codex -> MCP -> iPhone continuity | Intended and testable; a matching live run receipt is not established | Do not imply the video or replay proves it |
@@ -113,22 +113,21 @@ The competition claim is the meaningful extension after that boundary: coached l
 ## Deadline execution order
 
 1. Keep the owner-confirmed seven-image scope, public uses, derivative permission, and no-credit requirement recorded in `photo-permissions.md`; do not broaden it.
-2. Freeze and push the final repository revision. Recheck that the submitted public revision contains the promised setup and test paths.
+2. Keep the final repository revision on the public Build Week branch. Recheck that the submitted revision contains the promised setup and test paths.
 3. Run the judge path from a clean public clone, open all five scene links, and make the focused replay/MCP/installer tests green.
 4. Watch the local production master `docs/build-week/Beachcar-Build-Week-final.mp4` once with sound, inspect captions, confirm the 1:40.83 duration, and verify the fixed Teach → Research interaction remains legible.
-5. Upload the exact burned-caption master to YouTube as Public with the description, chapters, and thumbnail in [submission-copy.md](submission-copy.md). Do not attach the SRT unless a separate captionless master is exported. Verify playback in a signed-out window.
-6. Fill the public YouTube URL and final pushed commit. Working-project access, rights scope, and no-credit status are already verified.
+5. Use the verified public film at `https://youtu.be/hE89cMBgJCw`; the exact burned-caption master, description, chapters, and custom thumbnail are published. Do not attach the SRT unless a separate captionless master is exported.
+6. Fill the exact final pushed commit in Devpost. Working-project access, public film access, rights scope, and no-credit status are verified.
 7. Enter the confirmed task/session ID `019f8178-f7a2-7301-b9be-f5b0af997b70` with the repository URL, working access, and category in Devpost.
 8. Read the written entry once for the forbidden claims above, then submit before **5:00 p.m. PDT**.
 9. Reopen the entry and every public link immediately after submission.
 
 ## External-only blockers
 
-- public YouTube upload and final playback verification;
-- push or merge of the final Build Week revision and verification from a public fresh clone;
+- Devpost form submission, owner attestations, and post-submit public-link verification;
 - clean-slate friend TestFlight end-to-end evidence;
 - live same-run continuity across Codex, Beachcar MCP, and iPhone;
 - a real scheduled recurring run and refresh-capable OAuth proof;
 - any actual Garage Session contribution or deployment.
 
-The public upload, pushed revision, and working-project access affect the immediate submission package. The remaining product validations should stay labeled future work rather than being rushed into a claim.
+The public upload, public branch, and working-project access are closed. Devpost submission remains owner-visible; the remaining product validations should stay labeled future work rather than being rushed into a claim.

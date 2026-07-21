@@ -1,0 +1,17 @@
+This is a 1960 Willys DJ-3A Surrey: tiny, open-air, and unapologetically pink. I didn't know to search for it. Beachcar surfaced it after a couple of weeks. I bought it. That is the product's clearest proof.
+
+Ordinary alerts can match make, year, and price. My taste is harder: joyful, mechanically simple, useful for slow beach days, charming instead of precious. Beachcar turns that fuzzy preference into an agent that can act on it.
+
+I built a native iPhone experience for teaching that taste, reviewing a tiny evidence-backed shortlist, and giving decisive feedback. A desktop handoff connects the user's local Codex to Beachcar's hosted M C P, where taste, feedback, sources, and published runs become durable memory.
+
+Inside the product, G P T five point six is the judgment engine. Running in the user's own Codex, it reads the brief, plans the search, controls the browser the user has already signed into, compares messy auction evidence, and explains fit, value, uncertainty, and risk.
+
+This deterministic replay makes the Build Week contract inspectable. It steps through setup, local research, candidate submission, publication, and read-back verification. The fixed fixture keeps one run identifier across the replay and review state. Separately, the golden-path smoke test publishes and reads back a synthetic run through the same MCP. Credentials stay in the user's browser, OpenAI costs stay with their Codex, and Beachcar's AI bill for the run is zero.
+
+The product isn't another infinite feed. The deterministic fixture shows five cars worth opening, each with a reason, a caveat, and a source. The real Surrey proves the taste problem. The Build Week local GPT-5.6 path is designed to reason from character and context, not just a keyword.
+
+Then the loop gets personal. Love the Surrey, and tomorrow's plan prioritizes open-air oddballs, playful color, and slow-car charm. Mark an anonymous performance S U V Never again, and Codex stops spending attention there. Feedback becomes inspectable memory, not a hidden profile.
+
+I also used Codex with G P T five point six to build this Build Week extension. It audited the existing repository, helped me choose an honest local-agent architecture, implemented the coached iPhone-to-desktop onboarding and scoped M C P workflow, drove the browser and iOS Simulator, and strengthened the golden-path tests. I made the product decisions; Codex turned them into working, tested software.
+
+Beachcar is for Apps for Your Life because it measures success differently. Not more listings, more clicks, or more engagement. One unusually good decision. Your Codex. Your taste. The one.

@@ -58,9 +58,9 @@ The split preserves agency: the user owns the browser login, Codex subscription,
 
 <table>
   <tr>
-    <td align="center" width="33%"><img src="docs/screenshots/ios-taste-onboarding.png" alt="Beachcar taste onboarding in the iPhone simulator" width="290"></td>
-    <td align="center" width="33%"><img src="docs/screenshots/ios-agent-dossier.png" alt="Beachcar listing dossier in the iPhone simulator" width="290"></td>
-    <td align="center" width="33%"><img src="docs/screenshots/ios-todays-finds.png" alt="Beachcar daily shortlist in the iPhone simulator" width="290"></td>
+    <td align="center" width="33%"><img src="docs/build-week/deck-preview/slide-03.png" alt="Beachcar taste onboarding and desktop handoff" width="390"></td>
+    <td align="center" width="33%"><img src="docs/build-week/deck-preview/slide-05.png" alt="Beachcar deterministic replay showing one fixed fixture state" width="390"></td>
+    <td align="center" width="33%"><img src="docs/build-week/deck-preview/slide-06.png" alt="Beachcar Love and Never again feedback changing the next plan" width="390"></td>
   </tr>
   <tr>
     <td valign="top"><strong>Calibrate.</strong><br>Durable taste is richer than filters.</td>
@@ -73,7 +73,7 @@ The review model is intentionally fast and physical. Swipe right to **Like**, fa
 
 ## Judge path
 
-The deterministic judge experience is designed to show one complete loop without paid infrastructure or private auction credentials:
+The deterministic judge experience is a fixed, clearly labeled replay of one complete loop without paid infrastructure or private auction credentials. It is not presented as a captured production run; automated coverage verifies the replay state and the MCP golden path separately:
 
 1. Open the iPhone app and complete the short taste calibration.
 2. Follow the desktop handoff to connect Beachcar to Codex.
@@ -82,7 +82,9 @@ The deterministic judge experience is designed to show one complete loop without
 5. Mark one candidate **Love it** and another **Never again**.
 6. Start the next plan and see Codex explicitly use both signals.
 
-See [the Build Week judge guide](docs/build-week/judge-guide.md) for the final access details and [the submission plan](docs/build-week/submission-plan.md) for the evidence checklist.
+See [the Build Week judge guide](docs/build-week/judge-guide.md) for the evaluation path and [the submission plan](docs/build-week/submission-plan.md) for the evidence checklist.
+
+The repository also includes the [judge deck](docs/build-week/Beachcar-Build-Week.pptx), [playable rough cut](docs/build-week/Beachcar-Build-Week-rough-cut.mp4), [timed storyboard](docs/build-week/storyboard.md), and [two-round owner/friend acceptance guide](docs/build-week/friend-e2e-test.md). The rough cut uses synthesized narration as an editing guide; the public submission should use the creator's recorded voice.
 
 ## Build Week extension
 
@@ -176,7 +178,7 @@ docs/build-week/      Judge guide, changelog, submission copy, and demo plan
 
 ## Project status
 
-Beachcar is a personal project and private friend beta. The Build Week path uses the user's local Codex and browser; it does not require Beachcar-funded inference or cloud scraping. The app's first niche is beach cars and runabouts, but the memory, evidence, feedback, and publication model can support other high-consideration searches.
+Beachcar is a personal project and private friend beta. The Build Week path uses the user's local Codex and browser; it does not require Beachcar-funded inference or authenticated cloud-browser scraping. A small public auction-feed cache may seed the search before local research. The app's first niche is beach cars and runabouts, but the memory, evidence, feedback, and publication model can support other high-consideration searches.
 
 ## Responsible use
 

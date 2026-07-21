@@ -1,11 +1,11 @@
 {
   "name": "Beachcar Auction Watch",
   "short_name": "Beachcar",
-  "description": "A private daily auction shortlist curated by an AI research automation.",
+  "description": "A private Codex-powered auction scout that learns your taste and finds the one.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f7f4ec",
-  "theme_color": "#f7f4ec",
+  "background_color": "#07080a",
+  "theme_color": "#ef5b91",
   "icons": [
     {
       "src": "/icon-192.png",

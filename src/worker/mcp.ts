@@ -126,7 +126,7 @@ export const mcpToolDefinitions = [
   },
   {
     name: "submit_candidates",
-    description: "Validate and normalize a set of candidate listings before publishing. This does not write a run.",
+    description: "Validate and normalize candidate listings before publishing. Images are optional when reuse or caching rights are unavailable. This does not write a run.",
     inputSchema: {
       type: "object",
       properties: {
@@ -139,7 +139,7 @@ export const mcpToolDefinitions = [
   },
   {
     name: "publish_run",
-    description: "Publish a normalized user-scoped run. This imports listings, queues image warmup, and makes the latest run visible in the web and iOS apps.",
+    description: "Publish a normalized user-scoped run. This imports listings, warms any permitted images, and makes the latest run visible in the web and iOS apps.",
     inputSchema: {
       type: "object",
       properties: {
@@ -359,10 +359,10 @@ async function planDailyResearch(session: McpSession, env: Env, args: Record<str
     steps: localCodexResearchSteps,
     publishContract: {
       endpoint: "MCP tool publish_run",
-      requiredListingFields: ["site", "title", "url", "lane", "section", "bid", "total", "why", "concerns", "images"],
+      requiredListingFields: ["site", "title", "url", "lane", "section", "bid", "total", "why", "concerns"],
       optionalDossierFields: ["dossier.summary", "dossier.specs", "dossier.listing", "dossier.equipment", "dossier.service", "dossier.bidLog", "dossier.comments", "dossier.beachUse", "dossier.valueScore"],
       dossierGuidance: "Attach an optional `dossier` object (rich detail from the listing page) to power the app's full per-car view; every field is optional, invalid types are dropped, and valueScore is a 0..1 CHEAP..RICH position. See docs/publishing.md.",
-      imageGuidance: "Include useful source image URLs; Beachcar will mirror and serve cached thumb/deck/full variants.",
+      imageGuidance: "Images are optional. Include a source image URL only when its reuse and caching are permitted; Beachcar will mirror permitted URLs into thumb/deck/full variants.",
     },
   };
 }
@@ -671,7 +671,6 @@ function candidateWarnings(listing: ReturnType<typeof normalizeListing>, index: 
   if (!listing.why) warnings.push(`listings[${index}].why is empty`);
   if (!listing.concerns) warnings.push(`listings[${index}].concerns is empty`);
   if (!listing.location) warnings.push(`listings[${index}].location is missing`);
-  if (!listing.images.length) warnings.push(`listings[${index}].images is empty`);
   return warnings;
 }
 

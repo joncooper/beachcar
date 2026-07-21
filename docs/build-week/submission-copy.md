@@ -14,7 +14,7 @@ Apps for Your Life
 
 ## Short description
 
-Beachcar turns your local Codex and the auction sites you already sign into into a private auction scout. GPT-5.6 researches, reasons, and publishes a tiny evidence-backed shortlist to iPhone. Every Love, Pass, and Never again becomes durable taste memory for the next run. After two weeks, it found the pink 1960 Willys Surrey I bought.
+Beachcar turns your local Codex and the auction sites you already sign into into a private auction scout. GPT-5.6 researches, reasons, and publishes a tiny evidence-backed shortlist to iPhone. Every Love, Pass, and Never again becomes durable taste memory for the next run. After a couple of weeks, it found the pink 1960 Willys Surrey I bought.
 
 ## Inspiration
 
@@ -37,7 +37,7 @@ The iPhone experience presents judgment rather than a transcript: why a car fits
 - A Beachcar Codex skill that defines the local-browser research contract.
 - Clerk authentication plus hashed, revocable, reduced-scope tokens for recurring tasks.
 
-The architecture deliberately keeps auction credentials in the user's browser and OpenAI credentials with Codex. Beachcar pays no cloud inference or scraping cost for this path and stores neither secret.
+The architecture deliberately keeps auction credentials in the user's browser and OpenAI credentials with Codex. Beachcar pays no cloud inference or authenticated browser-scraping cost for this path and stores neither secret; a small public auction-feed cache can seed research before Codex opens the local browser.
 
 ## How Codex and GPT-5.6 are used
 
@@ -58,8 +58,8 @@ Its success metric is not clicks. It is whether the agent finds something the pe
 ## Links and required fields
 
 - Repository: https://github.com/joncooper/beachcar
-- Working demo: **add after Pass 2**
-- Public YouTube demo: **add after Pass 3**
+- Working demo: local deterministic replay at `/demo`; replace with the audited hosted URL at release time
+- Public YouTube demo: upload the final creator-voiced cut and paste its public URL at release time
 - Primary Codex task ID for `/feedback`: `019f8178-f7a2-7301-b9be-f5b0af997b70`
 - Category: Apps for Your Life
 - License: MIT

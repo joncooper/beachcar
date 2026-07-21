@@ -30,7 +30,7 @@ final class BeachcarUITests: XCTestCase {
     XCTAssertTrue(text(containing: "1 OF 4").exists)
   }
 
-  func testOnboardingFourStepsEnterReview() throws {
+  func testOnboardingFourStepsHandOffToDesktopCodex() throws {
     launch(scenario: "onboarding")
     XCTAssertTrue(app.scrollViews["onboarding-view"].waitForExistence(timeout: 15))
     continueOnboarding()
@@ -41,9 +41,31 @@ final class BeachcarUITests: XCTestCase {
     XCTAssertTrue(text(containing: "Choose your rhythm").waitForExistence(timeout: 5))
     XCTAssertTrue(app.switches["Hemmings"].exists)
     app.buttons["save-preferences-button"].tap()
+    XCTAssertTrue(identified("desktop-codex-handoff").waitForExistence(timeout: 10))
+    XCTAssertTrue(text(containing: "Finish your Codex setup on a desktop").exists)
+    XCTAssertTrue(text(containing: "friend@example.com").exists)
+    XCTAssertTrue(app.buttons["desktop-codex-handoff-share"].exists)
+
+    let continueToBeachcar = app.buttons["desktop-codex-handoff-continue"]
+    XCTAssertTrue(continueToBeachcar.exists)
+    continueToBeachcar.tap()
+    XCTAssertTrue(identified("deck-view").waitForExistence(timeout: 10))
     XCTAssertTrue(waitForFind(1, of: 3, timeout: 10))
   }
 
+
+  func testDesktopCodexHandoffCanContinueToDeck() throws {
+    launch(scenario: "desktop-handoff")
+
+    XCTAssertTrue(identified("desktop-codex-handoff").waitForExistence(timeout: 15))
+    XCTAssertTrue(text(containing: "SEARCH SAVED").exists)
+    XCTAssertTrue(text(containing: "Finish your Codex setup on a desktop").exists)
+    XCTAssertTrue(app.buttons["desktop-codex-handoff-share"].exists)
+
+    app.buttons["desktop-codex-handoff-continue"].tap()
+    XCTAssertTrue(identified("deck-view").waitForExistence(timeout: 10))
+    XCTAssertTrue(waitForFind(1, of: 3, timeout: 10))
+  }
   // MARK: Scrolling review
 
   func testActiveUserEntersExplicitScrollingReview() throws {

@@ -25,7 +25,7 @@ struct ShadeAccent: Equatable {
   let accent: Color
   let accentInk: Color
 
-  static let seafoam = ShadeAccent(id: "Seafoam", accent: Color(hex: 0x62d18c), accentInk: Color(hex: 0x06140b))
+  static let seafoam = ShadeAccent(id: "Seafoam", accent: Color(hex: 0x9bcbb2), accentInk: Color(hex: 0x0b2018))
   static let azure = ShadeAccent(id: "Azure", accent: Color(hex: 0x5aa9f0), accentInk: Color(hex: 0x04121f))
   static let lavender = ShadeAccent(id: "Lavender", accent: Color(hex: 0xb18cf0), accentInk: Color(hex: 0x160a26))
   static let all: [ShadeAccent] = [.seafoam, .azure, .lavender]
@@ -64,6 +64,7 @@ enum BC {
   static let border = Color.white.opacity(0.10)
 
   // Semantic accents
+  static let brandPink = Color(hex: 0xef5b91) // the real Surrey Beachcar found
   static let star = Color(hex: 0xe7b653)      // gold
   static let danger = Color(hex: 0xec6f5c)    // red
 

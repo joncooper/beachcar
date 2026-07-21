@@ -217,6 +217,8 @@ function ReviewScene() {
           <h3>{winner.title}</h3>
           <p>{winner.why}</p>
           <small><strong>WATCH:</strong> {winner.caveat}</small>
+          <small><strong>MARKET:</strong> {winner.market}</small>
+          <small><strong>SOURCE:</strong> {winner.sourceLabel}</small>
         </div>
         <div className="bwd-phone-actions" aria-hidden="true">
           <span>Never again</span>
@@ -227,17 +229,17 @@ function ReviewScene() {
       <section className="bwd-shortlist">
         <div className="bwd-shortlist-heading">
           <div>
-            <div className="bwd-panel-label">VERIFIED IN THE APP</div>
+            <div className="bwd-panel-label">FIXED REVIEW STATE</div>
             <h3>DEMO REPLAY · 5 PICKS</h3>
           </div>
-          <span className="bwd-verified">✓ RUN VERIFIED</span>
+          <span className="bwd-verified">TESTED STATE CONTRACT</span>
         </div>
         <div className="bwd-shortlist-stack">
           {reviewCards.map((card) => (
             <article key={card.rank}>
               <span className="bwd-rank">0{card.rank}</span>
               <div>
-                <span>{card.lane}</span>
+                <span>{card.lane} · {card.sourceLabel}</span>
                 <strong>{card.title}</strong>
                 <p>{card.why}</p>
               </div>
@@ -248,7 +250,7 @@ function ReviewScene() {
         </div>
         <div className="bwd-evidence-note">
           <strong>Not a feed.</strong>
-          <span>Every pick carries a reason, a caveat, and a link back to its source.</span>
+          <span>This fixture shows the reason, caveat, market note, and source slot used by production picks.</span>
         </div>
       </section>
     </div>
@@ -368,7 +370,7 @@ export function BuildWeekDemo({ initialScene }: BuildWeekDemoProps) {
   const progress = useMemo(() => `${((sceneIndex + 1) / BUILD_WEEK_SCENE_IDS.length) * 100}%`, [sceneIndex]);
 
   return (
-    <section className={`build-week-demo build-week-demo--${sceneId}`} aria-label="Beachcar Build Week recorded demo">
+    <section className={`build-week-demo build-week-demo--${sceneId}`} aria-label="Beachcar Build Week deterministic replay">
       <div className="bwd-progress" aria-hidden="true"><span style={{ width: progress }} /></div>
       <header className="bwd-header">
         <div className="bwd-brand">

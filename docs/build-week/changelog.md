@@ -55,6 +55,6 @@ This table is completed as each of the three passes lands.
 
 | Pass | Commit | Scope |
 | --- | --- | --- |
-| 1 — narrative | Pending | Truthful README, competition plan, judge guide, submission copy, and claim boundary. |
-| 2 — proof | Pending | Deterministic judge experience, local-run truth, recurring token setup, polling, and golden-path tests. |
-| 3 — collateral | Pending | Surrey identity, fresh captures, storyboard, narration, deck, and playable rough cut. |
+| 1 — narrative | `1a549c5` | Truthful README, competition plan, judge guide, submission copy, and claim boundary. |
+| 2 — proof | `ec284a8` | Deterministic judge experience, reduced-scope recurring setup, local-browser MCP policy, and golden-path tests. |
+| 3 — collateral | This commit | Production demo build fix, rights-safe image-optional MCP publishing, friend setup package, storyboard, narration, deck, gallery clearance plan, and playable rough cut. |

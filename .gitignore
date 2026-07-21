@@ -20,3 +20,13 @@ npm-debug.log*
 ios/Beachcar.xcodeproj/
 ios/DerivedData*/
 ios/build/
+
+# Hold third-party/photo-derived media outside the public competition tree.
+assets/brand/build-week/
+assets/brand/surrey-key-art.png
+public/surrey-key-art.png
+public/surrey-mark.webp
+ios/BeachcarApp/Resources/Assets.xcassets/SurreyHero.imageset/
+docs/screenshots/ios-brand-signin.png
+docs/screenshots/ios-agent-dossier.png
+docs/screenshots/ios-todays-finds.png

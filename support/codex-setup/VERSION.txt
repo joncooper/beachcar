@@ -1,0 +1,7 @@
+Beachcar Local Codex Setup
+Release: 2026.07.21-pass3
+Channel: Build Week friend beta
+
+Verify the ZIP's SHA-256 against docs/build-week/artifact-manifest.md before use.
+The package contains no Beachcar token. Create a separate reduced-scope token
+after signing into your own Beachcar account.

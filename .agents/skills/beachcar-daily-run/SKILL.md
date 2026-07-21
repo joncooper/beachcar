@@ -55,10 +55,11 @@ Do not infer a sensitive preference, location, budget, or risk tolerance. Ask wh
 4. Use Codex's local browser only for rendered pages or sources where the user has already logged in.
    - Let the user complete all sign-in, password, MFA, CAPTCHA, and permission prompts themselves.
    - Never bypass bot protections, paywalls, rate limits, or a site's access controls. If a source blocks the session, record the block and move on.
-5. Normalize candidates into the Beachcar listing shape. Call `submit_candidates` before publishing if data came from scraping or manual extraction.
-   - For every shortlisted listing where the detail page is reachable, collect enough rich detail to populate `dossier.summary`, `dossier.bidLog`, and `dossier.comments`. These fields power the first-screen read and the native dossier. Omit only fields that are absent, blocked, or unverifiable.
+5. Normalize candidates into the Beachcar listing shape. Call `submit_candidates` before publishing if data came from browser research or manual extraction.
+   - Prefer factual metadata and concise original summaries. Do not copy seller prose, bidder comments, usernames, or gallery captions wholesale. Include a short excerpt only when necessary, attributed, and permitted by the source; otherwise link back to the source.
+   - Populate optional dossier fields only with verifiable facts or your own concise synthesis. Omit fields that are absent, blocked, unverifiable, or not appropriate to republish.
 6. Keep the local Codex/browser work out of Beachcar's managed AI accounting. State `execution: "local-codex-browser"` and any blocked sources in `sourceSummary`. The recurring token intentionally cannot call `record_usage`.
-7. Publish the final shortlist with `publish_run`. Include `reportMarkdown`, `sourceSummary`, and useful source image URLs.
+7. Publish the final shortlist with `publish_run`. Include `reportMarkdown` and `sourceSummary`. Include a source image URL only when the source permits its reuse and Beachcar's caching; otherwise leave `images` empty and rely on the source link.
 8. Call `verify_latest_run` and confirm the published run id, listing count, and first listings.
 9. Call `list_automation_events` when the user asks what happened or when debugging a failed run.
 
@@ -68,7 +69,7 @@ Do not infer a sensitive preference, location, budget, or risk tolerance. Ask wh
 - For Cars & Bids, use the user's logged-in local Codex browser session when available. The user must establish that session themselves. For other rendered marketplace pages, use the local browser only when the user and environment allow it.
 - Do not use Lightpanda as a drop-in Cars & Bids replacement. A 2026-06-29 spike hit Cloudflare Turnstile/403 on C&B search pages and 403 on a captured signed C&B JSON endpoint without the trusted browser session. Reconsider it only for sources that do not require interactive verification.
 - If a source blocks access, record that in `sourceSummary.blockedSources` or `sourceSummary.notes`; do not invent candidate data.
-- Prefer fewer, better-validated listings over broad scraped lists. Confirm title, URL, location, price/bid, time left, and image URLs before publishing.
+- Prefer fewer, better-validated listings over broad scraped lists. Confirm title, URL, location, price/bid, and time left before publishing. Treat image reuse as a separate rights decision, not as an automatic part of validation.
 
 ## Listing Shape
 
@@ -87,7 +88,7 @@ Each published listing should include:
   "timeLeft": "2 days",
   "why": "Matched saved beach-car preferences...",
   "concerns": "Verify title, rust, underside, and final buyer-fee total.",
-  "images": ["https://example.com/photo.jpg"]
+  "images": []
 }
 ```
 
@@ -101,17 +102,17 @@ When you read the listing's detail page, attach an optional `dossier` object to 
 "dossier": {
   "summary": "One-paragraph vehicle summary.",
   "specs": { "odometer": "62,400 mi", "engine": "1.6L flat-4", "transmission": "4-speed manual", "drivetrain": "RWD", "exterior": "Texas Yellow", "interior": "Black vinyl", "title": "Clean · SC", "seller": "username", "lot": "Example #88,412" },
-  "listing": ["Paragraph 1 of the seller writeup.", "Paragraph 2."],
+  "listing": ["Concise agent-written summary of the seller's disclosed history and condition."],
   "equipment": ["New soft top", "Removable doors"],
   "service": ["2024 — new soft top", "2023 — brakes renewed"],
-  "bidLog": [{ "bidder": "username", "amount": "$8,500", "ago": "2h" }],
-  "comments": [{ "user": "username", "body": "Floors look honest.", "ago": "3h", "seller": false }],
+  "bidLog": [{ "bidder": "Bidder identity omitted", "amount": "$8,500", "ago": "2h" }],
+  "comments": [{ "user": "Commenter identity omitted", "body": "Agent-written summary of a relevant condition concern.", "ago": "3h", "seller": false }],
   "beachUse": { "body": "Open 2WD", "location": "Charleston, SC", "people": "Confirm belts", "paperwork": "Clean title" },
   "valueScore": 0.18
 }
 ```
 
-`valueScore` is a 0..1 position on the CHEAP..RICH meter (0 = cheap for what it is, 1 = priced rich). Do not invent dossier facts — only include detail actually present on the listing page. See a full worked example in `examples/daily-run.sample.json`.
+`valueScore` is a 0..1 position on the CHEAP..RICH meter (0 = cheap for what it is, 1 = priced rich). Do not invent dossier facts—only include detail actually present on the listing page, and paraphrase narrative material in your own concise words.
 
 ## Guardrails
 
@@ -119,8 +120,9 @@ When you read the listing's detail page, attach an optional `dossier` object to 
 - Do not start a Beachcar Managed Research run. This skill publishes only the local Codex research the user requested.
 - Do not publish invented listings. If a source blocks access, publish a transparent manual-check item only when the user asked for a fallback.
 - Respect source terms, rate limits, and access controls. Do not bypass bot challenges or paywalls.
+- A logged-in browser session grants access, not publication rights. Do not send copied prose, user handles, comments, or gallery images to Beachcar merely because the browser can read them.
 - Keep user data scoped to the active automation token. Do not reuse one friend's token for another friend.
-- Prefer cached/variant-friendly image URLs from listing pages; Beachcar will mirror and serve thumb/deck/full variants after publish.
+- When an image is licensed for reuse and caching, prefer a stable variant-friendly URL so Beachcar can mirror thumb, deck, and full sizes after publish. Otherwise leave `images` empty.
 
 ## Done Definition
 

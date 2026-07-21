@@ -30,6 +30,7 @@ describe("Beachcar MCP contract", () => {
     expect(tools.get("get_setup_context")?.annotations.readOnlyHint).toBe(true);
     expect(tools.get("plan_daily_research")?.annotations.readOnlyHint).toBe(true);
     expect(tools.get("submit_candidates")?.annotations.readOnlyHint).toBe(true);
+    expect(tools.get("submit_candidates")?.description).toContain("Images are optional");
     expect(tools.get("publish_run")?.annotations.readOnlyHint).toBe(false);
     expect(tools.get("publish_run")?.annotations.destructiveHint).toBe(false);
     expect(tools.get("record_usage")?.description).toContain("Never use this for local Codex or local browser work");

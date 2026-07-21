@@ -11,16 +11,25 @@ struct RootView: View {
   @State private var accountIsLoading = false
   @State private var accountError: String?
   @State private var inviteCode = ""
+  @State private var desktopCodexHandoffIsPresented: Bool
   private let isUITesting: Bool
   #if DEBUG
   @State private var didAttemptLaunchTicket = false
   #endif
 
   init() {
-    let isUITesting = ProcessInfo.processInfo.arguments.contains("--ui-testing")
+    let arguments = ProcessInfo.processInfo.arguments
+    let isUITesting = arguments.contains("--ui-testing")
+    let scenario = arguments.firstIndex(of: "--ui-testing-scenario").flatMap { index in
+      let valueIndex = arguments.index(after: index)
+      return arguments.indices.contains(valueIndex) ? arguments[valueIndex] : nil
+    }
     self.isUITesting = isUITesting
     _store = StateObject(wrappedValue: isUITesting ? BeachcarStore.uiTesting() : BeachcarStore())
     _user = State(initialValue: isUITesting ? Self.uiTestingUser() : nil)
+    _desktopCodexHandoffIsPresented = State(
+      initialValue: isUITesting && scenario == "desktop-handoff"
+    )
   }
 
   var body: some View {
@@ -135,7 +144,13 @@ struct RootView: View {
         )
       case .active:
         if user.onboardingCompleted {
-          deckView
+          if desktopCodexHandoffIsPresented {
+            CompetitionCodexHandoffView(email: user.email) {
+              dismissDesktopCodexHandoff(for: user)
+            }
+          } else {
+            deckView
+          }
         } else {
           ProfileOnboardingView(
             user: user,
@@ -173,6 +188,16 @@ struct RootView: View {
       }
   }
 
+  private func dismissDesktopCodexHandoff(for user: UserPayload) {
+    desktopCodexHandoffIsPresented = false
+    guard !isUITesting else { return }
+    UserDefaults.standard.set(false, forKey: Self.desktopCodexHandoffKey(for: user))
+  }
+
+  private static func desktopCodexHandoffKey(for user: UserPayload) -> String {
+    "beachcar.desktopCodexHandoff.v1.\(user.id)"
+  }
+
   private func loadAccountIfNeeded() async {
     guard user == nil, !accountIsLoading else { return }
     await refreshAccount()
@@ -183,7 +208,10 @@ struct RootView: View {
     defer { accountIsLoading = false }
     do {
       let token = try await token()
-      user = try await store.api.me(authToken: token)
+      let updatedUser = try await store.api.me(authToken: token)
+      user = updatedUser
+      desktopCodexHandoffIsPresented = updatedUser.onboardingCompleted
+        && UserDefaults.standard.bool(forKey: Self.desktopCodexHandoffKey(for: updatedUser))
       accountError = nil
     } catch {
       guard !Self.isCancellation(error) else {
@@ -222,6 +250,7 @@ struct RootView: View {
   private func saveProfile(_ input: ProfileInput) async {
     if isUITesting {
       user = .uiTestingActive
+      desktopCodexHandoffIsPresented = true
       accountError = nil
       return
     }
@@ -229,12 +258,17 @@ struct RootView: View {
     defer { accountIsLoading = false }
     do {
       let token = try await token()
-      _ = try await store.api.putProfile(input: input, authToken: token)
       _ = try await store.api.putSourceSettings(input: input.sourceSettings, authToken: token)
-      user = try await store.api.putResearchSettings(
+      _ = try await store.api.putResearchSettings(
         input: ResearchSettingsRequest(mode: "external_agent"),
         authToken: token
       )
+      if let currentUser = user {
+        UserDefaults.standard.set(true, forKey: Self.desktopCodexHandoffKey(for: currentUser))
+      }
+      let updatedUser = try await store.api.putProfile(input: input, authToken: token)
+      user = updatedUser
+      desktopCodexHandoffIsPresented = true
       accountError = nil
     } catch {
       guard !Self.isCancellation(error) else { return }

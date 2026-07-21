@@ -35,7 +35,7 @@
   height: 100%;
   top: 0;
   right: 0;
-  background: linear-gradient(180deg, rgba(239, 91, 145, 0.12), rgba(99, 209, 140, 0.08));
+  background: linear-gradient(180deg, rgba(239, 91, 145, 0.12), rgba(155, 203, 178, 0.08));
   clip-path: polygon(28% 0, 100% 0, 100% 100%, 0 100%);
   content: "";
 }
@@ -129,7 +129,7 @@
   padding: 7px 9px;
   border: 1px solid rgba(37, 102, 79, 0.26);
   border-radius: 999px;
-  background: rgba(99, 209, 140, 0.18);
+  background: rgba(155, 203, 178, 0.18);
   color: var(--bwd-mint-dark);
 }
 
@@ -379,7 +379,7 @@
 }
 
 .bwd-proof-metrics .bwd-cost-metric {
-  background: rgba(99, 209, 140, 0.17);
+  background: rgba(155, 203, 178, 0.17);
 }
 
 .bwd-cost-metric strong {
@@ -477,7 +477,7 @@
 
 .bwd-chip--yes {
   border-color: rgba(37, 102, 79, 0.28);
-  background: rgba(99, 209, 140, 0.16);
+  background: rgba(155, 203, 178, 0.16);
   color: var(--bwd-mint-dark);
 }
 
@@ -655,7 +655,7 @@
   gap: 9px;
   padding: 7px 9px;
   border-left: 3px solid var(--bwd-mint);
-  background: rgba(99, 209, 140, 0.1);
+  background: rgba(155, 203, 178, 0.1);
 }
 
 .bwd-tool-pill > span {
@@ -888,7 +888,7 @@
 .bwd-verified {
   padding: 7px 9px;
   border: 1px solid rgba(37, 102, 79, 0.3);
-  background: rgba(99, 209, 140, 0.18);
+  background: rgba(155, 203, 178, 0.18);
   color: var(--bwd-mint-dark);
   font-size: 0.59em;
   font-weight: 950;
@@ -971,7 +971,7 @@
   gap: 7px;
   padding: 10px 12px;
   border-left: 4px solid var(--bwd-mint);
-  background: rgba(99, 209, 140, 0.1);
+  background: rgba(155, 203, 178, 0.1);
   font-size: 0.67em;
 }
 

@@ -12,7 +12,7 @@ import {
   sceneSearch,
 } from "../src/client/build-week/fixture";
 
-describe("Build Week recorded demo fixture", () => {
+describe("Build Week deterministic replay fixture", () => {
   it("keeps the five-scene story in its intended order", () => {
     expect(BUILD_WEEK_SCENE_IDS).toEqual(["proof", "teach", "research", "review", "learn"]);
     expect(buildWeekDemoFixture.scenes.map((scene) => scene.id)).toEqual(BUILD_WEEK_SCENE_IDS);

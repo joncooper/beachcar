@@ -53,7 +53,7 @@ Exit gate: a judge can understand the product, novelty, GPT-5.6 role, Codex role
 ### Pass 2 — Deterministic proof experience
 
 - Implement a public read-only `/demo` replay with five scenes: proof, teach, research, review, learn.
-- Label it clearly as a recorded replay, not a live run.
+- Label it clearly as a deterministic replay, not a live run.
 - Correct live UI/MCP language to show local Codex, user-owned browser, remote MCP publication, and zero Beachcar AI spend.
 - Make the handoff automatically notice saved taste and a newly published run.
 - Exercise the complete golden MCP sequence in automated smoke coverage.
@@ -96,7 +96,7 @@ Do not claim until proven:
 
 - OAuth survives unattended recurring runs.
 - A deployed real-client flow has passed end to end.
-- Cloud scraping or the hosted browser runner is reliable.
+- Authenticated cloud-browser scraping or the hosted browser runner is reliable.
 - Beachcar automatically funds or runs friend research.
 - Third-party auction photography is cleared for public competition use.
 

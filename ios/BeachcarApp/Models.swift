@@ -87,6 +87,7 @@ struct ProfilePreferences: Encodable, Equatable {
   let sources: [String]
   let sourcePreferences: [SourceSettingInput]
   let notifications: NotificationPreferences
+  let desktopCodexSetupPending = true
 }
 
 struct NotificationPreferences: Encodable, Equatable {

@@ -83,7 +83,7 @@ cat > "$accent_dir/Contents.json" <<'JSON'
     {
       "color" : {
         "color-space" : "srgb",
-        "components" : { "alpha" : "1.000", "blue" : "0.373", "green" : "0.435", "red" : "0.184" }
+        "components" : { "alpha" : "1.000", "blue" : "0.569", "green" : "0.357", "red" : "0.937" }
       },
       "idiom" : "universal"
     }

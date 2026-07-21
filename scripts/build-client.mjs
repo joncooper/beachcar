@@ -5,6 +5,7 @@ import ts from "typescript";
 const root = process.cwd();
 const distDir = path.join(root, "dist");
 const assetsDir = path.join(distDir, "assets");
+const buildWeekAssetsDir = path.join(assetsDir, "build-week");
 const buildEnv = await loadEnv();
 const publishableKey = buildEnv.VITE_CLERK_PUBLISHABLE_KEY;
 const managedResearchCheckoutEnabled = buildEnv.VITE_MANAGED_RESEARCH_CHECKOUT_ENABLED === "true" ? "true" : "false";
@@ -17,6 +18,7 @@ if (!publishableKey) {
 
 await rm(distDir, { force: true, recursive: true });
 await mkdir(assetsDir, { recursive: true });
+await mkdir(buildWeekAssetsDir, { recursive: true });
 await cp(path.join(root, "public"), distDir, { recursive: true });
 await writeManifest();
 await cp(path.join(root, "src/client/styles.css"), path.join(assetsDir, "styles.css"));
@@ -24,6 +26,18 @@ await cp(path.join(root, "src/client/styles.css"), path.join(assetsDir, "styles.
 for (const file of ["main.tsx", "App.tsx", "api.ts", "clerk-browser.ts"]) {
   await transpileClientFile(file);
 }
+await transpileBrowserFile(
+  path.join(root, "src/client/build-week/BuildWeekDemo.tsx"),
+  path.join(buildWeekAssetsDir, "BuildWeekDemo.js"),
+);
+await transpileBrowserFile(
+  path.join(root, "src/client/build-week/fixture.ts"),
+  path.join(buildWeekAssetsDir, "fixture.js"),
+);
+await cp(
+  path.join(root, "src/client/build-week/build-week-demo.css"),
+  path.join(buildWeekAssetsDir, "build-week-demo.css"),
+);
 await transpileSharedFile("ai-keys.ts");
 
 await writeFile(
@@ -41,6 +55,7 @@ await writeFile(
     <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="stylesheet" href="/assets/styles.css" />
+    <link rel="stylesheet" href="/assets/build-week/build-week-demo.css" />
     <script type="importmap">
       {
         "imports": {
@@ -101,7 +116,8 @@ async function transpileBrowserFile(inputPath, outputPath) {
     .replaceAll("import.meta.env.VITE_APP_NAME", JSON.stringify(appName))
     .replaceAll("import.meta.env.VITE_APP_SHORT_NAME", JSON.stringify(appShortName))
     .replaceAll("import.meta.env.DEV", "false")
-    .replace(/^import\s+["']\.\/styles\.css["'];?\n?/m, "");
+    .replace(/^import\s+["']\.\/styles\.css["'];?\n?/m, "")
+    .replace(/^import\s+["']\.\/build-week-demo\.css["'];?\n?/m, "");
   await writeFile(outputPath, output);
 }
 
@@ -143,6 +159,8 @@ function rewriteBrowserImports(code) {
     .replaceAll('from "./App"', 'from "./App.js"')
     .replaceAll('from "./api"', 'from "./api.js"')
     .replaceAll('from "./clerk-browser"', 'from "./clerk-browser.js"')
+    .replaceAll('from "./build-week/BuildWeekDemo"', 'from "./build-week/BuildWeekDemo.js"')
+    .replaceAll('from "./fixture"', 'from "./fixture.js"')
     .replaceAll('from "../shared/ai-keys"', 'from "./ai-keys.js"');
 }
 

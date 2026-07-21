@@ -58,10 +58,10 @@ approval_mode = "prompt"
 2. Call \`plan_daily_research\` to get the run constraints and source checklist.
 3. Gather candidates with MCP source tools first. Use \`search_bat_cache\` for Bring a Trailer public RSS candidates.
 4. Use Codex's local browser only for rendered pages or sources where the user has already logged in. Let the user complete every sign-in, password, MFA, CAPTCHA, and permission prompt. Do not bypass bot protections, paywalls, rate limits, or access controls.
-5. Normalize candidates into the Beachcar listing shape. Call \`submit_candidates\` before publishing if the data came from scraping or manual extraction.
-   - For every shortlisted listing where the detail page is reachable, collect enough rich detail to populate \`dossier.summary\`, \`dossier.bidLog\`, and \`dossier.comments\`. These fields power the first-screen read and the native dossier. Omit only fields that are absent, blocked, or unverifiable.
+5. Normalize candidates into the Beachcar listing shape. Call \`submit_candidates\` before publishing if the data came from browser research or manual extraction.
+   - Prefer factual metadata and concise original summaries. Do not copy seller prose, bidder comments, usernames, or gallery captions wholesale. Populate optional dossier fields only with verifiable facts or your own concise synthesis; omit anything absent, blocked, unverifiable, or inappropriate to republish.
 6. Keep local Codex/browser work out of Beachcar's managed AI accounting. State \`execution: "local-codex-browser"\` and blocked sources in \`sourceSummary\`. The recurring token intentionally cannot call \`record_usage\`.
-7. Publish the final shortlist with \`publish_run\`. Include reportMarkdown, sourceSummary, and useful source image URLs.
+7. Publish the final shortlist with \`publish_run\`. Include reportMarkdown and sourceSummary. Include an image URL only when reuse and Beachcar caching are permitted; otherwise publish the candidate without one.
 8. Call \`verify_latest_run\` and confirm the published run id, listing count, and first listings.
 9. Call \`list_automation_events\` when the user asks what happened or when debugging a failed run.
 

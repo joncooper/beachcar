@@ -4,21 +4,21 @@ This guide gives judges a fast, free path through the Build Week extension. It c
 
 ## 60-second tour
 
-Final public replay URL: **added after Pass 2 deployment**
+Local no-secret replay: run the repository and open `http://127.0.0.1:5173/demo`. The hosted replay URL is a release-time field and must point to the exact audited commit before submission.
 
 The read-only replay requires no login, writes no data, and does not pretend to be a live run. It walks through five deterministic scenes:
 
 1. **Proof** — Beachcar found the pink Surrey; its creator bought it.
 2. **Teach** — region, all-in ceiling, practical constraints, and nuanced taste.
 3. **Research** — GPT-5.6 Codex, signed-in local browser, and the exact MCP tool trace.
-4. **Review** — a tiny iPhone shortlist with evidence, valuation, risks, and source links.
+4. **Review** — a fixed five-card fixture showing fit reasoning, watch-outs, market notes, and source slots.
 5. **Learn** — Love and Never again become visible steering in the next plan.
 
 Keyboard controls in the final replay: left/right arrows, number keys 1–5, and `R` to reset. Each scene also has a stable deep link.
 
 ## Full working-product path
 
-Final TestFlight and test-account instructions: **provided privately in the Devpost judging fields after Pass 2 validation**
+TestFlight and test-account instructions are supplied privately in the Devpost judging fields after the frozen owner rehearsal passes.
 
 The expected real-product sequence is:
 
@@ -41,9 +41,10 @@ bun run typecheck
 bun run test
 VITE_CLERK_PUBLISHABLE_KEY=pk_test_build_validation bun run build
 bun run ios:build
+bun run dev
 ```
 
-After Pass 2, the no-secret replay runs locally at:
+With the development server running, the no-secret replay is available at:
 
 ```text
 http://127.0.0.1:5173/demo
@@ -71,5 +72,5 @@ http://127.0.0.1:5173/demo
 
 - OAuth is suitable only for interactive evaluation until the consent/refresh path has passed a real deployed expiry test.
 - The recurring path uses a hashed, revocable, reduced-scope Beachcar automation token stored in the user's Codex environment.
-- The public replay is deterministic evidence from a verified run, clearly labeled as such.
+- The public replay is a fixed deterministic fixture, not a captured production run. Tests verify its state transitions and the MCP tool contract; the golden-path smoke separately publishes and reads back a synthetic run.
 - Third-party auction photography is excluded unless written permission is obtained.

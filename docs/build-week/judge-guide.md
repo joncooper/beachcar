@@ -1,76 +1,108 @@
 # Beachcar judge guide
 
-This guide gives judges a fast, free path through the Build Week extension. It contains no credentials or secrets.
+Beachcar is a personal car-finding agent built around a simple result: it learned Jon's unusually specific taste, surfaced a pink 1960 Willys DJ-3A Surrey he did not know to search for, and Jon bought it.
 
-## 60-second tour
+The Build Week extension packages that path for another user. Local Codex interviews the user, researches with the browser the user already controls, and exchanges taste, evidence, feedback, and a small shortlist through Beachcar's user-scoped MCP. An optional weekly Garage Session can prepare one small local improvement, but it stops for the user's review before anything is sent or published.
 
-Local no-secret replay: run the repository and open `http://127.0.0.1:5173/demo`. The hosted replay URL is a release-time field and must point to the exact audited commit before submission.
+## Fastest working-project path
 
-The read-only replay requires no login, writes no data, and does not pretend to be a live run. It walks through five deterministic scenes:
+This is the exact judge path in the current local project. It requires no Beachcar account, auction login, TestFlight build, cloud deployment, or secret. Before submitting these instructions, the final audited revision must be pushed to the public repository's default branch and tested from a fresh clone; the Build Week commits are not judge-visible merely because the repository itself is public.
 
-1. **Proof** — Beachcar found the pink Surrey; its creator bought it.
-2. **Teach** — region, all-in ceiling, practical constraints, and nuanced taste.
-3. **Research** — GPT-5.6 Codex, signed-in local browser, and the exact MCP tool trace.
-4. **Review** — a fixed five-card fixture showing fit reasoning, watch-outs, market notes, and source slots.
-5. **Learn** — Love and Never again become visible steering in the next plan.
-
-Keyboard controls in the final replay: left/right arrows, number keys 1–5, and `R` to reset. Each scene also has a stable deep link.
-
-## Full working-product path
-
-TestFlight and test-account instructions are supplied privately in the Devpost judging fields after the frozen owner rehearsal passes.
-
-The expected real-product sequence is:
-
-1. Sign into Beachcar on iPhone.
-2. Complete the short taste calibration.
-3. Continue on desktop and connect local Codex with the Beachcar skill and scoped MCP token.
-4. Let the user sign into auction sources in their own browser when needed.
-5. Run the first research task and verify the published run.
-6. Open the exact shortlist on iPhone.
-7. Love one candidate and mark another Never again.
-8. Ask Codex for the next plan and inspect both feedback signals.
-
-No purchase, bid, paid plan, OpenAI API key, or Beachcar-funded AI is required. For a scheduled recurring task, the computer must be awake and Codex running.
-
-## Local repository verification
+Prerequisite: [Bun](https://bun.sh/) installed.
 
 ```bash
+git clone https://github.com/joncooper/beachcar.git
+cd beachcar
 bun install
+bun run dev -- --port 5173 --strictPort
+```
+
+Then open:
+
+```text
+http://127.0.0.1:5173/demo?scene=proof
+```
+
+Use the on-screen controls, left/right arrows, number keys 1-5, or `R` to reset. The five stable local links are:
+
+1. `http://127.0.0.1:5173/demo?scene=proof` - the real Surrey outcome and the replay's limits.
+2. `http://127.0.0.1:5173/demo?scene=teach` - a plain-language taste interview becoming structured Beachcar memory.
+3. `http://127.0.0.1:5173/demo?scene=research` - local Codex, GPT-5.6, the user's signed-in browser, and the MCP contract.
+4. `http://127.0.0.1:5173/demo?scene=review` - a fixed, evidence-shaped shortlist rather than an endless feed.
+5. `http://127.0.0.1:5173/demo?scene=learn` - Love and Never again becoming explicit input to the next plan.
+
+The route is a deterministic replay: a fixed local fixture designed to make the product contract easy to inspect. It is not a recording of the run that found the Surrey, a live scrape, a live MCP session, or proof of a deployed `/demo` URL.
+
+## Optional repository checks
+
+In a second terminal from the repository root:
+
+```bash
 bun run typecheck
 bun run test
 VITE_CLERK_PUBLISHABLE_KEY=pk_test_build_validation bun run build
-bun run ios:build
-bun run dev
 ```
 
-With the development server running, the no-secret replay is available at:
+The most relevant implementation and test files are:
 
-```text
-http://127.0.0.1:5173/demo
-```
+- [Project README](../../README.md)
+- [Build Week replay](../../src/client/build-week/BuildWeekDemo.tsx)
+- [Replay fixture and exact MCP sequence](../../src/client/build-week/fixture.ts)
+- [Beachcar MCP](../../src/worker/mcp.ts)
+- [Local Beachcar skill](../../.agents/skills/beachcar-daily-run/SKILL.md)
+- [Replay tests](../../tests/build-week-demo.test.ts)
+- [MCP contract tests](../../tests/mcp-contract.test.ts)
+- [Installer tests](../../tests/automation-install.test.ts)
+- [Build Week eligibility changelog](changelog.md)
 
-## What to inspect
+## What the full personal flow is designed to do
 
-- [README](../../README.md): product thesis, architecture, Build Week boundary, and setup.
-- [Beachcar daily-run skill](../../.agents/skills/beachcar-daily-run/SKILL.md): canonical local research behavior.
-- [Challenge changelog](changelog.md): before/after and commit evidence.
-- [Submission plan](submission-plan.md): criteria mapping and claim boundary.
-- `src/worker/mcp.ts`: user-scoped setup, taste, candidate, publication, and verification tools.
-- `tests/`: Worker/web contracts, feedback learning, and golden-path proof.
-- `ios/BeachcarApp/`: native onboarding, review, dossiers, and feedback experience.
+1. The user completes Beachcar taste setup and chooses **Connect your own agent**.
+2. On desktop, the user installs the Beachcar skill and connects local Codex to the Beachcar MCP with a user-scoped, revocable token.
+3. Codex asks a short taste interview and shows its summary before saving anything.
+4. The user signs into auction sources directly in their own browser when a source requires it.
+5. Codex researches, submits source-backed candidates, publishes a small shortlist, and verifies the published run.
+6. The user reviews that shortlist in Beachcar and records feedback such as Love or Never again.
+7. The next Codex plan receives those explicit signals.
+8. Only after a successful supervised run may the user separately opt into recurring research or the weekly Garage Session.
 
-## Access and privacy
+This is the intended product sequence, not a claim that a clean-slate friend has completed every step. The friend TestFlight flow, one-run continuity across Codex/MCP/iPhone, a scheduled recurring run, and token-expiry behavior still require external end-to-end evidence.
 
-- Judge access will remain free and available through at least August 12, 2026.
-- Marketplace logins remain in the user's local browser.
-- OpenAI credentials remain with Codex.
-- Beachcar stores neither credential.
-- Any credentials placed in private Devpost fields must not be copied into issues, screenshots, or the public repository.
+## Authentication and recurring-work boundary
 
-## Known boundaries
+- The supported recurring path in the repository uses a hashed, revocable `bcauto_...` token with reduced scopes. Each user receives a separate token.
+- The current OAuth authorization-code path is interactive only: its access token expires after one hour and Beachcar does not yet issue refresh tokens. Recurring OAuth is not claimed as working.
+- A scheduled local run needs the user's Mac awake, Codex running, and any required marketplace browser sessions still signed in.
+- Password, MFA, CAPTCHA, and consent prompts stay with the user. The skill forbids bypassing access controls.
+- A browser login grants access, not republication rights. The skill tells Codex to keep factual metadata and original synthesis concise, link to the source, and omit copied prose, comments, usernames, and images unless reuse is permitted.
+- Beachcar does not claim an official partnership or API integration with any auction marketplace.
+- Beachcar does not need the user's auction passwords or OpenAI credential. Model use runs in the user's local Codex environment.
 
-- OAuth is suitable only for interactive evaluation until the consent/refresh path has passed a real deployed expiry test.
-- The recurring path uses a hashed, revocable, reduced-scope Beachcar automation token stored in the user's Codex environment.
-- The public replay is a fixed deterministic fixture, not a captured production run. Tests verify its state transitions and the MCP tool contract; the golden-path smoke separately publishes and reads back a synthetic run.
-- Third-party auction photography is excluded unless written permission is obtained.
+## Garage Session boundary
+
+The installed skill defines the Garage Session as a separate opt-in after a successful Beachcar run. Each session may inspect a verified Beachcar checkout and prepare at most one small, generalizable improvement in an isolated worktree. It performs only local, credential-free checks and produces a review packet. It does not automatically push, open an issue or pull request, post a comment, deploy, or contact a maintainer. Fresh approval is required for any later external action.
+
+That policy is inspectable in the skill. A real scheduled Garage Session completed by a new user is not yet presented as proven.
+
+## Evidence ledger
+
+| Claim | Current evidence | Boundary |
+| --- | --- | --- |
+| The Surrey outcome is real | Jon states that Beachcar surfaced the 1960 Willys Surrey and that he bought it; the public [case-study listing](https://bringatrailer.com/listing/1960-jeep-dj-3a/) identifies the car | Beachcar did not bid or purchase; the discovery is a pre-Build Week case study |
+| The judge replay works locally | `/demo` route, fixture, and controls are implemented; focused tests are included | Fixed replay, not live research or a deployed public demo; rerun the focused suite after the final identity freeze |
+| The local-agent/MCP contract is implemented | Skill, installer, MCP tools, and contract tests in the current Build Week branch | The final revision still must be pushed; no claim that a friend's full remote flow or live continuity has passed |
+| Feedback can steer the next plan | Explicit feedback fields, fixture transformation, and tests | Replay evidence is deterministic, not a production capture |
+| Garage Session is consent-first | Detailed skill policy with separate opt-in, isolation, review packet, and no-send gate | No claim of a completed scheduled friend session |
+| Public video package exists locally | The local working tree contains a 100.80-second MP4 with a visible working Teach → Research replay, matching timing-reference SRT, and thumbnail | These local-only assets are not a public upload; the final YouTube URL is a pre-upload field |
+| Real-car photo use has a permission basis | Owner represents that the selling dealer granted permission | Written license, exact scope, and credit terms were not independently inspected |
+
+## Submission access fields
+
+- Public repository: https://github.com/joncooper/beachcar
+- Submitted revision: `[PRE-SUBMISSION: final pushed commit hash; confirm it is reachable from the repository URL]`
+- Local working-project path: the commands and `127.0.0.1` URL above
+- Working-project access: `[PRE-SUBMISSION: verified hosted URL, or a permanent GitHub link at the final pushed commit to this guide and its exact local path]`
+- Public YouTube URL: `[PRE-UPLOAD: paste after the final 100.80-second cut is public and playable]`
+- Candidate primary Codex task ID for `/feedback`: `019f8178-f7a2-7301-b9be-f5b0af997b70` - `[PRE-SUBMISSION: verify this is the literal ID accepted or returned by /feedback]`
+
+Do not substitute an unverified deployment, TestFlight invitation, or private URL for one of these fields.

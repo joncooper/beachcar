@@ -71,9 +71,9 @@ function ProofScene() {
         <p className="bwd-proof-note">{caseStudy.note}</p>
       </div>
 
-      <div className="bwd-car-stage" aria-label="Beachcar's illustrated pink Surrey identity">
+      <div className="bwd-car-stage" aria-label="The real pink Willys Surrey Beachcar surfaced">
         <span className="bwd-car-stage-label">THE ONE</span>
-        <img src={caseStudy.imageSrc} alt="Illustrated pink Willys Surrey, the Beachcar identity" />
+        <img src={caseStudy.imageSrc} alt="The real pink 1960 Willys DJ-3A Surrey" />
         <div className="bwd-car-shadow" />
       </div>
 
@@ -84,7 +84,7 @@ function ProofScene() {
         </div>
         <div>
           <strong>{run.mcpSteps}</strong>
-          <span>MCP steps proved</span>
+          <span>MCP steps shown</span>
         </div>
         <div className="bwd-cost-metric">
           <strong>{run.beachcarAiCost}</strong>
@@ -101,7 +101,7 @@ function TeachScene() {
   return (
     <div className="bwd-scene-grid bwd-teach-grid">
       <section className="bwd-interview-panel" aria-label="Taste interview">
-        <div className="bwd-panel-label">A TWO-MINUTE CONVERSATION</div>
+        <div className="bwd-panel-label">A QUICK CONVERSATION</div>
         <div className="bwd-chat bwd-chat--codex">
           <span>C</span>
           <p>Forget makes and models for a second. What should the car feel like?</p>
@@ -209,7 +209,7 @@ function ReviewScene() {
           <small>{run.date}</small>
         </div>
         <div className="bwd-phone-art">
-          <img src={buildWeekDemoFixture.caseStudy.imageSrc} alt="Illustrated pink Beachcar Surrey" />
+          <img src={buildWeekDemoFixture.caseStudy.imageSrc} alt="The real pink 1960 Willys DJ-3A Surrey" />
           <span>97% FIT</span>
         </div>
         <div className="bwd-phone-copy">
@@ -374,7 +374,7 @@ export function BuildWeekDemo({ initialScene }: BuildWeekDemoProps) {
       <div className="bwd-progress" aria-hidden="true"><span style={{ width: progress }} /></div>
       <header className="bwd-header">
         <div className="bwd-brand">
-          <img src="/icon.svg" alt="" />
+          <img src="/beachcar-wheel-real.webp" alt="" />
           <div>
             <strong>BEACHCAR</strong>
             <span>A personal car-finding agent</span>

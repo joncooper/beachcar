@@ -15,7 +15,7 @@ beachcar_config_file="$beachcar_codex_dir/config.toml"
 beachcar_skill_destination="$beachcar_codex_dir/skills/beachcar-daily-run"
 beachcar_script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 beachcar_skill_source="${BEACHCAR_SKILL_SOURCE:-$beachcar_script_dir/../.agents/skills/beachcar-daily-run}"
-beachcar_terminal=/dev/tty
+beachcar_terminal=
 beachcar_echo_disabled=0
 beachcar_env_tmp=
 beachcar_config_tmp=
@@ -49,6 +49,7 @@ fail() {
 command -v codex >/dev/null 2>&1 || fail "Codex is not installed or is not on PATH."
 [ -r "$beachcar_skill_source/SKILL.md" ] || fail "Beachcar skill not found next to this installer."
 tty -s || fail "Run this installer from an interactive terminal."
+beachcar_terminal=$(tty) || fail "Could not identify the interactive terminal."
 
 printf '%s\n' \
   'Paste the Beachcar recurring token shown once in the app.' \

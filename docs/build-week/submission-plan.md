@@ -1,113 +1,139 @@
 # Beachcar Build Week submission plan
 
-Last updated: July 20, 2026
+Last updated: July 21, 2026
 
-## Winning thesis
-
-**Beachcar turns your local Codex and the auction sites you already sign into into a private auction scout. Codex researches locally; Beachcar remembers your taste, publishes a tiny evidence-rich shortlist to iPhone, and learns from every decision. It found the pink Surrey. Jon bought it.**
+Deadline: **July 21, 2026 at 5:00 p.m. PDT / 8:00 p.m. EDT**
 
 Category: **Apps for Your Life**
 
-The emotional proof and technical proof must reinforce each other:
+## Winning thesis
 
-- Emotional proof: Beachcar found a car its creator could not have known to search for, and he bought it.
-- Technical proof: one continuous run shows GPT-5.6 in local Codex reading taste, using an authenticated browser, publishing through Beachcar MCP, verifying the run, and delivering that exact run to iPhone.
-- Product proof: Love and Never again visibly change the next Codex research plan.
+**BEACHCAR - your codex - your taste - your car**
 
-## Official constraints
+Beachcar begins where filters fail: with the feeling of the car a person wants. Local Codex learns that taste, researches through the browser the user already controls, and uses Beachcar's MCP to return a few opinions worth opening. The human proof is unusually concrete: Beachcar surfaced the pink 1960 Willys Surrey Jon did not know to search for, and Jon bought it.
 
-The governing sources are the [OpenAI Build Week page](https://openai.com/build-week/), [Devpost challenge page](https://openai.devpost.com/), [official rules](https://openai.devpost.com/rules), and [FAQ](https://openai.devpost.com/details/faqs).
+One-sentence story: **I needed a weird little car for my family, could not name it, and my Codex found the pink Surrey I bought.**
 
-- Deadline: **July 21, 2026 at 5:00 p.m. PT / 8:00 p.m. ET**.
-- The public YouTube demo must be shorter than three minutes. Target **2:40–2:55**.
-- Audio must explain what was built, how Codex contributed, and what GPT-5.6 does.
-- The repository must be available to judges and include setup/testing instructions.
-- The entry needs the primary Codex task ID for `/feedback`.
-- Judge access must be free and remain available throughout judging.
-- Existing projects qualify only through meaningful work added after July 13 at 9:00 a.m. PT. Only that extension should be presented as Build Week work.
-- Unauthorized copyrighted images, trademarks, music, or footage must not appear in the public video.
+## Official delivery requirements
 
-## How to win each judging dimension
+The governing references are the [OpenAI Build Week page](https://openai.com/build-week/), [Devpost challenge page](https://openai.devpost.com/), [official rules](https://openai.devpost.com/rules), and [FAQ](https://openai.devpost.com/details/faqs).
 
-All four criteria are equally weighted.
+The final entry must include:
 
-| Criterion | Beachcar proof | Submission treatment |
+- a public YouTube demo under three minutes;
+- clear audio explaining what was built, how Codex was used to build it, and how GPT-5.6 is used;
+- a repository URL with setup, testing, and project documentation;
+- working-project access for judges;
+- the primary Codex task ID for `/feedback`;
+- only the meaningful post-start extension presented as Build Week work;
+- media the entrant is authorized to publish.
+
+The current final cut is 100.80 seconds (1:40.80), with a matching timing-reference SRT and thumbnail.
+
+## Judge story and proof
+
+| Beat | What the viewer should understand | Honest proof shown |
 | --- | --- | --- |
-| Technical implementation | Local Codex + GPT-5.6 + signed-in browser + scoped MCP + durable feedback + native delivery | Show the exact tool sequence and matching run ID, then link it to iPhone. Never hide behind an architecture diagram. |
-| Design and UX | Three-step taste setup, desktop handoff, tiny native shortlist, evidence-first dossiers, expressive gestures | Film the real native flow. Keep the Surrey identity warm, bold, and car-first. |
-| Potential impact | The system surfaced the creator's actual purchase | Open with the car and close with the human outcome. State precisely: “Beachcar found it. I bought it.” |
-| Idea quality | Personal agent uses the browser and model the user already controls; Beachcar is specialized memory and presentation | Contrast with keyword alerts and disposable chats. Make the visible learning loop the novelty payoff. |
+| One or two miles at a time | This began with a specific family need | Real car details and the creator's narration |
+| I did not know what it was called | Keyword search cannot solve unnamed taste | Taste choices and plain-language framing |
+| My Codex goes hunting | The user's agent and browser do the open-ended work | Product captures plus narration; implementation in the public repository |
+| Then this appeared | The outcome is delightful and real | Full 1960 Willys Surrey reveal, followed by "I bought it" |
+| Built with Codex and GPT-5.6 | The model is part of both product judgment and the build process | Spoken explanation and repository evidence |
+| You see every change first | Optional improvement remains human-controlled | Garage Session consent and review policy in the installed skill |
+| Now go looking for yours | One personal result becomes a reusable product idea | Close on the actual car and the Beachcar identity |
 
-## Three-pass execution
+## Current evidence status
 
-### Pass 1 — Truth and narrative
+| Item | Status on July 21 | Submission treatment |
+| --- | --- | --- |
+| Actual 1960 Willys Surrey purchase | Owner states that Beachcar surfaced the car and that he bought it; the public listing identifies the car | Use as a pre-Build Week case study. Never say Beachcar bid or purchased |
+| Public repository | The repository is verified public and defaults to `main`; the final Build Week revision is not yet recorded as publicly reachable | Push or merge the complete revision, fill `[PRE-SUBMISSION: final pushed commit]`, then verify it from a fresh public clone |
+| Exact local judge path | Implemented at `/demo?scene=...`; no account or secret required | Lead judges through the commands in `judge-guide.md` |
+| Deterministic replay | Implemented as a five-scene fixed fixture with focused tests | Label it as replay, not live research or the original Surrey run; rerun the suite after final identity changes |
+| Local Codex skill and Beachcar MCP | Implemented in the repository with scoped tools and tests | Describe the contract and supported token path without claiming a friend completed it |
+| Explicit feedback steering | Implemented in the fixture, product state, and tests | Demonstrate Love and Never again changing the next plan |
+| Garage Session policy | Implemented in the skill as separate opt-in, isolated local work, and a review gate | Do not claim a scheduled clean-slate user session has passed |
+| Final video package | Local 100.80-second MP4, SRT, thumbnail, narration, and build source exist; the frozen cut visibly moves the working local replay from Teach to Research | Upload the exact frozen master and verify the public URL; do not attach the SRT to this burned-caption master |
+| Hosted working-project URL | Not verified for the exact submitted revision | Keep as a pre-submission field; never infer it from local `/demo` |
+| Friend TestFlight full end-to-end | Test plan exists; completed pass not established | Do not list as proof or require it for the fast judge path |
+| Live Codex -> MCP -> iPhone continuity | Intended and testable; a matching live run receipt is not established | Do not imply the video or replay proves it |
+| Recurring authentication | Revocable reduced-scope automation token path is supported; OAuth lacks refresh tokens | Describe OAuth as interactive only; do not claim recurring OAuth |
+| Public/deployed Garage Session extension | No completed external contribution or deployment established | Present the consent-first local workflow, not a shipped extension |
+| Dealer photo permission | Owner represents that the selling dealer granted permission | Disclose that written scope and credit terms were not independently inspected |
+| `/feedback` task ID | `019f8178-f7a2-7301-b9be-f5b0af997b70` is the current candidate | Verify it is the literal ID accepted or returned by `/feedback` before submission |
 
-- Make the README tell one local-Codex story.
-- Establish the eligible pre-event baseline and Build Week extension.
-- Produce submission copy, judge guide, rights checklist, and exact evidence plan.
-- Remove managed-cloud, owner-funded AI, and cloud-scraping claims from the hero path.
-- Commit the narrative separately.
+## How this addresses the judging criteria
 
-Exit gate: a judge can understand the product, novelty, GPT-5.6 role, Codex role, proof story, and honest claim boundary from the repository alone.
+| Criterion | Beachcar's strongest case |
+| --- | --- |
+| Technical implementation | Local Codex combines GPT-5.6 judgment, user-controlled browsing, a specialized skill, a scoped MCP contract, durable feedback, publication, and verification. The repository exposes the exact contract and tests. |
+| Design and UX | A plain-language taste interview becomes a deliberately small shortlist with reasons, risks, market context, and expressive feedback instead of another infinite feed. |
+| Potential impact | It solved a real family's difficult-to-name search and surfaced an actual purchase. The architecture moves account access and model use toward the user rather than a costly hosted scraper. |
+| Idea quality | Beachcar treats personal taste as durable, inspectable memory while Codex handles open-ended research in the environment the user already controls. |
 
-### Pass 2 — Deterministic proof experience
+## Product boundary in plain language
 
-- Implement a public read-only `/demo` replay with five scenes: proof, teach, research, review, learn.
-- Label it clearly as a deterministic replay, not a live run.
-- Correct live UI/MCP language to show local Codex, user-owned browser, remote MCP publication, and zero Beachcar AI spend.
-- Make the handoff automatically notice saved taste and a newly published run.
-- Exercise the complete golden MCP sequence in automated smoke coverage.
-- Use a persistent, revocable, reduced-scope token for recurring local Codex; describe OAuth as interactive preview until refresh/consent are complete.
-- Commit the product proof separately.
+Safe to say:
 
-Exit gate: every demo scene is deterministic and responsive, the automated proof uses the canonical tool order, and no surface tells the abandoned cloud-AI story.
+- Local Codex is the intended research agent.
+- GPT-5.6 supplies comparative judgment inside Codex.
+- The user signs into sources directly and keeps control of credentials.
+- Beachcar's MCP stores and exchanges scoped taste, source settings, feedback, candidate evidence, and published shortlists.
+- Beachcar surfaced the Surrey; Jon made the decision and bought it.
+- The local replay is deterministic and the underlying skill/MCP contract is inspectable.
+- The Garage Session requires a separate opt-in and stops at user review.
 
-### Pass 3 — Film and submission package
+Do not say without new evidence:
 
-- Record one real continuity sequence: `get_setup_context` → browser research → `submit_candidates` → `publish_run` → `verify_latest_run` → same run on iPhone.
-- Capture owned/generated visuals, fresh app screenshots, narration, captions, and a rights-safe Surrey outcome card.
-- Build the presentation deck and a playable under-three-minute rough cut with audio.
-- Complete the Devpost copy and judge instructions.
-- Commit the collateral separately.
+- that the public site serves the submitted `/demo` revision;
+- that a friend completed the entire TestFlight -> desktop -> Codex -> MCP -> iPhone journey;
+- that a live run ID was observed continuously across Codex, MCP verification, and iPhone;
+- that OAuth survives an unattended recurring run;
+- that cloud scraping or Beachcar-funded AI is part of the demonstrated path;
+- that Beachcar has an official marketplace partnership or a right to republish source images, prose, comments, or user identities;
+- that the Garage Session pushed, opened, deployed, or contacted anything;
+- that written dealer/photographer license terms were reviewed;
+- that the Build Week replay found the Surrey.
 
-Exit gate: the video is under three minutes, audible, coherent without the description, and includes visible Codex, GPT-5.6, working product, post-start work, and human impact.
+## Deterministic replay wording
 
-## The indispensable 18 seconds
+Use this exact description whenever space permits:
 
-The demo must show one matching run identifier across:
+> The judge surface is a fixed local replay of Beachcar's product contract. It demonstrates taste, the MCP tool sequence, shortlist structure, and feedback steering without requiring a judge to expose an auction login. It is not a captured production run, a live scrape, or evidence that this Build Week run found the Surrey.
 
-1. Codex calling `publish_run`.
-2. MCP returning `verify_latest_run` with the same run and candidate count.
-3. Beachcar opening that run on iPhone.
+Avoid the shorter phrase "working demo" on its own, because it can sound like live external research. Pair it with **deterministic replay** and link to the local startup instructions.
 
-This is the strongest defense against “polished mockup” skepticism. The deterministic `/demo` route is the reliable judge fallback and capture surface, not a substitute for this real continuity proof.
+## Build Week eligibility boundary
 
-## Claim boundary
+The challenge began July 13, 2026 at 9:00 a.m. PT / noon ET. Commit `e8321d0` at 10:48 a.m. ET is the last committed baseline before the start; `16bf7ec` at 12:24 p.m. ET is the first post-start commit.
 
-Safe to claim now:
+The baseline already contained the Beachcar project, native and web review experiences, stored taste/profile state, feedback gestures, Cloudflare-backed data, and an early agent/MCP direction. The Surrey discovery and purchase are also treated as prior proof, not event-period work.
 
-- Local Codex is the Build Week product path.
-- The user controls marketplace logins and Codex/model costs.
-- Beachcar stores user-scoped taste, evidence, feedback, and published shortlists.
-- The product surfaced the pink Surrey; the human decided and bought it.
-- The skill and MCP setup/taste/publishing tools are implemented and locally tested.
+The competition claim is the meaningful extension after that boundary: coached local-Codex onboarding, the installable skill, signed-in local-browser research policy, the expanded scoped MCP workflow, explicit taste calibration and feedback steering, the judge replay, the consent-first Garage Session policy, and the film/judge package. See [changelog.md](changelog.md) for commit evidence.
 
-Do not claim until proven:
+## Deadline execution order
 
-- OAuth survives unattended recurring runs.
-- A deployed real-client flow has passed end to end.
-- Authenticated cloud-browser scraping or the hosted browser runner is reliable.
-- Beachcar automatically funds or runs friend research.
-- Third-party auction photography is cleared for public competition use.
+1. Resolve the covered real-car files, uses, edits, and exact credit from the private permission record. If the scope or credit cannot be confirmed, exclude or replace affected media before any public push, deployment, or upload.
+2. Freeze and push the final repository revision. Recheck that the public `main` branch contains the promised setup and test paths.
+3. Run the judge path from a clean public clone, open all five scene links, and make the focused replay/MCP/installer tests green.
+4. Watch the local production master `docs/build-week/Beachcar-Build-Week-final.mp4` once with sound, inspect captions, confirm the 1:40.80 duration, and verify the working Teach → Research interaction remains legible.
+5. Upload the exact burned-caption master to YouTube as Public with the description, chapters, and thumbnail in [submission-copy.md](submission-copy.md). Do not attach the SRT unless a separate captionless master is exported. Verify playback in a signed-out window.
+6. Fill the verified working-project access, public YouTube URL, final pushed commit, and exact credit line. Leave no bracketed pre-upload field in the submitted entry.
+7. Verify the candidate `/feedback` task ID, then enter it with the repository URL, working access, and category in Devpost.
+8. Read the written entry once for the forbidden claims above, then submit before **5:00 p.m. PDT**.
+9. Reopen the entry and every public link immediately after submission.
 
-## Media plan
+## External-only blockers
 
-The listing gallery is creative direction and a permission-ready alternate cut. The rights-safe default uses:
+- public YouTube upload and final playback verification;
+- final visual confirmation or recut showing a clear working-project demo;
+- push or merge of the final Build Week revision and verification from a public fresh clone;
+- a working-project URL for the exact submitted revision, if Devpost requires remote access beyond the local path;
+- final photo-credit and license-scope confirmation from the private dealer/photographer record;
+- confirmation that the candidate task ID is the literal value accepted or returned by `/feedback`;
+- clean-slate friend TestFlight end-to-end evidence;
+- live same-run continuity across Codex, Beachcar MCP, and iPhone;
+- a real scheduled recurring run and refresh-capable OAuth proof;
+- any actual Garage Session contribution or deployment.
 
-- original Beachcar illustration and iconography;
-- native/web screen recordings containing owned or generated sample imagery;
-- creator-owned post-purchase footage or photos;
-- a textual link to the public listing as corroboration;
-- no marketplace logo, page capture, gallery photo, or copyrighted music without written permission.
-
-The strongest gallery-inspired sequence, if cleared, is one clean hero, grille/headlamp detail, striped upholstery detail, dash detail, and one outdoor rear three-quarter image. More would dilute the product story.
+The public upload, working-project footage gate, pushed revision, working-project access, and rights/credit confirmation affect the immediate submission package. The remaining product validations should stay labeled future work rather than being rushed into a claim.

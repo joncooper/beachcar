@@ -7,16 +7,16 @@ import Foundation
 private let width = 1920
 private let height = 1080
 private let fps: Int32 = 30
-private let openingLead = 1.0
-private let sectionGap = 0.2
-private let closingTail = 5.0
-private let maximumDuration = 175.0
+private let openingLead = 2.0
+private let sectionGap = 0.15
+private let closingTail = 4.0
+private let minimumDuration = 90.0
+private let maximumDuration = 120.0
 private let narrationVolume: Float = 0.95
 
 private let ink = NSColor(calibratedRed: 8 / 255, green: 10 / 255, blue: 11 / 255, alpha: 1)
 private let paper = NSColor(calibratedRed: 247 / 255, green: 242 / 255, blue: 232 / 255, alpha: 1)
 private let pink = NSColor(calibratedRed: 239 / 255, green: 75 / 255, blue: 137 / 255, alpha: 1)
-private let mint = NSColor(calibratedRed: 184 / 255, green: 220 / 255, blue: 204 / 255, alpha: 1)
 
 private struct Cue {
     let start: Double
@@ -40,17 +40,19 @@ private enum ImageFit {
 }
 
 private enum Visual {
-    case slide(Int)
+    case brand
+    case endBrand
+    case ownerPhoto(String)
     case capture(String, ImageFit)
-    case continuity
-    case buildWeek
+    case opinionBoard
+    case workingReplay(String, Int)
 }
 
 private struct ShotSpec {
     let startFraction: Double
     let endFraction: Double
     let visual: Visual
-    let label: String
+    let label: String?
     let zoom: CGFloat
 }
 
@@ -76,134 +78,101 @@ private struct Shot {
     let start: Double
     let end: Double
     let visual: Visual
-    let label: String
+    let label: String?
     let zoom: CGFloat
 }
 
 private let sectionSpecs: [SectionSpec] = [
     SectionSpec(
-        audioFileName: "01-outcome.mp3",
+        audioFileName: "01-found.mp3",
         captions: [
-            CaptionPhrase("This is a 1960 Willys DJ-3A Surrey: tiny, open-air, and unapologetically pink."),
-            CaptionPhrase("Earlier, before this Build Week extension, Beachcar surfaced it."),
-            CaptionPhrase("I didn't know to search for it."),
-            CaptionPhrase("I bought it. That's the clearest proof."),
+            CaptionPhrase("Beachcar. Your Codex. Your taste. Your car."),
+            CaptionPhrase("I live in a tiny beach town."),
+            CaptionPhrase("All summer, I'm running my kids one or two miles at a time—to the beach, camp, friends, ice cream."),
+            CaptionPhrase("I wanted a beach car: open, simple, weird, and unlike anything else in town."),
         ],
         shots: [
-            ShotSpec(startFraction: 0, endFraction: 0.38, visual: .slide(1), label: "OUTCOME · IT FOUND THE ONE", zoom: 0.025),
-            ShotSpec(startFraction: 0.38, endFraction: 1, visual: .capture("web/proof.png", .fill), label: "REAL-WORLD PROOF · BOUGHT BY ITS USER", zoom: 0.010),
+            ShotSpec(startFraction: 0, endFraction: 0.16, visual: .brand, label: nil, zoom: 0),
+            ShotSpec(startFraction: 0.16, endFraction: 0.40, visual: .ownerPhoto("owner/03"), label: "SMALL BEACH TOWN · ONE- OR TWO-MILE SUMMERS", zoom: 0.016),
+            ShotSpec(startFraction: 0.40, endFraction: 0.62, visual: .ownerPhoto("owner/07"), label: nil, zoom: 0.014),
+            ShotSpec(startFraction: 0.62, endFraction: 0.82, visual: .ownerPhoto("owner/06"), label: nil, zoom: 0.014),
+            ShotSpec(startFraction: 0.82, endFraction: 1, visual: .ownerPhoto("owner/04"), label: nil, zoom: 0.016),
         ]
     ),
     SectionSpec(
-        audioFileName: "02-alerts.mp3",
+        audioFileName: "02-taste.mp3",
         captions: [
-            CaptionPhrase("Alerts can match make, year, and price."),
-            CaptionPhrase("My taste is harder: joyful, mechanically simple, useful for slow beach days,"),
-            CaptionPhrase("charming instead of precious."),
-            CaptionPhrase("Beachcar turns that preference into an agent that can act on it."),
+            CaptionPhrase("But I didn't know what it was called."),
+            CaptionPhrase("I didn't even know it existed."),
+            CaptionPhrase("Most car sites make you name the answer before they'll help you search."),
+            CaptionPhrase("So I built Beachcar to start with the feeling."),
         ],
         shots: [
-            ShotSpec(startFraction: 0, endFraction: 0.48, visual: .slide(2), label: "THE PROBLEM · TASTE > FILTERS", zoom: 0.012),
-            ShotSpec(startFraction: 0.48, endFraction: 1, visual: .capture("web/teach.png", .fill), label: "TEACH IT ONCE · DURABLE MEMORY", zoom: 0.008),
+            ShotSpec(startFraction: 0, endFraction: 0.34, visual: .ownerPhoto("owner/07"), label: "START WITH THE FEELING", zoom: 0.016),
+            ShotSpec(startFraction: 0.34, endFraction: 0.67, visual: .ownerPhoto("owner/03"), label: nil, zoom: 0.016),
+            ShotSpec(startFraction: 0.67, endFraction: 1, visual: .ownerPhoto("owner/04"), label: nil, zoom: 0.016),
         ]
     ),
     SectionSpec(
-        audioFileName: "03-changed.mp3",
+        audioFileName: "03-agent.mp3",
         captions: [
-            CaptionPhrase("Beachcar already had an iPhone review experience."),
-            CaptionPhrase("For Build Week, I extended it with taste coaching and a desktop handoff."),
-            CaptionPhrase("Local Codex connects to Beachcar's hosted MCP,"),
-            CaptionPhrase("where taste, feedback, sources, and published runs become durable memory."),
+            CaptionPhrase("I tell it what I like, and my Codex goes hunting from my Mac."),
+            CaptionPhrase("It opens the browser I'm already signed into, digs through listings, throws away the noise,"),
+            CaptionPhrase("and comes back with a few actual opinions:"),
+            CaptionPhrase("this one fits, this one's overpriced, this one could ruin my summer."),
         ],
         shots: [
-            ShotSpec(startFraction: 0, endFraction: 0.30, visual: .capture("ios/taste-onboarding-step1.png", .contain), label: "NATIVE iPHONE · TEACH TASTE", zoom: 0.006),
-            ShotSpec(startFraction: 0.30, endFraction: 0.60, visual: .capture("ios/taste-onboarding-calibrate.png", .contain), label: "TASTE · NOT JUST FILTERS", zoom: 0.006),
-            ShotSpec(startFraction: 0.60, endFraction: 1, visual: .capture("ios/desktop-codex-handoff.png", .contain), label: "DESKTOP HANDOFF · LOCAL CODEX", zoom: 0.004),
+            ShotSpec(startFraction: 0, endFraction: 0.24, visual: .capture("ios/taste-onboarding-step1.png", .contain), label: "TELL IT WHAT YOU LOVE", zoom: 0.005),
+            ShotSpec(startFraction: 0.24, endFraction: 0.48, visual: .capture("ios/taste-onboarding-calibrate.png", .contain), label: "YOUR CODEX GOES HUNTING", zoom: 0.005),
+            ShotSpec(startFraction: 0.48, endFraction: 1, visual: .opinionBoard, label: nil, zoom: 0),
         ]
     ),
     SectionSpec(
         audioFileName: "04-gpt.mp3",
         captions: [
-            CaptionPhrase("Inside the product, GPT-5.6 is the judgment engine."),
-            CaptionPhrase("Running in your own Codex, it reads the brief, plans the search,"),
-            CaptionPhrase("uses your signed-in browser, compares auction evidence,"),
-            CaptionPhrase("and explains fit, value, uncertainty, and risk."),
+            CaptionPhrase("For a couple of weeks, I kept using it and teaching it:"),
+            CaptionPhrase("more charm, less precious; more beach day, less car show."),
+            CaptionPhrase("Then this appeared—a 1960 Willys Surrey that looks like a Jeep, a golf cart,"),
+            CaptionPhrase("and a beach umbrella somehow became one car."),
+            CaptionPhrase("I bought it."),
+            CaptionPhrase("This is actually my car now."),
         ],
         shots: [
-            ShotSpec(startFraction: 0, endFraction: 1, visual: .capture("web/research.png", .fill), label: "LOCAL CODEX · GPT-5.6 · SIGNED-IN BROWSER", zoom: 0.010),
+            ShotSpec(startFraction: 0, endFraction: 0.38, visual: .ownerPhoto("owner/03"), label: "MORE BEACH DAY · LESS CAR SHOW", zoom: 0.016),
+            ShotSpec(startFraction: 0.38, endFraction: 0.64, visual: .ownerPhoto("owner/01"), label: "THEN THIS APPEARED", zoom: 0.020),
+            ShotSpec(startFraction: 0.64, endFraction: 0.76, visual: .ownerPhoto("owner/02"), label: nil, zoom: 0.016),
+            ShotSpec(startFraction: 0.76, endFraction: 0.87, visual: .ownerPhoto("owner/05"), label: "I BOUGHT IT", zoom: 0.014),
+            ShotSpec(startFraction: 0.87, endFraction: 1, visual: .ownerPhoto("owner/08"), label: nil, zoom: 0.014),
         ]
     ),
     SectionSpec(
-        audioFileName: "05-continuity.mp3",
+        audioFileName: "05-garage.mp3",
         captions: [
-            CaptionPhrase("This deterministic replay makes the contract inspectable."),
-            CaptionPhrase("One fixture carries the same run identifier through setup, research,"),
-            CaptionPhrase("publication, verification, and the review state."),
-            CaptionPhrase("Separately, a golden-path smoke test publishes and reads back"),
-            CaptionPhrase("a synthetic run through the hosted MCP."),
-            CaptionPhrase("In actual use, local Codex, the signed-in browser, and MCP"),
-            CaptionPhrase("are designed to add zero Beachcar AI usage."),
-            CaptionPhrase("Credentials stay local."),
-            CaptionPhrase("OpenAI costs stay with the user's Codex."),
+            CaptionPhrase("GPT-5.6 gives Codex the judgment to do that hunt,"),
+            CaptionPhrase("and Codex helped me build Beachcar too—the iPhone experience, the way it searches, even this film."),
+            CaptionPhrase("If you opt in, your Codex can also take a weekly Garage Session to improve Beachcar itself."),
+            CaptionPhrase("You see every change first."),
+            CaptionPhrase("Nothing ships without you."),
         ],
         shots: [
-            ShotSpec(startFraction: 0, endFraction: 0.30, visual: .capture("web/research.png", .fill), label: "EXACT MCP CONTRACT · FIXED REPLAY", zoom: 0.018),
-            ShotSpec(startFraction: 0.30, endFraction: 1, visual: .continuity, label: "DETERMINISTIC REPLAY · TESTED CONTRACT", zoom: 0),
+            ShotSpec(startFraction: 0, endFraction: 0.22, visual: .ownerPhoto("owner/06"), label: nil, zoom: 0.014),
+            ShotSpec(startFraction: 0.22, endFraction: 0.41, visual: .workingReplay("demo/teach.jpg", 0), label: nil, zoom: 0),
+            ShotSpec(startFraction: 0.41, endFraction: 0.58, visual: .workingReplay("demo/research.jpg", 1), label: nil, zoom: 0),
+            ShotSpec(startFraction: 0.58, endFraction: 0.72, visual: .ownerPhoto("owner/07"), label: "YOUR CODEX CAN IMPROVE BEACHCAR", zoom: 0.016),
+            ShotSpec(startFraction: 0.72, endFraction: 1, visual: .ownerPhoto("owner/04"), label: "YOU SEE IT FIRST · NOTHING SHIPS WITHOUT YOU", zoom: 0.018),
         ]
     ),
     SectionSpec(
-        audioFileName: "06-five.mp3",
+        audioFileName: "06-close.mp3",
         captions: [
-            CaptionPhrase("The goal isn't another feed."),
-            CaptionPhrase("The replay carries five fixture cars;"),
-            CaptionPhrase("each candidate has a reason, caveat, and source in the contract."),
-            CaptionPhrase("The real Surrey proves the taste problem."),
-            CaptionPhrase("This local path reasons from character and context, not just keywords."),
+            CaptionPhrase("I built Beachcar to find one weird little car for my family."),
+            CaptionPhrase("Now your Codex can go looking for yours."),
+            CaptionPhrase("Beachcar. Your Codex. Your taste. Your car."),
         ],
         shots: [
-            ShotSpec(startFraction: 0, endFraction: 1, visual: .capture("web/review.png", .fill), label: "FIXTURE SHORTLIST · FIVE, NOT FIVE HUNDRED", zoom: 0.010),
-        ]
-    ),
-    SectionSpec(
-        audioFileName: "07-learning.mp3",
-        captions: [
-            CaptionPhrase("Then the loop gets personal."),
-            CaptionPhrase("Love the Surrey, and tomorrow's plan prioritizes"),
-            CaptionPhrase("open-air oddballs, playful color, and slow-car charm."),
-            CaptionPhrase("Mark an anonymous performance SUV as “Never again,”"),
-            CaptionPhrase("and Codex stops spending attention there."),
-            CaptionPhrase("Feedback becomes inspectable memory, not a hidden profile."),
-        ],
-        shots: [
-            ShotSpec(startFraction: 0, endFraction: 1, visual: .capture("web/learn.png", .fill), label: "EXPLICIT FEEDBACK → DURABLE MEMORY", zoom: 0.010),
-        ]
-    ),
-    SectionSpec(
-        audioFileName: "08-codex.mp3",
-        captions: [
-            CaptionPhrase("I used Codex with GPT-5.6 to build this Build Week extension."),
-            CaptionPhrase("It audited the repository, helped choose an honest local-agent architecture,"),
-            CaptionPhrase("implemented iPhone-to-desktop onboarding and the scoped MCP workflow,"),
-            CaptionPhrase("drove the browser and iOS Simulator,"),
-            CaptionPhrase("and strengthened the golden-path tests."),
-            CaptionPhrase("I made the product decisions."),
-            CaptionPhrase("Codex turned them into tested software."),
-        ],
-        shots: [
-            ShotSpec(startFraction: 0, endFraction: 1, visual: .buildWeek, label: "BUILD WEEK EXTENSION · CODEX + GPT-5.6", zoom: 0),
-        ]
-    ),
-    SectionSpec(
-        audioFileName: "09-close.mp3",
-        captions: [
-            CaptionPhrase("Beachcar is for Apps for Your Life because it measures success differently."),
-            CaptionPhrase("Not more listings, clicks, or engagement."),
-            CaptionPhrase("One unusually good decision."),
-            CaptionPhrase("Your Codex. Your taste. The one."),
-        ],
-        shots: [
-            ShotSpec(startFraction: 0, endFraction: 0.46, visual: .slide(1), label: "APPS FOR YOUR LIFE · ONE GOOD DECISION", zoom: 0.025),
-            ShotSpec(startFraction: 0.46, endFraction: 1, visual: .slide(7), label: "BEACHCAR · APPS FOR YOUR LIFE", zoom: 0.008),
+            ShotSpec(startFraction: 0, endFraction: 0.34, visual: .ownerPhoto("owner/02"), label: nil, zoom: 0.014),
+            ShotSpec(startFraction: 0.34, endFraction: 0.66, visual: .ownerPhoto("owner/08"), label: "YOUR CODEX CAN GO LOOKING FOR YOURS", zoom: 0.016),
+            ShotSpec(startFraction: 0.66, endFraction: 1, visual: .endBrand, label: nil, zoom: 0),
         ]
     ),
 ]
@@ -250,6 +219,18 @@ private func roundedRect(_ rect: NSRect, radius: CGFloat, color: NSColor) {
     NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
 }
 
+private func strokeRoundedRect(
+    _ rect: NSRect,
+    radius: CGFloat,
+    color: NSColor,
+    lineWidth: CGFloat
+) {
+    let path = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+    path.lineWidth = lineWidth
+    color.setStroke()
+    path.stroke()
+}
+
 private func aspectRect(
     imageSize: NSSize,
     canvas: NSRect,
@@ -283,8 +264,9 @@ private func drawImage(
     ink.setFill()
     NSBezierPath(rect: NSRect(x: 0, y: 0, width: width, height: height)).fill()
     let canvas = NSRect(x: 0, y: 0, width: width, height: height)
+    let source = NSRect(origin: .zero, size: image.size)
     let destination = aspectRect(
-        imageSize: image.size,
+        imageSize: source.size,
         canvas: canvas,
         fit: fit,
         progress: progress,
@@ -292,7 +274,7 @@ private func drawImage(
     )
     image.draw(
         in: destination,
-        from: NSRect(origin: .zero, size: image.size),
+        from: source,
         operation: .sourceOver,
         fraction: 1,
         respectFlipped: false,
@@ -300,171 +282,253 @@ private func drawImage(
     )
 }
 
-private func drawContinuity() {
-    paper.setFill()
+private func drawCroppedImage(
+    _ image: NSImage,
+    in canvas: NSRect,
+    radius: CGFloat,
+    progress: CGFloat = 0.5,
+    zoomAmount: CGFloat = 0.01
+) {
+    NSGraphicsContext.saveGraphicsState()
+    defer { NSGraphicsContext.restoreGraphicsState() }
+
+    NSBezierPath(roundedRect: canvas, xRadius: radius, yRadius: radius).addClip()
+    let source = NSRect(origin: .zero, size: image.size)
+    let destination = aspectRect(
+        imageSize: source.size,
+        canvas: canvas,
+        fit: .fill,
+        progress: progress,
+        zoomAmount: zoomAmount
+    )
+    image.draw(
+        in: destination,
+        from: source,
+        operation: .sourceOver,
+        fraction: 1,
+        respectFlipped: false,
+        hints: [.interpolation: NSImageInterpolation.high]
+    )
+}
+
+private func drawOpinionBoard(
+    ownerPhotos: [String: NSImage],
+    progress: CGFloat
+) {
+    ink.setFill()
     NSBezierPath(rect: NSRect(x: 0, y: 0, width: width, height: height)).fill()
-    pink.setFill()
-    NSBezierPath(rect: NSRect(x: 0, y: height - 10, width: width, height: 10)).fill()
 
     drawText(
-        "DETERMINISTIC REPLAY · TESTED CONTRACT",
-        rect: NSRect(x: 192, y: 884, width: 1100, height: 42),
-        font: .systemFont(ofSize: 27, weight: .bold),
-        color: pink
+        "A FEW ACTUAL OPINIONS",
+        rect: NSRect(x: 192, y: 888, width: 1120, height: 64),
+        font: .systemFont(ofSize: 46, weight: .black),
+        color: paper
     )
     drawText(
-        "One contract. Two honest proofs.",
-        rect: NSRect(x: 192, y: 758, width: 1500, height: 100),
-        font: .systemFont(ofSize: 68, weight: .black),
-        color: ink
-    )
-
-    let labels = ["FIXTURE REPLAY", "REVIEW STATE", "GOLDEN SMOKE TEST"]
-    let identities = ["demo_replay_\nsurrey_path", "demo_replay_\nsurrey_path", "separate synthetic\nrun"]
-    let details = ["5 FIXTURE CANDIDATES", "SAME FIXTURE ID", "PUBLISH + READ BACK"]
-    let statuses = ["FIXED", "INSPECTABLE", "TESTED"]
-    let safeX: CGFloat = 192
-    let gap: CGFloat = 36
-    let cardWidth = (1536 - gap * 2) / 3
-
-    for index in 0..<3 {
-        let x = safeX + CGFloat(index) * (cardWidth + gap)
-        let cardColor = index == 1
-            ? mint
-            : (index == 2 ? NSColor(calibratedRed: 1, green: 232 / 255, blue: 239 / 255, alpha: 1) : NSColor.white)
-        roundedRect(NSRect(x: x, y: 330, width: cardWidth, height: 350), radius: 32, color: cardColor)
-        drawText(
-            String(format: "%02d", index + 1),
-            rect: NSRect(x: x + 30, y: 614, width: 80, height: 34),
-            font: .monospacedSystemFont(ofSize: 21, weight: .bold),
-            color: NSColor(calibratedRed: 34 / 255, green: 107 / 255, blue: 86 / 255, alpha: 1)
-        )
-        drawText(
-            labels[index],
-            rect: NSRect(x: x + 30, y: 550, width: cardWidth - 60, height: 42),
-            font: .monospacedSystemFont(ofSize: 22, weight: .bold),
-            color: ink
-        )
-        drawText(
-            identities[index],
-            rect: NSRect(x: x + 30, y: 430, width: cardWidth - 60, height: 92),
-            font: .monospacedSystemFont(ofSize: 26, weight: .semibold),
-            color: ink,
-            lineSpacing: 7
-        )
-        drawText(
-            details[index],
-            rect: NSRect(x: x + 30, y: 374, width: cardWidth - 60, height: 36),
-            font: .systemFont(ofSize: 19, weight: .bold),
-            color: ink
-        )
-        drawText(
-            "✓ \(statuses[index])",
-            rect: NSRect(x: x + 30, y: 344, width: cardWidth - 60, height: 28),
-            font: .systemFont(ofSize: 17, weight: .bold),
-            color: NSColor(calibratedRed: 34 / 255, green: 107 / 255, blue: 86 / 255, alpha: 1),
-            alignment: .right
-        )
-    }
-
-    drawText(
-        "FIXTURE REPLAY ≠ CAPTURED PRODUCTION RUN",
-        rect: NSRect(x: 192, y: 278, width: 1536, height: 36),
+        "NOT ANOTHER WALL OF LISTINGS",
+        rect: NSRect(x: 1230, y: 905, width: 498, height: 34),
         font: .monospacedSystemFont(ofSize: 20, weight: .bold),
-        color: ink,
-        alignment: .center
-    )
-}
-
-private func drawBuildWeek(icon: NSImage) {
-    paper.setFill()
-    NSBezierPath(rect: NSRect(x: 0, y: 0, width: width, height: height)).fill()
-    pink.setFill()
-    NSBezierPath(rect: NSRect(x: 0, y: height - 10, width: width, height: 10)).fill()
-
-    drawText(
-        "HOW CODEX HELPED BUILD IT",
-        rect: NSRect(x: 192, y: 884, width: 900, height: 42),
-        font: .systemFont(ofSize: 27, weight: .bold),
-        color: pink
-    )
-    drawText(
-        "Build Week extension",
-        rect: NSRect(x: 192, y: 770, width: 1250, height: 96),
-        font: .systemFont(ofSize: 68, weight: .black),
-        color: ink
-    )
-
-    roundedRect(NSRect(x: 192, y: 316, width: 430, height: 400), radius: 42, color: ink)
-    icon.draw(
-        in: NSRect(x: 222, y: 332, width: 370, height: 370),
-        from: NSRect(origin: .zero, size: icon.size),
-        operation: .sourceOver,
-        fraction: 1,
-        respectFlipped: false,
-        hints: [.interpolation: NSImageInterpolation.high]
-    )
-
-    let items = [
-        ("AUDITED", "the existing repository and its honest starting point"),
-        ("ARCHITECTED", "local Codex + signed-in browser + scoped Beachcar MCP"),
-        ("IMPLEMENTED", "coached iPhone-to-desktop onboarding"),
-        ("DROVE", "the browser and iOS Simulator"),
-        ("TESTED", "the golden path and replay contract"),
-    ]
-    for (index, item) in items.enumerated() {
-        let y = 650 - CGFloat(index) * 82
-        roundedRect(
-            NSRect(x: 680, y: y, width: 1048, height: 62),
-            radius: 16,
-            color: index % 2 == 0
-                ? NSColor.white
-                : NSColor(calibratedRed: 1, green: 232 / 255, blue: 239 / 255, alpha: 1)
-        )
-        drawText(
-            "✓",
-            rect: NSRect(x: 708, y: y + 14, width: 42, height: 34),
-            font: .systemFont(ofSize: 25, weight: .black),
-            color: NSColor(calibratedRed: 34 / 255, green: 107 / 255, blue: 86 / 255, alpha: 1)
-        )
-        drawText(
-            item.0,
-            rect: NSRect(x: 762, y: y + 14, width: 230, height: 34),
-            font: .monospacedSystemFont(ofSize: 20, weight: .bold),
-            color: ink
-        )
-        drawText(
-            item.1,
-            rect: NSRect(x: 1000, y: y + 14, width: 700, height: 34),
-            font: .systemFont(ofSize: 19, weight: .medium),
-            color: ink
-        )
-    }
-
-    drawText(
-        "CODEX + GPT-5.6",
-        rect: NSRect(x: 680, y: 270, width: 1048, height: 50),
-        font: .systemFont(ofSize: 34, weight: .black),
         color: pink,
         alignment: .right
     )
+
+    let cardWidth: CGFloat = 560
+    let cardHeight: CGFloat = 540
+    let cardY: CGFloat = 294
+    let cardX: [CGFloat] = [84, 680, 1276]
+    let imageNames = ["owner/03", "owner/04", "owner/06"]
+    let chips = ["FIT", "PRICE", "SUMMER"]
+    let headlines = ["THIS ONE FITS.", "OVERPRICED?", "SUMMER RISK?"]
+    let details = [
+        "open · simple · weird",
+        "beautiful isn't the same as worth it",
+        "parts · weather · impractical surprises",
+    ]
+
+    let activeIndex: Int? = {
+        if progress < 0.48 { return nil }
+        if progress < 0.65 { return 0 }
+        if progress < 0.81 { return 1 }
+        return 2
+    }()
+
+    for index in 0..<3 {
+        let rect = NSRect(x: cardX[index], y: cardY, width: cardWidth, height: cardHeight)
+        roundedRect(rect, radius: 28, color: paper)
+
+        if let image = ownerPhotos[imageNames[index]] {
+            drawCroppedImage(
+                image,
+                in: NSRect(x: rect.minX + 12, y: rect.minY + 270, width: cardWidth - 24, height: 258),
+                radius: 20,
+                progress: 0.5,
+                zoomAmount: 0.012
+            )
+        }
+
+        let isActive = activeIndex == index
+        roundedRect(
+            NSRect(x: rect.minX + 26, y: rect.minY + 214, width: 120, height: 36),
+            radius: 18,
+            color: isActive ? pink : ink
+        )
+        drawText(
+            chips[index],
+            rect: NSRect(x: rect.minX + 26, y: rect.minY + 221, width: 120, height: 23),
+            font: .monospacedSystemFont(ofSize: 17, weight: .bold),
+            color: isActive ? ink : paper,
+            alignment: .center
+        )
+        drawText(
+            headlines[index],
+            rect: NSRect(x: rect.minX + 26, y: rect.minY + 126, width: cardWidth - 52, height: 72),
+            font: .systemFont(ofSize: 43, weight: .black),
+            color: ink
+        )
+        drawText(
+            details[index],
+            rect: NSRect(x: rect.minX + 26, y: rect.minY + 53, width: cardWidth - 52, height: 66),
+            font: .systemFont(ofSize: 23, weight: .semibold),
+            color: NSColor(calibratedWhite: 0.25, alpha: 1),
+            lineSpacing: 3
+        )
+        strokeRoundedRect(
+            rect.insetBy(dx: 2, dy: 2),
+            radius: 27,
+            color: isActive ? pink : NSColor(calibratedWhite: 0.35, alpha: 1),
+            lineWidth: isActive ? 7 : 2
+        )
+    }
 }
 
-private func addOverlay(label: String, caption: String?, progress: CGFloat) {
+private func drawWorkingReplay(
+    _ capture: NSImage,
+    stage: Int,
+    progress: CGFloat
+) {
+    drawImage(capture, fit: .fill, progress: 0.5, zoomAmount: 0)
+
+    if stage == 1, progress < 0.16 {
+        let fade = max(0, 0.16 - progress) / 0.16
+        paper.withAlphaComponent(0.22 * fade).setFill()
+        NSBezierPath(rect: NSRect(x: 0, y: 0, width: width, height: height)).fill()
+    }
+
+    roundedRect(
+        NSRect(x: 192, y: 894, width: 624, height: 64),
+        radius: 32,
+        color: NSColor(calibratedWhite: 0.02, alpha: 0.92)
+    )
+    drawText(
+        "WORKING REPLAY · LOCAL · NO LOGIN",
+        rect: NSRect(x: 222, y: 911, width: 564, height: 34),
+        font: .monospacedSystemFont(ofSize: 22, weight: .bold),
+        color: pink,
+        alignment: .center
+    )
+
+    let stagePanel = NSRect(x: 1234, y: 894, width: 494, height: 64)
+    roundedRect(stagePanel, radius: 32, color: NSColor(calibratedWhite: 0.02, alpha: 0.92))
+    let stageLabels = ["01  TEACH", "02  RESEARCH"]
+    for index in 0..<2 {
+        let segment = NSRect(x: 1244 + CGFloat(index) * 237, y: 903, width: 227, height: 46)
+        if stage == index {
+            roundedRect(segment, radius: 23, color: pink)
+        }
+        drawText(
+            stageLabels[index],
+            rect: NSRect(x: segment.minX + 8, y: segment.minY + 12, width: segment.width - 16, height: 26),
+            font: .monospacedSystemFont(ofSize: 18, weight: .bold),
+            color: stage == index ? ink : paper,
+            alignment: .center
+        )
+    }
+
+    let clickPoint = stage == 0
+        ? NSPoint(x: 422, y: 62)
+        : NSPoint(x: 615, y: 62)
+    let clickPhase = min(1, progress * 4)
+    let clickRadius = 18 + 38 * clickPhase
+    let clickAlpha = max(0.15, 0.9 * (1 - clickPhase))
+    let clickPath = NSBezierPath(
+        ovalIn: NSRect(
+            x: clickPoint.x - clickRadius,
+            y: clickPoint.y - clickRadius,
+            width: clickRadius * 2,
+            height: clickRadius * 2
+        )
+    )
+    clickPath.lineWidth = 6
+    pink.withAlphaComponent(clickAlpha).setStroke()
+    clickPath.stroke()
+
+    let pointer = NSBezierPath()
+    pointer.move(to: NSPoint(x: clickPoint.x - 7, y: clickPoint.y + 14))
+    pointer.line(to: NSPoint(x: clickPoint.x + 13, y: clickPoint.y - 12))
+    pointer.line(to: NSPoint(x: clickPoint.x + 4, y: clickPoint.y - 9))
+    pointer.line(to: NSPoint(x: clickPoint.x + 1, y: clickPoint.y - 19))
+    pointer.close()
+    paper.setFill()
+    pointer.fill()
+    pointer.lineWidth = 2
+    ink.setStroke()
+    pointer.stroke()
+}
+
+private func drawBrand(endCard: Bool = false) {
+    paper.setFill()
+    NSBezierPath(rect: NSRect(x: 0, y: 0, width: width, height: height)).fill()
+    pink.setFill()
+    NSBezierPath(rect: NSRect(x: 0, y: height - 12, width: width, height: 12)).fill()
+
+    drawText(
+        "BEACHCAR",
+        rect: NSRect(x: 160, y: 536, width: 1600, height: 190),
+        font: .systemFont(ofSize: 154, weight: .black),
+        color: ink,
+        alignment: .center
+    )
+    drawText(
+        "your codex - your taste - your car",
+        rect: NSRect(x: 240, y: 444, width: 1440, height: 68),
+        font: .systemFont(ofSize: 42, weight: .semibold),
+        color: pink,
+        alignment: .center
+    )
+
+    if endCard {
+        roundedRect(
+            NSRect(x: 650, y: 338, width: 620, height: 68),
+            radius: 34,
+            color: ink
+        )
+        drawText(
+            "APPS FOR YOUR LIFE",
+            rect: NSRect(x: 674, y: 354, width: 572, height: 36),
+            font: .monospacedSystemFont(ofSize: 28, weight: .bold),
+            color: pink,
+            alignment: .center
+        )
+    }
+}
+
+private func addOverlay(label: String?, caption: String?, progress: CGFloat) {
     pink.setFill()
     NSBezierPath(rect: NSRect(x: 0, y: CGFloat(height) - 8, width: CGFloat(width) * progress, height: 8)).fill()
 
-    roundedRect(
-        NSRect(x: 192, y: 900, width: 800, height: 48),
-        radius: 24,
-        color: NSColor(calibratedWhite: 0.03, alpha: 0.88)
-    )
-    drawText(
-        label,
-        rect: NSRect(x: 216, y: 911, width: 752, height: 30),
-        font: .monospacedSystemFont(ofSize: 18, weight: .bold),
-        color: pink
-    )
+    if let label, !label.isEmpty {
+        roundedRect(
+            NSRect(x: 192, y: 894, width: 760, height: 60),
+            radius: 30,
+            color: NSColor(calibratedWhite: 0.03, alpha: 0.88)
+        )
+        drawText(
+            label,
+            rect: NSRect(x: 224, y: 910, width: 696, height: 34),
+            font: .monospacedSystemFont(ofSize: 22, weight: .bold),
+            color: pink
+        )
+    }
 
     guard let caption, !caption.isEmpty else { return }
     roundedRect(
@@ -486,9 +550,8 @@ private func renderFrame(
     into pixelBuffer: CVPixelBuffer,
     time: Double,
     duration: Double,
-    slides: [Int: NSImage],
+    ownerPhotos: [String: NSImage],
     captures: [String: NSImage],
-    icon: NSImage,
     shots: [Shot],
     cues: [Cue]
 ) {
@@ -516,18 +579,24 @@ private func renderFrame(
     let shotProgress = CGFloat(max(0, min(1, (time - shot.start) / max(0.01, shot.end - shot.start))))
 
     switch shot.visual {
-    case let .slide(number):
-        if let slide = slides[number] {
-            drawImage(slide, fit: .fill, progress: shotProgress, zoomAmount: shot.zoom)
+    case .brand:
+        drawBrand()
+    case .endBrand:
+        drawBrand(endCard: true)
+    case let .ownerPhoto(name):
+        if let photo = ownerPhotos[name] {
+            drawImage(photo, fit: .fill, progress: shotProgress, zoomAmount: shot.zoom)
         }
     case let .capture(name, fit):
         if let capture = captures[name] {
             drawImage(capture, fit: fit, progress: shotProgress, zoomAmount: shot.zoom)
         }
-    case .continuity:
-        drawContinuity()
-    case .buildWeek:
-        drawBuildWeek(icon: icon)
+    case .opinionBoard:
+        drawOpinionBoard(ownerPhotos: ownerPhotos, progress: shotProgress)
+    case let .workingReplay(name, stage):
+        if let capture = captures[name] {
+            drawWorkingReplay(capture, stage: stage, progress: shotProgress)
+        }
     }
 
     let caption = cues.first(where: { time >= $0.start && time < $0.end })?.text
@@ -537,9 +606,8 @@ private func renderFrame(
 private func makeSilentVideo(
     outputURL: URL,
     duration: Double,
-    slides: [Int: NSImage],
+    ownerPhotos: [String: NSImage],
     captures: [String: NSImage],
-    icon: NSImage,
     shots: [Shot],
     cues: [Cue]
 ) throws {
@@ -619,9 +687,8 @@ private func makeSilentVideo(
             into: buffer,
             time: frameSeconds,
             duration: duration,
-            slides: slides,
+            ownerPhotos: ownerPhotos,
             captures: captures,
-            icon: icon,
             shots: shots,
             cues: cues
         )
@@ -742,6 +809,21 @@ private func captionWeight(_ phrase: CaptionPhrase) -> Double {
 
 private func buildCues(sections: [AudioSection]) -> [Cue] {
     sections.flatMap { section in
+        // ElevenLabs inserts expressive pauses in this reveal section. These measured
+        // speech onsets keep the burned-in/SRT reveal and purchase beats aligned with
+        // Chris rather than distributing them by word count.
+        if section.spec.audioFileName == "04-gpt.mp3" {
+            let phraseOnsets = [0.0, 4.578, 7.224, 12.811, 14.929, 16.584]
+            precondition(phraseOnsets.count == section.spec.captions.count)
+            return section.spec.captions.enumerated().map { index, phrase in
+                let start = section.audioStart + phraseOnsets[index]
+                let end = index + 1 < phraseOnsets.count
+                    ? section.audioStart + phraseOnsets[index + 1]
+                    : section.audioEnd
+                return Cue(start: start, end: end, text: phrase.display)
+            }
+        }
+
         let weights = section.spec.captions.map(captionWeight)
         let totalWeight = max(1, weights.reduce(0, +))
         var cursor = section.audioStart
@@ -842,6 +924,42 @@ private func loadImage(_ url: URL, description: String) throws -> NSImage {
     return image
 }
 
+private func loadOwnerPhotos(directory: URL) throws -> [String: NSImage] {
+    let allowedExtensions = Set(["jpg", "jpeg", "png", "heic"])
+    let urls = try FileManager.default.contentsOfDirectory(
+        at: directory,
+        includingPropertiesForKeys: [.isRegularFileKey],
+        options: [.skipsHiddenFiles]
+    ).filter { url in
+        guard allowedExtensions.contains(url.pathExtension.lowercased()) else { return false }
+        return (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+    }.sorted { left, right in
+        left.lastPathComponent.localizedStandardCompare(right.lastPathComponent) == .orderedAscending
+    }
+
+    guard (6...8).contains(urls.count) else {
+        throw makeError(
+            15,
+            "Expected 6 to 8 permission-cleared owner-car photos in \(directory.path); found \(urls.count)"
+        )
+    }
+
+    let images = try urls.map { url in
+        try loadImage(url, description: "permission-cleared owner-car photo \(url.lastPathComponent)")
+    }
+    var photos: [String: NSImage] = [:]
+    for (index, image) in images.enumerated() {
+        photos[String(format: "owner/%02d", index + 1)] = image
+    }
+    if images.count == 6 {
+        photos["owner/07"] = images[2]
+        photos["owner/08"] = images[0]
+    } else if images.count == 7 {
+        photos["owner/08"] = images[0]
+    }
+    return photos
+}
+
 private func main() throws {
     let arguments = CommandLine.arguments
     guard arguments.count == 5 else {
@@ -858,18 +976,32 @@ private func main() throws {
     let outputURL = URL(fileURLWithPath: arguments[4])
     let outputDirectory = outputURL.deletingLastPathComponent()
 
+    var rootIsDirectory: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: root.path, isDirectory: &rootIsDirectory), rootIsDirectory.boolValue else {
+        throw makeError(16, "Repository root does not exist: \(root.path)")
+    }
     guard FileManager.default.fileExists(atPath: outputDirectory.path) else {
-        throw makeError(15, "Output directory does not exist: \(outputDirectory.path)")
+        throw makeError(17, "Output directory does not exist: \(outputDirectory.path)")
     }
 
     let sections = try loadAudioSections(directory: audioDirectory)
     guard let lastSection = sections.last else {
-        throw makeError(16, "No narration sections were loaded")
+        throw makeError(18, "No narration sections were loaded")
     }
     let finalDuration = lastSection.audioEnd + closingTail
-    guard finalDuration < maximumDuration else {
+    guard finalDuration >= minimumDuration else {
         throw makeError(
-            17,
+            19,
+            String(
+                format: "Final duration %.3fs is below the %.1fs story floor; check that the complete narration was supplied",
+                finalDuration,
+                minimumDuration
+            )
+        )
+    }
+    guard finalDuration <= maximumDuration else {
+        throw makeError(
+            20,
             String(
                 format: "Final duration %.3fs exceeds the %.1fs safety ceiling; shorten or regenerate narration",
                 finalDuration,
@@ -878,23 +1010,14 @@ private func main() throws {
         )
     }
 
-    let slideNumbers = [1, 2, 7]
-    var slides: [Int: NSImage] = [:]
-    for number in slideNumbers {
-        let name = String(format: "slide-%02d.png", number)
-        let url = root.appendingPathComponent("docs/build-week/deck-preview/\(name)")
-        slides[number] = try loadImage(url, description: name)
-    }
-
+    let ownerPhotos = try loadOwnerPhotos(
+        directory: capturesDirectory.appendingPathComponent("owner-car", isDirectory: true)
+    )
     let captureNames = [
-        "web/proof.png",
-        "web/teach.png",
-        "web/research.png",
-        "web/review.png",
-        "web/learn.png",
         "ios/taste-onboarding-step1.png",
         "ios/taste-onboarding-calibrate.png",
-        "ios/desktop-codex-handoff.png",
+        "demo/teach.jpg",
+        "demo/research.jpg",
     ]
     var captures: [String: NSImage] = [:]
     for name in captureNames {
@@ -904,10 +1027,6 @@ private func main() throws {
         )
     }
 
-    let icon = try loadImage(
-        root.appendingPathComponent("assets/brand/beachcar-icon.png"),
-        description: "generated Beachcar icon"
-    )
     let cues = buildCues(sections: sections)
     let shots = buildShots(sections: sections, finalDuration: finalDuration)
 
@@ -924,9 +1043,8 @@ private func main() throws {
     try makeSilentVideo(
         outputURL: silentURL,
         duration: finalDuration,
-        slides: slides,
+        ownerPhotos: ownerPhotos,
         captures: captures,
-        icon: icon,
         shots: shots,
         cues: cues
     )

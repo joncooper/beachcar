@@ -265,7 +265,7 @@ const avoidCalibrationOptions: CalibrationOption[] = [
 const defaultTasteCalibration = ["open-air", "simple", "kid-plausible"];
 const defaultAvoidCalibration = ["rust", "salvage", "heavy-project"];
 
-const appName = import.meta.env.VITE_APP_NAME || "Beach Car Watch";
+const appName = import.meta.env.VITE_APP_NAME || "Beachcar";
 
 function listingKey(listing: AuctionListing): string {
   return listing.listingKey || listing.url || listing.title;

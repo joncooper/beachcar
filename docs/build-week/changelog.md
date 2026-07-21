@@ -1,60 +1,100 @@
-# Build Week challenge work
+# Build Week challenge changelog
 
-Beachcar is an existing project. This document separates the pre-challenge product from the extension being judged for OpenAI Build Week 2026.
+Beachcar is an existing project. This record separates the pre-challenge product and real-world case study from the extension submitted for OpenAI Build Week 2026.
 
-## Eligible baseline
+## Eligibility boundary
 
-- Challenge opened: July 13, 2026 at 9:00 a.m. PT / noon ET.
-- Baseline commit: [`e8321d0`](https://github.com/joncooper/beachcar/commit/e8321d0c27edd0d21aca2936ef04ae601e0ef4af)
-- Baseline time: July 13, 2026 at 10:48 a.m. ET, before the challenge opened.
-- Baseline subject: `Add invite-only managed research pilot`.
+- Challenge start: **July 13, 2026 at 9:00 a.m. PT / noon ET**.
+- Last committed baseline before the start: `e8321d0`, July 13 at 10:48:21 a.m. ET, `Add invite-only managed research pilot`.
+- First commit after the start: `16bf7ec`, July 13 at 12:24:11 p.m. ET, `Use GPT-4.1 mini for managed research`.
+- Final audited submission commit: `[PRE-SUBMISSION: paste the pushed commit hash after the repository is frozen]`.
 
-The baseline already included a native review product, user taste/profile state, source-backed auction dossiers, a React PWA, Cloudflare storage, feedback gestures, and an MCP concept. Those are context, not claimed as new Build Week work.
+Repository visibility is not the same as submission visibility. At this audit, the public repository exists and defaults to `main` at `b8cd9ca`, while the local Build Week branch is at `fbc9969` and four commits ahead of its remote tracking branch. The hashes below are local evidence until the final branch is pushed or merged and verified from a public fresh clone.
+
+The timestamp boundary establishes what was committed when. Eligibility is narrower than chronology: only the meaningful extension described below is presented as Build Week work.
+
+## What already existed
+
+Before the challenge opened, Beachcar already had:
+
+- a native iPhone review product and React web experience;
+- persisted user profile, lanes, source settings, and taste/filter state;
+- auction dossiers, source links, and feedback gestures;
+- Cloudflare-backed storage and an early agent/MCP direction;
+- experiments with managed research and owner-funded cloud inference.
+
+The pink 1960 Willys DJ-3A Surrey discovery and purchase are also treated as prior case-study proof. Beachcar surfaced the car; Jon made the decision and bought it. The submission does not claim that an event-period run found or purchased the Surrey.
 
 ## Meaningful Build Week extension
 
-| Before | Built during Build Week |
+| Before the challenge | Meaningful extension built after the start |
 | --- | --- |
-| Agent connectivity existed as a technical option. | A coached iPhone-to-desktop onboarding makes local Codex the explicit product path. |
-| Setup relied on technical documentation. | A downloadable Beachcar skill, desktop coach, MCP config, taste interview, confirmation step, and starter prompt turn setup into product UX. |
-| Basic profile/filter state. | Nuanced taste calibration and explicit steering travel through MCP into later research. |
-| Research architecture emphasized owner-funded cloud inference and scraping. | Research moves to the user's local Codex, GPT-5.6, and signed-in browser; Beachcar stores no marketplace or OpenAI credentials. |
-| MCP could expose product state. | The canonical loop reads setup, plans, submits candidates, publishes, and verifies the exact run shown to the user. |
-| Review feedback existed in the app. | The judge experience makes Love and Never again visibly change the next research plan. |
-| Generic beach-car visual identity. | The real pink Surrey outcome becomes a distinctive, moon-free identity across app, web, and submission. |
-| No competition proof package. | A deterministic judge replay, automated golden-path proof, rights-safe collateral, timed narration, deck, and video package document the result. |
+| Agent connectivity was a technical option | Local Codex became the explicit product agent, with a coached iPhone-to-desktop handoff |
+| Setup depended on technical documentation | A packaged Beachcar skill, installer, starter prompt, taste interview, confirmation step, and scoped connection turn setup into user experience |
+| Profile and filter state existed | Nuanced taste calibration and explicit Love/Never again steering are carried into later research planning |
+| Research emphasized managed cloud inference and scraping | The intended path moved to the user's local Codex and signed-in browser; marketplace and OpenAI credentials remain with the user |
+| MCP exposed product state | The canonical contract reads setup, saves confirmed taste, plans research, submits candidates, publishes, verifies, and exposes audit events |
+| Feedback existed in the review app | The judge experience makes decisive feedback visibly alter the next plan |
+| No judge-safe product surface | A five-scene deterministic local replay makes the product contract inspectable without accounts or auction credentials |
+| No contribution workflow | The skill defines an optional weekly Garage Session with separate consent, one bounded local improvement, isolation, a review packet, and no automatic external action |
+| Generic submission identity and no competition package | The actual Surrey leads a rights-tracked identity, narrated film, captions, thumbnail, deck, judge guide, and honest claim ledger |
+
+## Committed event-period evidence
+
+| Commit | Time (ET) | What it contributes | Claim boundary |
+| --- | --- | --- | --- |
+| `16bf7ec` | Jul 13, 12:24 p.m. | Managed-research model configuration and tests | Post-start maintenance, not the local-agent thesis |
+| `89d261e` | Jul 13, 12:32 p.m. | Production Clerk browser-loader fix and tests | Authentication maintenance only |
+| `88868b9` | Jul 13, 12:37 p.m. | Google sign-in through Clerk | Interactive sign-in, not recurring MCP OAuth proof |
+| `158c7bc` | Jul 13, 12:51 p.m. | Signed-in Clerk rendering fix and tests | Authentication maintenance only |
+| `1a549c5` | Jul 20, 11:26 p.m. | Local-Codex product story, eligibility record, judge guide, submission plan, and claim boundary | Narrative and documentation, not live-product proof |
+| `ec284a8` | Jul 20, 11:52 p.m. | Installable skill, reduced-scope recurring token path, expanded MCP contract, five-scene replay, and tests | Deterministic/local proof; no friend E2E or public deployment claim |
+| `2358146` | Jul 21, 12:51 a.m. | Setup ZIP, friend test plan, rights checklist, handoff UI, deck, rough cut, and supporting tests | Package and test plan; not evidence that a friend completed it |
+| `fbc9969` | Jul 21, 12:54 p.m. | Chris-narrated final-cut builder, timed narration source, internal captions, and artifact documentation | Build source; public YouTube upload still external |
+
+Any later local or uncommitted work counts only after it is reviewed, committed, pushed, and included in the exact repository revision submitted to judges. A local artifact is not evidence of a public deployment or completed external flow.
 
 ## Codex collaboration
 
-Primary Codex task ID: `019f8178-f7a2-7301-b9be-f5b0af997b70`
+Candidate primary Codex task ID: `019f8178-f7a2-7301-b9be-f5b0af997b70`. It must be verified as the literal value accepted or returned by `/feedback` before submission.
 
-Codex was used to:
+Codex with GPT-5.6 helped:
 
-- inspect the pre-existing architecture and identify story/implementation contradictions;
-- design the local-agent boundary and scoped MCP workflow;
-- implement web, Worker, and SwiftUI changes;
-- drive the browser and iOS simulator during visual validation;
-- write and run cross-platform tests;
-- generate and refine the Surrey-led identity;
-- audit competition rules and produce the judge/video package.
+- inspect the pre-existing architecture and identify contradictions between the hosted-AI plan and the desired personal-agent experience;
+- design and implement the local-agent, user-controlled-browser, and scoped MCP boundaries;
+- build and test the coached setup, deterministic replay, feedback steering, installer, and judge package;
+- run component-level browser and iPhone Simulator validation without treating it as live end-to-end continuity;
+- define the Garage Session consent, isolation, and review gates;
+- create and refine the Surrey-led presentation, narration, and film build.
 
-Human decisions included abandoning the owner-funded cloud-AI default, keeping credentials in the user's browser, making the shortlist deliberately small, defining feedback semantics, selecting the Surrey as honest proof, and deciding what claims were not yet earned.
+Human decisions included moving away from Beachcar-funded cloud AI as the primary path, keeping marketplace credentials with the user, limiting the shortlist, defining feedback semantics, using the Surrey as prior honest proof, and refusing claims not supported by end-to-end evidence.
 
-## GPT-5.6 contribution
+## GPT-5.6 roles
 
-GPT-5.6 has two inspectable roles:
+1. **Inside the intended product:** GPT-5.6 in local Codex turns nuanced taste and imperfect listing evidence into targeted research, comparative judgment, concise dossiers, risks, and explicit uncertainty.
+2. **During Build Week:** GPT-5.6 in the primary Codex task reasoned across the repository, implemented and tested the extension, drove product validation, and assembled submission artifacts.
 
-1. **Inside the product:** local Codex uses GPT-5.6 to turn nuanced taste and messy auction evidence into a research plan, candidate comparison, evidence-backed dossier, risk summary, and explicit uncertainty.
-2. **During the build:** this primary Codex task used GPT-5.6 to reason across the repository, implement and test the challenge extension, drive the product, and build the submission package.
+The repository demonstrates these roles through code, prompts, skill policy, fixtures, and tests. It does not claim a captured production run or paid cloud inference as judge proof.
 
-The demo and README must name both roles. “AI-powered” is not sufficient evidence.
+## Deterministic replay boundary
 
-## Challenge commits
+The local `/demo` route is intentionally deterministic. It uses fixed data to demonstrate:
 
-This table is completed as each of the three passes lands.
+- the taste interview and structured memory;
+- the exact six-tool MCP sequence;
+- the shape of a deliberately small shortlist;
+- Love and Never again becoming explicit next-plan signals.
 
-| Pass | Commit | Scope |
-| --- | --- | --- |
-| 1 — narrative | `1a549c5` | Truthful README, competition plan, judge guide, submission copy, and claim boundary. |
-| 2 — proof | `ec284a8` | Deterministic judge experience, reduced-scope recurring setup, local-browser MCP policy, and golden-path tests. |
-| 3 — collateral | This commit | Production demo build fix, rights-safe image-optional MCP publishing, friend setup package, storyboard, narration, deck, gallery clearance plan, and playable rough cut. |
+It does **not** demonstrate a live scrape, a live remote MCP session, the historical Surrey discovery, a matching run on iPhone, a hosted public `/demo`, or a completed friend TestFlight journey. Committed tests cover the fixture and contracts, and the final working tree must rerun them after identity changes; even a green suite would not turn the fixture into live continuity evidence.
+
+## Not claimed as complete
+
+- public deployment of the exact submitted replay revision;
+- public YouTube upload and final URL;
+- clean-slate friend TestFlight end-to-end completion;
+- one live run ID observed across local Codex, MCP verification, and iPhone;
+- unattended recurring OAuth or refresh-token support;
+- a completed scheduled Garage Session or deployed extension;
+- independent inspection of the dealer/photographer's written photo license or credit terms.
+
+These remain external validation or release tasks. They are not silently promoted into Build Week achievements.

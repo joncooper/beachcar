@@ -59,7 +59,7 @@ export const buildWeekDemoFixture = {
     url: "https://bringatrailer.com/listing/1960-jeep-dj-3a/",
     outcome: "Beachcar found it. Jon bought it.",
     note: "The purchase outcome is real. This fixed replay shows the mechanism without claiming a captured production log.",
-    imageSrc: "/icon-512.png",
+    imageSrc: "/beachcar-surrey-real.webp",
   },
   taste: {
     prompt: "A joyful beach-town oddball: open-air, tiny, characterful, and usable at 25 mph.",
@@ -129,19 +129,19 @@ export const buildWeekDemoFixture = {
     {
       at: "STEP 05",
       kind: "browser",
-      label: "Signed-in browser · Bring a Trailer",
+      label: "Signed-in browser · user-authorized source A",
       detail: "Read current results and listing evidence with the user's access.",
     },
     {
       at: "STEP 06",
       kind: "browser",
-      label: "Signed-in browser · Cars & Bids",
+      label: "Signed-in browser · user-authorized source B",
       detail: "Compared listing evidence, comments, location, and auction timing.",
     },
     {
       at: "STEP 07",
       kind: "browser",
-      label: "Signed-in browser · Hemmings",
+      label: "Public inventory cross-check",
       detail: "Cross-checked inventory and filtered weak matches.",
     },
     {

@@ -4,7 +4,7 @@
   <img src="assets/brand/beachcar-icon.png" alt="Beachcar app icon: a pink 1960 Willys DJ-3A Surrey" width="128">
 </p>
 
-<h3 align="center">Your Codex. Your taste. The one.</h3>
+<h3 align="center">Your Codex. Your taste. Your car.</h3>
 
 <p align="center">
   <strong>A personal auction scout that researches through your signed-in browser, publishes an evidence-backed shortlist, and learns from every swipe.</strong>
@@ -58,14 +58,14 @@ The split preserves agency: the user owns the browser login, Codex subscription,
 
 <table>
   <tr>
-    <td align="center" width="33%"><img src="docs/build-week/deck-preview/slide-03.png" alt="Beachcar taste onboarding and desktop handoff" width="390"></td>
-    <td align="center" width="33%"><img src="docs/build-week/deck-preview/slide-05.png" alt="Beachcar deterministic replay showing one fixed fixture state" width="390"></td>
-    <td align="center" width="33%"><img src="docs/build-week/deck-preview/slide-06.png" alt="Beachcar Love and Never again feedback changing the next plan" width="390"></td>
+    <td align="center" width="33%"><img src="docs/build-week/deck-preview/slide-04.png" alt="Beachcar taste onboarding on iPhone" width="390"></td>
+    <td align="center" width="33%"><img src="docs/build-week/deck-preview/slide-05.png" alt="Local Codex, signed-in browser, Beachcar MCP, and iPhone architecture" width="390"></td>
+    <td align="center" width="33%"><img src="docs/build-week/deck-preview/slide-08.png" alt="The real pink 1960 Willys Surrey Beachcar surfaced and its user bought" width="390"></td>
   </tr>
   <tr>
     <td valign="top"><strong>Calibrate.</strong><br>Durable taste is richer than filters.</td>
-    <td valign="top"><strong>Understand.</strong><br>Fit, valuation, watch-outs, confidence, and sources stay beside the recommendation.</td>
-    <td valign="top"><strong>Decide.</strong><br>A tiny shortlist keeps the agent accountable for every pick.</td>
+    <td valign="top"><strong>Hunt.</strong><br>Your Codex researches in the browser you control and publishes through Beachcar MCP.</td>
+    <td valign="top"><strong>Find the one.</strong><br>The clearest product proof is now a very real pink car.</td>
   </tr>
 </table>
 
@@ -73,25 +73,27 @@ The review model is intentionally fast and physical. Swipe right to **Like**, fa
 
 ## Judge path
 
-The deterministic judge experience is a fixed, clearly labeled replay of one complete loop without paid infrastructure or private auction credentials. It is not presented as a captured production run; automated coverage verifies the replay state and the MCP golden path separately:
+The no-secret judge experience is a fixed, clearly labeled replay of the product contract. It runs locally without paid infrastructure or private auction credentials and never presents itself as a captured production run:
 
-1. Open the iPhone app and complete the short taste calibration.
-2. Follow the desktop handoff to connect Beachcar to Codex.
-3. Watch Codex load the profile, research with GPT-5.6, and publish through MCP.
-4. See the verified shortlist appear in Beachcar with evidence and risks intact.
-5. Mark one candidate **Love it** and another **Never again**.
-6. Start the next plan and see Codex explicitly use both signals.
+1. Run `bun run dev`, then open [`http://127.0.0.1:5173/demo`](http://127.0.0.1:5173/demo).
+2. **Proof** introduces the real Surrey Beachcar surfaced and its user bought.
+3. **Teach** turns plain-language taste into durable memory.
+4. **Research** shows the exact local Codex, signed-in browser, and MCP tool sequence represented by the fixture.
+5. **Review** shows five clearly labeled fixture picks with reasons, caveats, market notes, and source slots.
+6. **Learn** shows how Love and Never again change the next research brief.
+
+Automated coverage verifies the replay state and the MCP contract separately. This replay does not claim that a live marketplace login, a production publication, or the owner/friend TestFlight acceptance run occurred inside the fixture.
 
 See [the Build Week judge guide](docs/build-week/judge-guide.md) for the evaluation path and [the submission plan](docs/build-week/submission-plan.md) for the evidence checklist.
 
-The repository also includes the [judge deck](docs/build-week/Beachcar-Build-Week.pptx), [playable rough cut](docs/build-week/Beachcar-Build-Week-rough-cut.mp4), [timed storyboard](docs/build-week/storyboard.md), and [two-round owner/friend acceptance guide](docs/build-week/friend-e2e-test.md). The rough cut uses synthesized narration as an editing guide; the public submission should use the creator's recorded voice.
+The repository also includes the [final real-photo judge deck](docs/build-week/Beachcar-Build-Week-final.pptx), [timed storyboard](docs/build-week/storyboard.md), [submission copy and YouTube kit](docs/build-week/submission-copy.md), [artifact manifest](docs/build-week/artifact-manifest.md), and [two-round owner/friend acceptance guide](docs/build-week/friend-e2e-test.md). The 1:41 Creator-tier Chris narration cut is a local, Git-ignored upload master—not a repository download. Its current hash is recorded in the manifest and must be re-frozen after any rebuild; the submission should use the verified public YouTube URL as the film link and, absent a verified hosted experience, a permanent final-commit permalink to the [judge guide](docs/build-week/judge-guide.md) for working-project access.
 
 ## Build Week extension
 
 Beachcar existed before Build Week. The eligible submission is the meaningful extension built after the event opened: the local-Codex default, user-owned browser research, the Beachcar skill and MCP onboarding, the learning-loop demo, the new Surrey-led identity, and the judge-facing proof package.
 
 - **Baseline:** [`e8321d0`](https://github.com/joncooper/beachcar/commit/e8321d0c27edd0d21aca2936ef04ae601e0ef4af), July 13, 2026 at 10:48 a.m. ET.
-- **Primary Codex task:** `019f8178-f7a2-7301-b9be-f5b0af997b70`.
+- **Candidate primary Codex task:** `019f8178-f7a2-7301-b9be-f5b0af997b70` (provisional; include it in the entry only after `/feedback` literally accepts or returns this value).
 - **Detailed before/after record:** [Build Week changelog](docs/build-week/changelog.md).
 
 Codex accelerated repository analysis, product implementation, native and web UI iteration, automated tests, visual identity work, and submission collateral. The important human decisions remained human: rejecting the hosted-cost story, insisting on a user-owned browser, choosing a tiny evidence-backed shortlist, defining the feedback semantics, and recognizing that the car Beachcar found is the honest emotional proof.
@@ -130,12 +132,12 @@ The Worker is the trust boundary. It verifies identity, scopes every read and wr
 
 | Surface | Implementation |
 | --- | --- |
-| **Native app** | SwiftUI, Clerk sign-in, resumable taste onboarding, desktop-Codex handoff, offline run cache, progressive gesture coaching, accessible layouts, and TestFlight distribution. |
+| **Native app** | SwiftUI, Clerk sign-in, resumable taste onboarding, desktop-Codex handoff, offline run cache, progressive gesture coaching, accessible layouts, and TestFlight release tooling. |
 | **Desktop + web** | React PWA for setup coaching, onboarding, review, preferences, status, account controls, and deterministic demo states. |
 | **Agent interface** | A Beachcar daily-run skill plus hosted Streamable HTTP MCP with scoped setup, memory, submission, publication, and verification tools. |
 | **Data + media** | Cloudflare Worker, D1 user-scoped state, and R2 image cache/variants. |
 | **Identity + privacy** | Clerk authentication, hashed tokens, OAuth metadata, export/delete, and a strict separation between auction-taste memory and product diagnostics. |
-| **Verification** | Vitest coverage for Worker/web contracts plus native builds and XCUITests for onboarding, review, gestures, persistence, and the signed-out brand story. |
+| **Verification** | Vitest coverage for Worker/web contracts plus native build checks and XCUITest coverage for onboarding, review, gestures, persistence, and the signed-out brand story. |
 
 ## Run it locally
 

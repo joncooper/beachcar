@@ -30,6 +30,47 @@ describe("Beachcar local Codex setup", () => {
     expect(bundle).toContain("Mac must be awake, Codex must be running");
   });
 
+  it("keeps the optional Garage Session consent-first and local until exact review", async () => {
+    const bundle = automationBundleMarkdown("https://beachcar.example/mcp");
+    const canonicalSkill = await readFile(join(skillSource, "SKILL.md"), "utf8");
+    const canonicalGarage = markdownSection(canonicalSkill, "## Optional Garage Session", "## First-Run Taste Interview");
+    const bundledGarage = markdownSection(bundle, "## Optional Garage Session", "## First-Run Taste Interview");
+
+    expect(bundledGarage).toBe(canonicalGarage);
+    expect(canonicalGarage).toContain("only while the state is `never-asked`, ask once");
+    expect(canonicalGarage).toContain("Record a no as `declined`");
+    expect(canonicalGarage).toContain("Schedule it only after that explicit yes");
+    expect(canonicalGarage).toContain("https://github.com/joncooper/beachcar.git");
+    expect(canonicalGarage).toContain("bind the automation's working directory");
+    expect(canonicalGarage).toContain("dedicated disposable Git worktree");
+    expect(canonicalGarage).toContain("local, non-deploying, credential-free checks");
+    expect(canonicalGarage).toContain("do not start another weekly session or change its files");
+    expect(canonicalGarage).toContain("~/.codex/beachcar/garage-reviews/<session-id>/");
+    expect(canonicalGarage).toContain("`README.md`");
+    expect(canonicalGarage).toContain("`patch.diff`");
+    expect(canonicalGarage).toContain("`metadata.json`");
+    expect(canonicalGarage).toContain("`test-output.txt`");
+    expect(canonicalGarage).toContain("Send a Codex notification and make the scheduled task result say");
+    expect(canonicalGarage).toContain("Finder → Go → Go to Folder");
+    expect(canonicalGarage).toContain("lowercase 64-character SHA-256 hex digest");
+    expect(canonicalGarage).toContain("full `baseCommit` and `reviewedCommit`");
+    expect(canonicalGarage).toContain("Immediately before each approved external write");
+    expect(canonicalGarage).toContain("require a clean worktree whose `HEAD` is exactly `reviewedCommit`");
+    expect(canonicalGarage).toContain("Both digests must exactly equal the approved `patchSha256`");
+    expect(canonicalGarage).toContain("**Approve / published:**");
+    expect(canonicalGarage).toContain("Record decision `approved`");
+    expect(canonicalGarage).toContain("**Reject / closed:**");
+    expect(canonicalGarage).toContain("**Revise:**");
+    expect(canonicalGarage).toContain("**Abandon:**");
+    expect(canonicalGarage).toContain("Retain the review packet");
+    expect(canonicalGarage).toContain("delete the disposable worktree");
+    expect(canonicalGarage).toContain("Delete the local branch only after");
+    expect(canonicalGarage).toContain("Without fresh approval, never push a branch");
+    expect(canonicalGarage).toContain("use authenticated browsing, install dependencies, or make a paid API call");
+    expect(canonicalGarage).toContain("a prior approval never carries over or authorizes a retry after failure");
+    expect(canonicalGarage).toContain("or unrelated local changes");
+  });
+
   it("keeps the recurring token out of Codex arguments and TOML", async () => {
     if (process.platform !== "darwin") return;
 
@@ -86,7 +127,8 @@ describe("Beachcar local Codex setup", () => {
     const installer = await readFile(installerPath, "utf8");
 
     expect(installer).toContain("stty -echo");
-    expect(installer).toContain("/dev/tty");
+    expect(installer).toContain("tty -s");
+    expect(installer).toContain("beachcar_terminal=$(tty)");
     expect(installer).toContain("umask 077");
     expect(installer).toContain("chmod 600");
     expect(installer).toContain("--bearer-token-env-var BEACHCAR_MCP_TOKEN");
@@ -94,6 +136,14 @@ describe("Beachcar local Codex setup", () => {
     expect(installer).not.toMatch(/codex mcp add[^\n]*beachcar_token/);
   });
 });
+
+function markdownSection(markdown: string, startHeading: string, nextHeading: string): string {
+  const start = markdown.indexOf(startHeading);
+  const end = markdown.indexOf(nextHeading, start + startHeading.length);
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+  return markdown.slice(start, end).trim();
+}
 
 async function runInstaller(
   testRoot: string,

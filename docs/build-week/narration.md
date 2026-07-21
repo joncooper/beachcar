@@ -1,58 +1,47 @@
 # Beachcar Build Week narration
 
-Final internal-review delivery: **2:41.8**, including the one-second opening beat and five-second tail. Spoken word count: **388** after TTS pronunciation expansions. The editor derives section timing from the recorded Chris narration. Do not accelerate the continuity proof; its fixture state must remain readable.
+Target delivery follows the final Chris read, including a two-second opening beat and a four-second end-card hold. The story begins with a family need, lets Codex hunt, and delays the complete car and purchase reveal until section four. Technical provenance stays out of the spoken copy.
 
 ## Exact spoken script
 
-### 0:01–0:16 — The outcome
+### The need (`01-found.mp3`)
 
-This is a 1960 Willys DJ-3A Surrey: tiny, open-air, and unapologetically pink. Earlier, before this Build Week extension, Beachcar surfaced it. I didn't know to search for it. I bought it. That's the clearest proof.
+Beachcar. Your Codex. Your taste. Your car. I live in a tiny beach town. All summer, I'm running my kids one or two miles at a time—to the beach, camp, friends, ice cream. I wanted a beach car: open, simple, weird, and unlike anything else in town.
 
-### 0:17–0:29 — Why alerts fail
+### The missing name (`02-taste.mp3`)
 
-Alerts can match make, year, and price. My taste is harder: joyful, mechanically simple, useful for slow beach days, charming instead of precious. Beachcar turns that preference into an agent that can act on it.
+But I didn't know what it was called. I didn't even know it existed. Most car sites make you name the answer before they'll help you search. So I built Beachcar to start with the feeling.
 
-### 0:30–0:44 — What changed
+### The hunt (`03-agent.mp3`)
 
-Beachcar already had an iPhone review experience. For Build Week, I extended it with taste coaching and a desktop handoff. Local Codex connects to Beachcar's hosted MCP, where taste, feedback, sources, and published runs become durable memory.
+I tell it what I like, and my Codex goes hunting from my Mac. It opens the browser I'm already signed into, digs through listings, throws away the noise, and comes back with a few actual opinions: this one fits, this one's overpriced, this one could ruin my summer.
 
-### 0:44–1:00 — What GPT-5.6 does
+### The reveal (`04-gpt.mp3`)
 
-Inside the product, GPT-5.6 is the judgment engine. Running in your own Codex, it reads the brief, plans the search, uses your signed-in browser, compares auction evidence, and explains fit, value, uncertainty, and risk.
+For a couple of weeks, I kept using it and teaching it: more charm, less precious; more beach day, less car show. Then this appeared—a 1960 Willys Surrey that looks like a Jeep, a golf cart, and a beach umbrella somehow became one car. I bought it. This is actually my car now.
 
-### 1:01–1:31 — Inspectable continuity
+### Built together (`05-garage.mp3`)
 
-This deterministic replay makes the contract inspectable. One fixture carries the same run identifier through setup, research, publication, verification, and the review state. Separately, a golden-path smoke test publishes and reads back a synthetic run through the hosted MCP. In actual use, local Codex, the signed-in browser, and MCP are designed to add zero Beachcar AI usage. Credentials stay local. OpenAI costs stay with the user's Codex.
+GPT-5.6 gives Codex the judgment to do that hunt, and Codex helped me build Beachcar too—the iPhone experience, the way it searches, even this film. If you opt in, your Codex can also take a weekly Garage Session to improve Beachcar itself. You see every change first. Nothing ships without you.
 
-### 1:31–1:45 — Five, not five hundred
+### Close (`06-close.mp3`)
 
-The goal isn't another feed. The replay carries five fixture cars; each candidate has a reason, caveat, and source in the contract. The real Surrey proves the taste problem. This local path reasons from character and context, not just keywords.
-
-### 1:45–2:02 — Explicit learning
-
-Then the loop gets personal. Love the Surrey, and tomorrow's plan prioritizes open-air oddballs, playful color, and slow-car charm. Mark an anonymous performance SUV as “Never again,” and Codex stops spending attention there. Feedback becomes inspectable memory, not a hidden profile.
-
-### 2:03–2:25 — How Codex helped build it
-
-I used Codex with GPT-5.6 to build this Build Week extension. It audited the repository, helped choose an honest local-agent architecture, implemented iPhone-to-desktop onboarding and the scoped MCP workflow, drove the browser and iOS Simulator, and strengthened the golden-path tests. I made the product decisions. Codex turned them into tested software.
-
-### 2:26–2:37 — Apps for Your Life
-
-Beachcar is for Apps for Your Life because it measures success differently. Not more listings, clicks, or engagement. One unusually good decision. Your Codex. Your taste. The one.
-
-### 2:37–2:42 — Tail
-
-No speech. Hold the Beachcar end card and let the final room tone resolve cleanly.
+I built Beachcar to find one weird little car for my family. Now your Codex can go looking for yours. Beachcar. Your Codex. Your taste. Your car.
 
 ## Recording direction
 
-- Tone: delighted and matter-of-fact, not breathless. The purchase is evidence, not a victory lap.
-- Pause briefly after “I bought it,” “read-back verification,” and “one unusually good decision.”
-- Emphasize **local Codex**, **GPT-5.6**, **deterministic replay**, and **Apps for Your Life**.
-- Voice: ElevenLabs Chris, delivered in nine separately generated sections so the final editor can respect natural pacing.
-- TTS substitutions: `1960` → “nineteen sixty”; `Willys` → “Willis”; `DJ-3A` → “D J three A”; `GPT-5.6` → “G P T five point six”; `MCP` → “M C P”; `OpenAI` → “Open A I”; `AI` → “A I”; `SUV` → “S U V”; `iOS` → “eye oh ess”. Keep the normal spellings in captions.
-- Keep the voice dry and intelligible. If music is later cleared, mix it at least 18 dB below narration and remove it under the continuity proof.
+- Tone: personal, delighted, and confident. The family need is specific and real; the delivery is not a sales pitch.
+- Keep sections one and two curious. Do not reveal the complete car before “Then this appeared” in section four.
+- Emphasize **my kids**, **start with the feeling**, **this one could ruin my summer**, **I bought it**, **actually my car now**, and **for my family**.
+- Voice: ElevenLabs Chris, recorded as the six files named in the section headings so picture timing can follow natural delivery.
+- TTS substitutions: `1960` -> “nineteen sixty”; `Willys` -> “Willis”; `GPT-5.6` -> “G P T five point six”. Keep the normal spellings in captions; `Codex` keeps its normal pronunciation.
+- Keep the voice dry and intimate. If music is later cleared, keep it restrained and at least 18 dB below narration.
 
-## Truth gate before recording
+## Truth and picture gates
 
-The main script is deliberately written for the deterministic fixture and separately names the synthetic MCP smoke. Do not replace it with a live-run claim unless a fresh capture shows `publish_run`, `verify_latest_run`, and the iPhone carrying the same real run ID and count. If that proof is captured, an editor may upgrade only the continuity section and must preserve the matching identifiers on screen.
+- Use only real photographs of the purchased Surrey. Do not use generated Surrey art or a generated-car product capture.
+- Do not show the complete Surrey, the purchase result, or `I BOUGHT IT` text before section four. Early frames may use tight real-car details that do not give away the whole silhouette.
+- A short privacy-scrubbed working replay may appear during the Build Week explanation when it is plainly labeled `WORKING REPLAY · LOCAL · NO LOGIN`; keep deterministic result claims and technical contract detail in the judge surface.
+- The Surrey discovery predates Build Week. Record that provenance in the submission notes; do not clutter the spoken story with eligibility language.
+- Do not imply that Beachcar bid or purchased the car. Beachcar surfaced it; the owner made the decision and bought it.
+- Keep the Garage Session consent visible: opt-in, one bounded change, user review before anything leaves the local worktree, and no automatic shipping.

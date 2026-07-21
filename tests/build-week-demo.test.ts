@@ -53,9 +53,9 @@ describe("Build Week deterministic replay fixture", () => {
   it("keeps browser reads as evidence without inserting them into the MCP sequence", () => {
     const browserReads = buildWeekDemoFixture.timeline.filter((event) => event.kind === "browser");
     expect(browserReads.map((event) => event.label)).toEqual([
-      "Signed-in browser · Bring a Trailer",
-      "Signed-in browser · Cars & Bids",
-      "Signed-in browser · Hemmings",
+      "Signed-in browser · user-authorized source A",
+      "Signed-in browser · user-authorized source B",
+      "Public inventory cross-check",
     ]);
     expect(mcpToolsFromTimeline(buildWeekDemoFixture.timeline)).toHaveLength(6);
   });
@@ -84,6 +84,6 @@ describe("Build Week deterministic replay fixture", () => {
     expect(buildWeekDemoFixture.caseStudy.note).toContain("without claiming a captured production log");
     expect(buildWeekDemoFixture.caseStudy.title).toBe("1960 Willys DJ-3A Surrey");
     expect(buildWeekDemoFixture.caseStudy.url).toBe("https://bringatrailer.com/listing/1960-jeep-dj-3a/");
-    expect(buildWeekDemoFixture.caseStudy.imageSrc).toBe("/icon-512.png");
+    expect(buildWeekDemoFixture.caseStudy.imageSrc).toBe("/beachcar-surrey-real.webp");
   });
 });

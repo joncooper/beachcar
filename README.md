@@ -73,7 +73,7 @@ The split preserves agency: the user owns the browser login, Codex subscription,
   </tr>
 </table>
 
-The review model is intentionally fast and physical. Swipe right to **Like**, farther right to **Love it**; swipe left to **Pass**, farther left for **Never again**. Scroll down for the full dossier. Tap a photo for a separate zoomable gallery. Those judgments are not engagement signals—they are research instructions.
+The review model is intentionally fast and physical. Swipe right to **Like**, farther right to **Love it**; swipe left to **Pass**, farther left for **Never again**. Scroll down for the full dossier and every listing photo—horizontal movement is always about taste. Those judgments are not engagement signals—they are research instructions.
 
 ## Judge path
 

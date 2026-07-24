@@ -62,9 +62,16 @@
     }
   ],
   "vars": {
-    "BOOTSTRAP_OWNER_EMAILS": "jon.cooper@gmail.com,jon@dockett.ai",
-    "ENVIRONMENT": "production"
+    "BOOTSTRAP_OWNER_EMAILS": "jon.cooper@gmail.com",
+    "ENVIRONMENT": "production",
+    "PUBLIC_APP_URL": "https://beachcar-watch.jon-cooper.workers.dev"
   },
+  "send_email": [
+    {
+      "name": "SHORTLIST_EMAIL",
+      "allowed_sender_addresses": ["finds@dockett.ai"]
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DB",

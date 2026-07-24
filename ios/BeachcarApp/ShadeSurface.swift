@@ -1,7 +1,7 @@
 import SwiftUI
 
 // The Shade review surface: one vertically readable dossier at a time, with
-// horizontal judgment and separate list and photo-gallery modes.
+// horizontal judgment and a separate list mode.
 
 struct ShadeSurface: View {
   @ObservedObject var store: BeachcarStore
@@ -16,7 +16,6 @@ struct ShadeSurface: View {
   @State private var diagnosticsDisclosureOpen = false
   @State private var didRecordSession = false
   @State private var didRecordReviewCoachImpression = false
-  @Namespace private var photoNamespace
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   private var cars: [AuctionListing] { store.run?.listings ?? store.visibleListings }
@@ -53,9 +52,13 @@ struct ShadeSurface: View {
           ShadeLoadingView()
           statusNotices(geo, belowChrome: false)
         } else if cars.isEmpty {
-          ShadeEmptyView(hasRun: store.run != nil, error: store.errorMessage) {
-            await store.load(tokenProvider: tokenProvider, cacheScope: cacheScope)
-          }
+          ShadeEmptyView(
+            run: store.run,
+            agentRun: store.agentRun,
+            error: store.errorMessage,
+            reload: { await store.load(tokenProvider: tokenProvider, cacheScope: cacheScope) },
+            retry: { await store.retryFirstRun(tokenProvider: tokenProvider, cacheScope: cacheScope) }
+          )
           statusNotices(geo, belowChrome: false)
         } else {
           feedLayer(geo)
@@ -115,8 +118,8 @@ struct ShadeSurface: View {
         }
       )
     }
-    .task(id: productTelemetry.shouldPresentDisclosure) {
-      guard productTelemetry.shouldPresentDisclosure else { return }
+    .task(id: productTelemetry.shouldPresentDisclosure && store.feedbackByKey.count >= 3) {
+      guard productTelemetry.shouldPresentDisclosure, store.feedbackByKey.count >= 3 else { return }
       try? await Task.sleep(for: .seconds(0.75))
       guard !Task.isCancelled, productTelemetry.shouldPresentDisclosure else { return }
       diagnosticsDisclosureOpen = true
@@ -155,8 +158,7 @@ struct ShadeSurface: View {
             totalListings: cars.count,
             sourceSummary: store.run?.sourceSummary,
             api: store.api,
-            geo: geo,
-            photoNamespace: photoNamespace
+            geo: geo
           ) { note in
             Task { _ = await store.submitPreferenceNote(note, listing: car, tokenProvider: tokenProvider) }
           }
@@ -176,7 +178,7 @@ struct ShadeSurface: View {
     .frame(width: geo.width, height: geo.height, alignment: .top)
     .clipped()
     .accessibilityElement(children: .contain)
-    .accessibilityHidden(controller.listOpen || controller.galleryOpen)
+    .accessibilityHidden(controller.listOpen)
   }
 
   @ViewBuilder
@@ -200,43 +202,6 @@ struct ShadeSurface: View {
       api: store.api,
       geo: geo
     )
-
-    if controller.galleryOpen, let car = currentCar {
-      ShadePhotoGallery(
-        controller: controller,
-        car: car,
-        api: store.api,
-        safeTop: geo.safeTop,
-        safeBottom: geo.safeBottom,
-        height: geo.height,
-        coach: interactionCoach,
-        tuning: interactionTuning.effectiveProfile,
-        onDismissed: { method, attempts, zoomed in
-          productTelemetry.recordGalleryDismissed(
-            method: method,
-            attempts: attempts,
-            zoomed: zoomed,
-            tuning: interactionTuning.effectiveProfile
-          )
-          flushTelemetry()
-        },
-        onCoachImpression: {
-          productTelemetry.record(
-            .coachImpression,
-            properties: [
-              "hintVersion": String(interactionCoach.state.hintVersion),
-              "surface": "gallery",
-              "coachingMode": interactionTuning.effectiveProfile.coaching.rawValue,
-            ],
-            tuning: interactionTuning.effectiveProfile
-          )
-          flushTelemetry()
-        },
-        photoNamespace: photoNamespace
-      )
-        .transition(.opacity)
-        .zIndex(20)
-    }
 
     if store.lastUndo != nil {
       VStack {
@@ -343,14 +308,6 @@ struct ShadeSurface: View {
       )
       flushTelemetry()
     }
-    controller.onGalleryOpened = { photoCount, rememberedIndex in
-      productTelemetry.recordGalleryOpened(
-        photoCount: photoCount,
-        rememberedIndex: rememberedIndex,
-        tuning: interactionTuning.effectiveProfile
-      )
-      flushTelemetry()
-    }
     controller.onCoachInteraction = {
       interactionCoach.recordInteraction()
       productTelemetry.record(
@@ -375,13 +332,12 @@ struct ShadeSurface: View {
 
     #if DEBUG
     // Debug-only hook to launch straight into an overlay for visual QA, e.g.
-    // `--ui-testing --shade-open list|gallery|swipe`. No effect in release builds.
+    // `--ui-testing --shade-open list|swipe`. No effect in release builds.
     if AppEnv.isUITesting {
       let args = ProcessInfo.processInfo.arguments
       if let i = args.firstIndex(of: "--shade-open"), args.indices.contains(i + 1) {
         switch args[i + 1] {
         case "list": controller.listOpen = true
-        case "gallery": controller.openGallery()
         case "gestures": controller.gesturesHelpOpen = true
         case "tweaks": controller.tweaksOpen = true
         case "swipe", "shade":
@@ -528,6 +484,11 @@ private struct ReviewChrome: View {
   var body: some View {
     VStack(spacing: 8) {
       HStack(spacing: 10) {
+        Image("BeachcarSurrey")
+          .resizable()
+          .scaledToFit()
+          .frame(width: 42, height: 28)
+          .accessibilityHidden(true)
         Text("Beachcar")
           .font(.archivo(22, .black))
           .foregroundStyle(BC.white)
@@ -611,7 +572,7 @@ private struct GestureHelpSheet: View {
             Text("A small vocabulary")
               .font(.archivo(25, .extrabold))
               .foregroundStyle(BC.white)
-            Text("The dossier scrolls vertically. Decisions move sideways. Photos get their own canvas.")
+            Text("The whole car—including every photo—scrolls vertically. Sideways movement is only for taste.")
               .font(.archivo(14, .medium))
               .foregroundStyle(BC.sub)
               .lineSpacing(3)
@@ -620,13 +581,12 @@ private struct GestureHelpSheet: View {
           helpSection("REVIEW") {
             gestureRow(symbol: "arrow.left", title: "Swipe left", detail: "Pass · keep going for Never again", color: Icon.color(for: .hide))
             gestureRow(symbol: "arrow.right", title: "Swipe right", detail: "Like · keep going for Love it", color: Icon.color(for: .like))
-            gestureRow(symbol: "arrow.up.and.down", title: "Scroll", detail: "Read the complete dossier", color: BC.accent)
+            gestureRow(symbol: "arrow.up.and.down", title: "Scroll vertically", detail: "Read the dossier and see every photo", color: BC.accent)
           }
 
           helpSection("PHOTOS") {
-            gestureRow(symbol: "hand.pinch", title: "Pinch or double-tap", detail: "Zoom in; drag to inspect details", color: BC.star)
-            gestureRow(symbol: "arrow.up.and.down.circle", title: "Swipe decisively up or down", detail: "Return to the dossier", color: BC.accent)
-            gestureRow(symbol: "hand.tap", title: "Tap once", detail: "Hide or reveal the photo controls", color: BC.sub)
+            gestureRow(symbol: "photo.stack.fill", title: "All photos are inline", detail: "Keep scrolling down—there is no separate photo screen", color: BC.star)
+            gestureRow(symbol: "arrow.left.and.right", title: "Sideways means taste", detail: "Left passes; right likes, even over a photo", color: BC.accent)
           }
 
           Text("Every decision is also available from the ••• menu and through VoiceOver actions.")
@@ -769,28 +729,98 @@ private struct ShadeLoadingView: View {
 }
 
 private struct ShadeEmptyView: View {
-  let hasRun: Bool
+  let run: RunPayload?
+  let agentRun: AgentRunRecord?
   let error: String?
   let reload: () async -> Void
+  let retry: () async -> Void
 
-  private var hasLoadFailure: Bool { !hasRun && !(error ?? "").isEmpty }
+  private var hasLoadFailure: Bool { run == nil && agentRun == nil && !(error ?? "").isEmpty }
 
   var body: some View {
-    VStack(spacing: 14) {
-      Image(systemName: "car.side.lock").font(.system(size: 42, weight: .semibold)).foregroundStyle(BC.muted)
-      Text(hasLoadFailure ? "Couldn’t load today’s finds" : (hasRun ? "No cars to review" : "No run yet"))
-        .font(.archivo(22, .extrabold)).foregroundStyle(BC.white)
-      Text(hasLoadFailure ? "Check your connection and try again." : (hasRun ? "Today's shortlist is empty." : "The next daily shortlist hasn’t been published yet."))
-        .font(.archivo(14)).foregroundStyle(BC.sub).multilineTextAlignment(.center)
-      Button { Task { await reload() } } label: {
-        Label("Refresh", systemImage: "arrow.clockwise")
-          .font(.archivo(14, .bold)).foregroundStyle(BC.accentInk)
-          .padding(.horizontal, 18).padding(.vertical, 11)
-          .background(BC.accent, in: Capsule())
+    TimelineView(.periodic(from: .now, by: 5)) { context in
+      VStack(spacing: 14) {
+        Image(systemName: icon).font(.system(size: 42, weight: .semibold)).foregroundStyle(iconColor)
+        Text(title(at: context.date))
+          .font(.archivo(22, .extrabold)).foregroundStyle(BC.white)
+          .multilineTextAlignment(.center)
+        Text(detail)
+          .font(.archivo(14)).foregroundStyle(BC.sub).multilineTextAlignment(.center)
+        if isWorking {
+          ProgressView().tint(BC.accent).controlSize(.large)
+        }
+        if agentRun?.status == .failed || agentRun?.status == .cancelled {
+          Button { Task { await retry() } } label: {
+            Label("Try again", systemImage: "arrow.clockwise")
+              .font(.archivo(14, .bold)).foregroundStyle(BC.accentInk)
+              .padding(.horizontal, 18).padding(.vertical, 11)
+              .background(BC.accent, in: Capsule())
+          }
+          .buttonStyle(.plain)
+        } else if hasLoadFailure {
+          Button { Task { await reload() } } label: {
+            Label("Try again", systemImage: "arrow.clockwise")
+              .font(.archivo(14, .bold)).foregroundStyle(BC.accentInk)
+              .padding(.horizontal, 18).padding(.vertical, 11)
+              .background(BC.accent, in: Capsule())
+          }
+          .buttonStyle(.plain)
+        }
+        if isWorking, error != nil {
+          Text("Your setup is saved. Beachcar will retry automatically when you’re back online.")
+            .font(.archivo(12.5, .medium)).foregroundStyle(BC.muted).multilineTextAlignment(.center)
+        }
       }
-      .buttonStyle(.plain)
+      .padding(28)
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-    .padding(28)
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+
+  private var isWorking: Bool {
+    agentRun?.status == .queued || agentRun?.status == .running
+  }
+
+  private var icon: String {
+    if isWorking { return "sparkles" }
+    if agentRun?.status == .failed || agentRun?.status == .cancelled { return "exclamationmark.arrow.triangle.2.circlepath" }
+    if run?.id != nil { return "sun.horizon" }
+    return hasLoadFailure ? "wifi.exclamationmark" : "car.side"
+  }
+
+  private var iconColor: Color {
+    agentRun?.status == .failed || agentRun?.status == .cancelled ? BC.danger : BC.accent
+  }
+
+  private func title(at date: Date) -> String {
+    switch agentRun?.status {
+    case .queued:
+      return "Setting up your search"
+    case .running:
+      if let startedAt = agentRun?.startedAt, let started = ISO8601DateFormatter().date(from: startedAt), date.timeIntervalSince(started) > 15 {
+        return "Ranking the best finds"
+      }
+      return "Checking today’s auctions"
+    case .published:
+      return run?.listings.isEmpty == true ? "No strong matches today" : "Your shortlist is ready"
+    case .failed, .cancelled:
+      return "Today’s search hit a snag"
+    case nil:
+      if run?.id != nil { return "No strong matches today" }
+      return hasLoadFailure ? "Couldn’t load today’s finds" : "Preparing your first shortlist"
+    }
+  }
+
+  private var detail: String {
+    switch agentRun?.status {
+    case .queued, .running:
+      return "This usually takes just a moment. You can leave Beachcar and come back anytime."
+    case .published:
+      return run?.listings.isEmpty == true ? "Beachcar will look again tomorrow." : "Opening today’s finds…"
+    case .failed, .cancelled:
+      return "Your setup is safe. Try the search again whenever you’re ready."
+    case nil:
+      if run?.id != nil { return "Beachcar will look again tomorrow." }
+      return hasLoadFailure ? "Check your connection and try again." : "Beachcar is getting your search ready."
+    }
   }
 }

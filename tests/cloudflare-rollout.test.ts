@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   AGENT_CONNECTED_SUBSCRIPTIONS_MIGRATION,
+  MANAGED_FRIEND_ONBOARDING_MIGRATION,
   SOURCE_QUALITY_V1_MIGRATION,
   PRODUCT_EVENTS_V1_MIGRATION,
   collectWorkerSecrets,
@@ -280,14 +281,15 @@ describe("Cloudflare rollout secret and verifier handling", () => {
 });
 
 describe("Cloudflare rollout D1 gates", () => {
-  it("accepts only no pending migrations or the reviewed 0011/0012/0013 migrations", () => {
+  it("accepts only no pending migrations or the reviewed 0011/0012/0013/0014 migrations", () => {
     expect(isSafeSourceQualityMigrationSet("✅ No migrations to apply!\n")).toBe(true);
     expect(isSafeSourceQualityMigrationSet(`Migrations to be applied:\n${SOURCE_QUALITY_V1_MIGRATION}\n`)).toBe(true);
     expect(isSafeSourceQualityMigrationSet(`Migrations to be applied:\n${PRODUCT_EVENTS_V1_MIGRATION}\n`)).toBe(true);
     expect(isSafeSourceQualityMigrationSet(`Migrations to be applied:\n${AGENT_CONNECTED_SUBSCRIPTIONS_MIGRATION}\n`)).toBe(true);
+    expect(isSafeSourceQualityMigrationSet(`Migrations to be applied:\n${MANAGED_FRIEND_ONBOARDING_MIGRATION}\n`)).toBe(true);
     expect(
       isSafeSourceQualityMigrationSet(
-        `${SOURCE_QUALITY_V1_MIGRATION}\n${PRODUCT_EVENTS_V1_MIGRATION}\n${AGENT_CONNECTED_SUBSCRIPTIONS_MIGRATION}\n`,
+        `${SOURCE_QUALITY_V1_MIGRATION}\n${PRODUCT_EVENTS_V1_MIGRATION}\n${AGENT_CONNECTED_SUBSCRIPTIONS_MIGRATION}\n${MANAGED_FRIEND_ONBOARDING_MIGRATION}\n`,
       ),
     ).toBe(true);
     expect(isSafeSourceQualityMigrationSet(`0005_multi_user_beta.sql\n${SOURCE_QUALITY_V1_MIGRATION}\n`)).toBe(false);
@@ -304,6 +306,9 @@ describe("Cloudflare rollout D1 gates", () => {
       researchColumns: d1Json({ found_research_columns: 4 }),
       billingColumns: d1Json({ found_billing_columns: 7 }),
       billingIndexes: d1Json({ found_billing_indexes: 1 }),
+      friendColumns: d1Json({ found_friend_columns: 6 }),
+      friendTables: d1Json({ found_friend_tables: 2 }),
+      friendIndexes: d1Json({ found_friend_indexes: 4 }),
       quickCheck: d1Json({ quick_check: "ok" }),
     });
     expect(gate).toEqual({
@@ -314,6 +319,9 @@ describe("Cloudflare rollout D1 gates", () => {
       researchColumnCount: 4,
       billingColumnCount: 7,
       billingIndexCount: 1,
+      friendColumnCount: 6,
+      friendTableCount: 2,
+      friendIndexCount: 4,
       quickCheck: "ok",
       ok: true,
     });
@@ -327,6 +335,9 @@ describe("Cloudflare rollout D1 gates", () => {
         researchColumns: d1Json({ found_research_columns: 4 }),
         billingColumns: d1Json({ found_billing_columns: 7 }),
         billingIndexes: d1Json({ found_billing_indexes: 1 }),
+        friendColumns: d1Json({ found_friend_columns: 6 }),
+        friendTables: d1Json({ found_friend_tables: 2 }),
+        friendIndexes: d1Json({ found_friend_indexes: 4 }),
         quickCheck: d1Json({ quick_check: "ok" }),
       }).ok,
     ).toBe(false);

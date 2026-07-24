@@ -5,6 +5,7 @@
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>webcredentials:brief-coyote-47.clerk.accounts.dev</string>
+		<string>applinks:beachcar-watch.jon-cooper.workers.dev</string>
 	</array>
 </dict>
 </plist>

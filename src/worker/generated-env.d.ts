@@ -8,8 +8,10 @@ interface __BaseEnv_Env {
 	IMAGE_TRANSFORMER: ImagesBinding;
 	DB: D1Database;
 	ASSETS: Fetcher;
+	SHORTLIST_EMAIL: SendEmail;
 	BOOTSTRAP_OWNER_EMAILS: string;
 	ENVIRONMENT: string;
+	PUBLIC_APP_URL: string;
 	PUBLISH_TOKEN?: string;
 	CLERK_SECRET_KEY?: string;
 	CLERK_JWT_ISSUER?: string;

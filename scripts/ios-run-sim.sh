@@ -15,6 +15,7 @@ DEVICE_TYPE="${IOS_DEVICE_TYPE:-com.apple.CoreSimulator.SimDeviceType.iPhone-16-
 RUNTIME="${IOS_RUNTIME:-$(xcrun simctl list runtimes | awk '/^iOS / { runtime = $NF } END { print runtime }')}"
 DESTINATION="${IOS_DESTINATION:-platform=iOS Simulator,name=${DEVICE_NAME}}"
 DERIVED_DATA="${DERIVED_DATA:-ios/DerivedData}"
+CONFIGURATION="${IOS_CONFIGURATION:-Debug}"
 LAUNCH_ARGS=()
 
 if [[ -n "${CLERK_DEV_SIGN_IN_TOKEN:-}" ]]; then
@@ -34,11 +35,12 @@ xcodegen generate --spec ios/project.yml
 xcodebuild \
   -project ios/Beachcar.xcodeproj \
   -scheme Beachcar \
+  -configuration "$CONFIGURATION" \
   -destination "$DESTINATION" \
   -derivedDataPath "$DERIVED_DATA" \
   build
 
-APP_PATH="$DERIVED_DATA/Build/Products/Debug-iphonesimulator/Beachcar.app"
+APP_PATH="$DERIVED_DATA/Build/Products/${CONFIGURATION}-iphonesimulator/Beachcar.app"
 xcrun simctl boot "$DEVICE_NAME" 2>/dev/null || true
 xcrun simctl install booted "$APP_PATH"
 if ((${#LAUNCH_ARGS[@]})); then

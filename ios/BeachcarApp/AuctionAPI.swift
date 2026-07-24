@@ -24,16 +24,56 @@ struct AuctionAPI {
     )
   }
 
-  func putProfile(input: ProfileInput, authToken: String?) async throws -> UserPayload {
-    try await request(path: "/api/profile", method: "PUT", body: input, authToken: authToken)
+  func completeOnboarding(input: ManagedOnboardingInput, authToken: String?) async throws -> ManagedOnboardingResponse {
+    try await request(path: "/api/onboarding/complete", method: "POST", body: input, authToken: authToken)
   }
 
-  func putSourceSettings(input: SourceSettingsRequest, authToken: String?) async throws -> UserPayload {
-    try await request(path: "/api/source-settings", method: "PUT", body: input, authToken: authToken)
-  }
-
-  func putResearchSettings(input: ResearchSettingsRequest, authToken: String?) async throws -> UserPayload {
-    try await request(path: "/api/research-settings", method: "PUT", body: input, authToken: authToken)
+  func completeExternalOnboarding(input: ExternalOnboardingInput, displayName: String?, authToken: String?) async throws -> UserPayload {
+    let tasteNotes = [
+      input.taste.showMore.isEmpty ? "" : "Show more: \(input.taste.showMore.joined(separator: ", ")).",
+      input.taste.notes?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+    ]
+      .filter { !$0.isEmpty }
+      .joined(separator: " ")
+    let avoidNotes = input.taste.avoid.isEmpty ? "" : "Avoid: \(input.taste.avoid.joined(separator: ", "))."
+    let profile = ExternalProfileRequest(
+      displayName: displayName,
+      niche: "Beach cars and runabouts",
+      budgetMax: input.search.comfortableCeiling,
+      stretchBudget: input.search.stretchRoom,
+      homeRegion: input.search.location,
+      timezone: input.timezone,
+      scheduleCron: "0 8 * * *",
+      profile: ExternalProfileDetails(
+        tasteNotes: tasteNotes,
+        avoidNotes: avoidNotes,
+        tasteNotesFreeform: input.taste.notes?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+        tasteCalibration: input.taste.showMore,
+        avoidCalibration: input.taste.avoid,
+        pickupDistanceMiles: input.search.pickupDistanceMiles,
+        lanes: ["family", "solo", "curiosity"],
+        sources: ["bringatrailer", "carsandbids"],
+        desktopCodexSetupPending: true
+      ),
+      completeOnboarding: true
+    )
+    var user: UserPayload = try await request(path: "/api/profile", method: "PUT", body: profile, authToken: authToken)
+    let budgetCents = input.search.comfortableCeiling * 100
+    user = try await request(
+      path: "/api/source-settings",
+      method: "PUT",
+      body: SourceSettingsRequest(sources: [
+        SourceSettingsRequest.Source(source: "bringatrailer", enabled: true, settings: .init(maxDistanceMiles: input.search.pickupDistanceMiles, maxBudgetCents: budgetCents)),
+        SourceSettingsRequest.Source(source: "carsandbids", enabled: true, settings: .init(maxDistanceMiles: input.search.pickupDistanceMiles, maxBudgetCents: budgetCents)),
+      ]),
+      authToken: authToken
+    )
+    return try await request(
+      path: "/api/research-settings",
+      method: "PUT",
+      body: ResearchSettingsRequest(mode: "external_agent"),
+      authToken: authToken
+    )
   }
 
   func latestRun(authToken: String?) async throws -> RunPayload {
@@ -42,6 +82,20 @@ struct AuctionAPI {
 
   func latestAgentRun(authToken: String?) async throws -> AgentRunRecord? {
     try await request(path: "/api/agent-runs/latest", authToken: authToken)
+  }
+
+  func agentRun(id: String, authToken: String?) async throws -> AgentRunRecord {
+    let encoded = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+    return try await request(path: "/api/agent-runs/\(encoded)", authToken: authToken)
+  }
+
+  func requestAgentRun(reason: String, requestId: UUID = UUID(), authToken: String?) async throws -> AgentRunRecord {
+    try await request(
+      path: "/api/agent-runs",
+      method: "POST",
+      body: AgentRunRequest(reason: reason, requestId: requestId.uuidString.lowercased()),
+      authToken: authToken
+    )
   }
 
   func putFeedback(
@@ -210,6 +264,57 @@ private struct PreferenceEventRequest: Encodable {
 
 private struct InviteAcceptRequest: Encodable {
   let code: String
+}
+
+private struct ExternalProfileRequest: Encodable {
+  let displayName: String?
+  let niche: String
+  let budgetMax: Int
+  let stretchBudget: Int
+  let homeRegion: String
+  let timezone: String
+  let scheduleCron: String
+  let profile: ExternalProfileDetails
+  let completeOnboarding: Bool
+}
+
+private struct ExternalProfileDetails: Encodable {
+  let tasteNotes: String
+  let avoidNotes: String
+  let tasteNotesFreeform: String
+  let tasteCalibration: [String]
+  let avoidCalibration: [String]
+  let pickupDistanceMiles: Int
+  let lanes: [String]
+  let sources: [String]
+  let desktopCodexSetupPending: Bool
+}
+
+private struct SourceSettingsRequest: Encodable {
+  struct Source: Encodable {
+    let source: String
+    let enabled: Bool
+    let settings: Settings
+  }
+
+  struct Settings: Encodable {
+    let maxDistanceMiles: Int
+    let maxBudgetCents: Int
+    let noReserveOnly = false
+    let browserRunner = false
+    let searchNotes: String? = nil
+  }
+
+  let sources: [Source]
+}
+
+private struct ResearchSettingsRequest: Encodable {
+  let mode: String
+}
+
+private struct AgentRunRequest: Encodable {
+  let reason: String
+  let requestId: String
 }
 
 private struct ErrorResponse: Decodable {

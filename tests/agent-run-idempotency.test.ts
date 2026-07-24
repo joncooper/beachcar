@@ -5,6 +5,7 @@ import {
   agentRunRequestConflictMessage,
   assertMatchingAgentRunRequest,
   invalidAgentRunRequestIdMessage,
+  onboardingAgentRunRequestId,
   normalizeAgentRunReason,
   normalizeAgentRunRequestId,
 } from "../src/worker/agent-run-idempotency";
@@ -15,6 +16,13 @@ describe("Agent-run request idempotency", () => {
   it("normalizes canonical UUIDs and derives a stable Agent-run id", () => {
     expect(normalizeAgentRunRequestId(`  ${requestId.toUpperCase()}  `)).toBe(requestId);
     expect(agentRunIdForRequest(requestId)).toBe(`agent-run-request-${requestId}`);
+  });
+
+  it("derives exactly one stable first-run request per user", async () => {
+    const first = await onboardingAgentRunRequestId("email:friend@example.com");
+    expect(await onboardingAgentRunRequestId("email:friend@example.com")).toBe(first);
+    expect(await onboardingAgentRunRequestId("email:other@example.com")).not.toBe(first);
+    expect(first).toMatch(/^[0-9a-f-]{36}$/);
   });
 
   it("rejects malformed, non-canonical, and non-string request ids", () => {

@@ -1,4 +1,4 @@
-import { recordAiUsageEvent } from "../db";
+import { getUsageSubject, recordAiUsageEvent } from "../db";
 import type {
   AiCandidateScore,
   CandidateAiScorer,
@@ -93,11 +93,12 @@ async function scoreCandidatesWithGateway(
   input: CandidateAiScoringInput,
 ): Promise<CandidateAiScoringResult> {
   const gatewayRequestIdFallback = `ai-gateway-score-${usageContext.agentRunId}`;
+  const attributionSubject = await getUsageSubject(env.DB, usageContext.userId);
   const headers = new Headers({
     "Content-Type": "application/json",
     [config.authHeaderName]: `Bearer ${config.token}`,
     "cf-aig-metadata": JSON.stringify({
-      user_id: usageContext.userId,
+      subject: attributionSubject,
       agent_run: usageContext.agentRunId,
       operation: "candidate_scoring",
       mode: usageContext.mode || "managed",
@@ -121,7 +122,8 @@ async function scoreCandidatesWithGateway(
       redirect: "manual",
     });
     const text = await response.text();
-    const requestId = response.headers.get("cf-aig-request-id") || response.headers.get("cf-aig-log-id") || response.headers.get("x-request-id") || gatewayRequestIdFallback;
+    const requestId = response.headers.get("cf-aig-request-id") || response.headers.get("cf-aig-log-id") || gatewayRequestIdFallback;
+    const providerRequestId = response.headers.get("x-request-id") || requestId;
 
     if (!response.ok) {
       await recordAiUsageEvent(env.DB, {
@@ -134,6 +136,7 @@ async function scoreCandidatesWithGateway(
         gatewayId: config.gatewayId,
         gatewayKeyRef: usageContext.gatewayKeyRef,
         gatewayRequestId: requestId,
+        providerRequestId,
         status: "error",
         costMicros: 0,
         metadata: {
@@ -154,6 +157,7 @@ async function scoreCandidatesWithGateway(
     }
 
     const json = parseJsonObject<ChatCompletionResponse>(text);
+    const completedProviderRequestId = response.headers.get("x-request-id") || json?.id || requestId;
     const content = json?.choices?.[0]?.message?.content || "";
     const normalizedScores = normalizeAiScores(parseAiScoreContent(content));
     const submittedCandidateUrls = new Set(input.candidates.slice(0, 8).map((candidate) => candidate.candidate.url));
@@ -170,6 +174,7 @@ async function scoreCandidatesWithGateway(
       gatewayId: config.gatewayId,
       gatewayKeyRef: usageContext.gatewayKeyRef,
       gatewayRequestId: requestId,
+      providerRequestId: completedProviderRequestId,
       inputTokens: usage.inputTokens,
       outputTokens: usage.outputTokens,
       totalTokens: usage.totalTokens,
@@ -207,6 +212,7 @@ async function scoreCandidatesWithGateway(
       gatewayId: config.gatewayId,
       gatewayKeyRef: usageContext.gatewayKeyRef,
       gatewayRequestId: gatewayRequestIdFallback,
+      providerRequestId: gatewayRequestIdFallback,
       status: "error",
       costMicros: 0,
       metadata: {

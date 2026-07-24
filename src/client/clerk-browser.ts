@@ -37,6 +37,7 @@ export type BrowserClerk = {
   load: (options?: Record<string, unknown>) => Promise<void>;
   addListener?: (listener: () => void) => (() => void) | void;
   openSignIn: (options?: Record<string, unknown>) => void;
+  handleRedirectCallback?: (options: Record<string, unknown>) => Promise<unknown>;
   setActive?: (options: { session: string }) => Promise<void>;
   signOut: (options?: Record<string, unknown>) => Promise<void>;
   mountPricingTable?: (node: HTMLDivElement, props?: Record<string, unknown>) => void;
@@ -76,6 +77,7 @@ export function useClerkBrowser(publishableKey: string): ClerkAuthState {
         const clerk = window.Clerk;
         if (!clerk) throw new Error("Clerk did not initialize");
         await clerk.load({});
+        await completeOAuthRedirectIfPresent(clerk);
         await acceptTicketIfPresent(clerk);
 
         const sync = () => {
@@ -169,12 +171,30 @@ function stripTicketFromUrl(params: URLSearchParams): void {
 export async function signInWithGoogle(clerk: BrowserClerk | null): Promise<void> {
   const signIn = clerk?.client?.signIn;
   if (!signIn?.authenticateWithRedirect) throw new Error("Google sign-in is not available");
-  const redirectUrl = window.location.href;
+  const redirectUrl = new URL("/sso-callback", window.location.origin).toString();
+  const redirectUrlComplete = new URL("/", window.location.origin).toString();
   await signIn.authenticateWithRedirect({
     strategy: "oauth_google",
     redirectUrl,
-    redirectUrlComplete: redirectUrl,
+    redirectUrlComplete,
   });
+}
+
+async function completeOAuthRedirectIfPresent(clerk: BrowserClerk): Promise<void> {
+  if (window.location.pathname !== "/sso-callback") return;
+  if (!clerk.handleRedirectCallback) throw new Error("Clerk OAuth callback is not available");
+
+  // Clerk's smart bot protection needs this mount point when a social sign-in
+  // becomes a first-time sign-up. It is removed naturally on redirect.
+  ensureCaptchaContainer();
+  await clerk.handleRedirectCallback({});
+}
+
+function ensureCaptchaContainer(): void {
+  if (document.getElementById("clerk-captcha")) return;
+  const captcha = document.createElement("div");
+  captcha.id = "clerk-captcha";
+  document.body.append(captcha);
 }
 
 function clerkEmail(user: ClerkUser | null): string | null {

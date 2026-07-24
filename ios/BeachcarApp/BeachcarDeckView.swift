@@ -327,7 +327,7 @@ private struct RunStatusBanner: View {
     case .published:
       return "Latest run published"
     case nil:
-      return run?.id == nil ? "No run yet" : "Latest run published"
+      return run?.id == nil ? "Preparing today’s search" : "Latest run published"
     }
   }
 

@@ -103,8 +103,13 @@ struct CachedRemoteImage<Content: View, Placeholder: View, Failure: View>: View 
 private final class CachedRemoteImageLoader: ObservableObject {
   @Published var image: UIImage?
   @Published var failed = false
+  private var loadedURL: URL?
 
   func load(_ url: URL?) async {
+    if loadedURL == url, image != nil || failed {
+      return
+    }
+    loadedURL = url
     image = nil
     failed = false
     guard let url else {
@@ -112,8 +117,11 @@ private final class CachedRemoteImageLoader: ObservableObject {
       return
     }
     do {
-      image = try await BeachcarImagePipeline.shared.image(for: url)
+      let loadedImage = try await BeachcarImagePipeline.shared.image(for: url)
+      guard loadedURL == url else { return }
+      image = loadedImage
     } catch {
+      guard loadedURL == url, !(error is CancellationError) else { return }
       failed = true
     }
   }

@@ -10,41 +10,60 @@ final class BeachcarUITests: XCTestCase {
 
   // MARK: Access and setup
 
+  func testSignedOutBrandStoryLeadsWithTheSurrey() throws {
+    launch(scenario: "signed-out")
+    XCTAssertTrue(identified("signed-out-brand-card").waitForExistence(timeout: 15))
+    XCTAssertTrue(text(containing: "FOUND BY BEACHCAR").exists)
+    XCTAssertTrue(text(containing: "pink 1960 Willys Surrey").exists)
+    XCTAssertTrue(app.buttons["Sign in"].exists)
+  }
+
   func testInvitedUserSeesHelpfulInviteGate() throws {
     launch(scenario: "invited")
-    XCTAssertTrue(text(containing: "Invite required").waitForExistence(timeout: 15))
-    XCTAssertTrue(text(containing: "invitation email").exists)
+    XCTAssertTrue(text(containing: "This email wasn’t invited").waitForExistence(timeout: 15))
+    XCTAssertTrue(text(containing: "TestFlight invitation").exists)
+    XCTAssertTrue(app.buttons["Sign out and try another email"].exists)
+    app.buttons["Have an older invite code?"].tap()
     XCTAssertTrue(inviteCodeField().exists)
     XCTAssertTrue(acceptInviteButton().exists)
   }
 
   func testInviteAcceptanceMovesToGuidedOnboarding() throws {
     launch(scenario: "invited")
+    XCTAssertTrue(text(containing: "This email wasn’t invited").waitForExistence(timeout: 15))
+    app.buttons["Have an older invite code?"].tap()
     let field = inviteCodeField()
     XCTAssertTrue(field.waitForExistence(timeout: 15))
     field.tap()
     field.typeText("test-invite")
     acceptInviteButton().tap()
     XCTAssertTrue(app.scrollViews["onboarding-view"].waitForExistence(timeout: 10))
-    XCTAssertTrue(text(containing: "Where should we look?").exists)
-    XCTAssertTrue(text(containing: "1 OF 4").exists)
+    XCTAssertTrue(text(containing: "Your search").exists)
+    XCTAssertTrue(text(containing: "1 OF 3").exists)
   }
 
-  func testOnboardingFourStepsHandOffToDesktopCodex() throws {
+  func testOnboardingThreeStepsHandsOffToDesktopCodex() throws {
     launch(scenario: "onboarding")
     XCTAssertTrue(app.scrollViews["onboarding-view"].waitForExistence(timeout: 15))
+    let location = app.textFields["City and state or ZIP"]
+    XCTAssertTrue(location.waitForExistence(timeout: 5))
+    location.tap()
+    location.typeText("Portland, ME")
     continueOnboarding()
-    XCTAssertTrue(text(containing: "What feels comfortable?").waitForExistence(timeout: 5))
+    XCTAssertTrue(text(containing: "Your taste").waitForExistence(timeout: 5))
+    XCTAssertTrue(text(containing: "Show me more").exists)
+    XCTAssertTrue(text(containing: "Help me avoid").exists)
     continueOnboarding()
-    XCTAssertTrue(text(containing: "Calibrate your taste").waitForExistence(timeout: 5))
-    continueOnboarding()
-    XCTAssertTrue(text(containing: "Choose your rhythm").waitForExistence(timeout: 5))
-    XCTAssertTrue(app.switches["Hemmings"].exists)
+    XCTAssertTrue(text(containing: "Set up Codex").waitForExistence(timeout: 5))
+    XCTAssertTrue(text(containing: "Finish on your desktop").exists)
+    XCTAssertTrue(app.buttons["Continue on desktop"].exists)
     app.buttons["save-preferences-button"].tap()
-    XCTAssertTrue(identified("desktop-codex-handoff").waitForExistence(timeout: 10))
+
+    let handoff = identified("desktop-codex-handoff")
+    XCTAssertTrue(handoff.waitForExistence(timeout: 10))
     XCTAssertTrue(text(containing: "Finish your Codex setup on a desktop").exists)
     XCTAssertTrue(text(containing: "friend@example.com").exists)
-    XCTAssertTrue(app.buttons["desktop-codex-handoff-share"].exists)
+    XCTAssertTrue(app.buttons["Send myself the desktop link"].exists)
 
     let continueToBeachcar = app.buttons["desktop-codex-handoff-continue"]
     XCTAssertTrue(continueToBeachcar.exists)
@@ -53,19 +72,21 @@ final class BeachcarUITests: XCTestCase {
     XCTAssertTrue(waitForFind(1, of: 3, timeout: 10))
   }
 
-
   func testDesktopCodexHandoffCanContinueToDeck() throws {
     launch(scenario: "desktop-handoff")
 
     XCTAssertTrue(identified("desktop-codex-handoff").waitForExistence(timeout: 15))
     XCTAssertTrue(text(containing: "SEARCH SAVED").exists)
     XCTAssertTrue(text(containing: "Finish your Codex setup on a desktop").exists)
-    XCTAssertTrue(app.buttons["desktop-codex-handoff-share"].exists)
+    XCTAssertTrue(app.buttons["Send myself the desktop link"].exists)
 
-    app.buttons["desktop-codex-handoff-continue"].tap()
+    let continueToBeachcar = app.buttons["desktop-codex-handoff-continue"]
+    XCTAssertTrue(continueToBeachcar.exists)
+    continueToBeachcar.tap()
     XCTAssertTrue(identified("deck-view").waitForExistence(timeout: 10))
     XCTAssertTrue(waitForFind(1, of: 3, timeout: 10))
   }
+
   // MARK: Scrolling review
 
   func testActiveUserEntersExplicitScrollingReview() throws {
@@ -100,7 +121,8 @@ final class BeachcarUITests: XCTestCase {
     gestures.tap()
     XCTAssertTrue(identified("shade-gestures-help").waitForExistence(timeout: 5))
     XCTAssertTrue(text(containing: "Swipe left").exists)
-    XCTAssertTrue(text(containing: "Pinch or double-tap").exists)
+    XCTAssertTrue(text(containing: "All photos are inline").exists)
+    XCTAssertTrue(text(containing: "Sideways means taste").exists)
     XCTAssertTrue(app.buttons["shade-replay-gesture-hints"].exists)
   }
 
@@ -124,12 +146,18 @@ final class BeachcarUITests: XCTestCase {
 
   func testBetaDiagnosticsDisclosureMakesPrivacyChoiceExplicit() throws {
     launch(scenario: "active", betaDiagnostics: "undecided")
+    XCTAssertFalse(identified("shade-beta-diagnostics-disclosure").waitForExistence(timeout: 1))
+    swipeReview(fromX: 0.28, toX: 0.72)
+    XCTAssertTrue(text(containing: "Honda Trail").waitForExistence(timeout: 8))
+    swipeReview(fromX: 0.28, toX: 0.72)
+    XCTAssertTrue(text(containing: "Citicar").waitForExistence(timeout: 8))
+    swipeReview(fromX: 0.28, toX: 0.72)
     XCTAssertTrue(identified("shade-beta-diagnostics-disclosure").waitForExistence(timeout: 8))
     XCTAssertTrue(text(containing: "No titles, URLs, photos, auction notes").exists)
     let keepPrivate = app.buttons["shade-beta-diagnostics-private"]
     XCTAssertTrue(keepPrivate.waitForExistence(timeout: 3))
     keepPrivate.tap()
-    XCTAssertTrue(waitForFind(1, of: 3, timeout: 5))
+    XCTAssertTrue(identified("shade-completion").waitForExistence(timeout: 5))
   }
 
   func testVerticalScrollRevealsDeepDossierWithoutJudging() throws {
@@ -142,60 +170,38 @@ final class BeachcarUITests: XCTestCase {
     XCTAssertTrue(waitForFind(1, of: 3))
   }
 
-  func testCoverTapOpensSeparatePhotoGallery() throws {
+  func testPhotosStayInlineAndCoverTapDoesNotChangeModes() throws {
     launch(scenario: "active")
     _ = shadeSurface()
     identified("shade-review-hero-ui-test-samurai").tap()
-    XCTAssertTrue(text(containing: "PHOTO 1 OF 2").waitForExistence(timeout: 8))
-    XCTAssertTrue(app.buttons["shade-gallery-close"].exists)
-    app.swipeLeft()
-    XCTAssertTrue(text(containing: "PHOTO 2 OF 2").waitForExistence(timeout: 5))
-    app.buttons["shade-gallery-close"].tap()
+    XCTAssertTrue(identified("shade-review-page").exists)
+    XCTAssertFalse(app.buttons["shade-gallery-close"].exists)
+    XCTAssertTrue(text(containing: "WHY THE AGENT PICKED IT").exists)
+    let photo = identified("shade-inline-photo-1")
+    XCTAssertFalse(isVisible(photo), "Secondary photos should begin below the initial written analysis")
+    XCTAssertTrue(scrollUntilVisible(photo), photo.debugDescription)
+    let photoHeight = photo.frame.height
+    let inlinePhotoAttachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+    inlinePhotoAttachment.name = "inline-photo-section"
+    inlinePhotoAttachment.lifetime = .keepAlways
+    add(inlinePhotoAttachment)
+    app.swipeDown(velocity: .slow)
+    XCTAssertTrue(scrollUntilVisible(photo), photo.debugDescription)
+    XCTAssertEqual(photo.frame.height, photoHeight, accuracy: 1, "Photo rows must not change height when revisited")
+    XCTAssertTrue(text(containing: "MORE PHOTOS · 1").exists)
     XCTAssertTrue(waitForFind(1, of: 3, timeout: 5))
   }
 
-  func testGalleryPreservesSelectedPhotoAcrossCloseAndReopen() throws {
-    launch(scenario: "active")
+  func testHorizontalSwipeOverInlinePhotoStillRecordsTaste() throws {
+    launch(scenario: "active", coachStage: "mastered")
     _ = shadeSurface()
-    identified("shade-review-hero-ui-test-samurai").tap()
-    XCTAssertTrue(text(containing: "PHOTO 1 OF 2").waitForExistence(timeout: 8))
-    app.swipeLeft()
-    XCTAssertTrue(text(containing: "PHOTO 2 OF 2").waitForExistence(timeout: 5))
-    app.buttons["shade-gallery-close"].tap()
-    XCTAssertTrue(waitForFind(1, of: 3, timeout: 5))
-    identified("shade-review-hero-ui-test-samurai").tap()
-    XCTAssertTrue(text(containing: "PHOTO 2 OF 2").waitForExistence(timeout: 8))
-  }
-
-  func testGalleryChromeCanHideAndReturnWithoutClosing() throws {
-    launch(scenario: "active", galleryCoach: "mastered")
-    _ = shadeSurface()
-    identified("shade-review-hero-ui-test-samurai").tap()
-    let photo = identified("shade-gallery-photo-0")
-    XCTAssertTrue(photo.waitForExistence(timeout: 8))
-    let close = app.buttons["shade-gallery-close"]
-    XCTAssertTrue(close.waitForExistence(timeout: 5))
-    XCTAssertFalse(text(containing: "Swipe up or down to close").exists)
-    photo.tap()
-    XCTAssertFalse(close.waitForExistence(timeout: 1))
-    photo.tap()
-    XCTAssertTrue(close.waitForExistence(timeout: 5))
-  }
-
-  func testPhotoGalleryDismissesWithDecisiveVerticalSwipes() throws {
-    launch(scenario: "active")
-    _ = shadeSurface()
-    identified("shade-review-hero-ui-test-samurai").tap()
-    XCTAssertTrue(text(containing: "PHOTO 1 OF 2").waitForExistence(timeout: 8))
-    XCTAssertTrue(text(containing: "Swipe up or down to close").exists)
-
-    app.swipeDown(velocity: .fast)
-    XCTAssertTrue(waitForFind(1, of: 3, timeout: 5))
-
-    identified("shade-review-hero-ui-test-samurai").tap()
-    XCTAssertTrue(text(containing: "PHOTO 1 OF 2").waitForExistence(timeout: 8))
-    app.swipeUp(velocity: .fast)
-    XCTAssertTrue(waitForFind(1, of: 3, timeout: 5))
+    let photo = identified("shade-inline-photo-1")
+    XCTAssertTrue(scrollUntilVisible(photo))
+    let start = photo.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5))
+    let end = photo.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
+    start.press(forDuration: 0.18, thenDragTo: end)
+    XCTAssertTrue(text(containing: "Liked").waitForExistence(timeout: 8))
+    XCTAssertTrue(text(containing: "Honda Trail").waitForExistence(timeout: 8))
   }
 
   func testMissingPhotoAndLocationRemainReviewable() throws {
@@ -260,6 +266,32 @@ final class BeachcarUITests: XCTestCase {
 
   // MARK: Finds and operational states
 
+  func testFirstRunQueuedAndRunningShowMeaningfulProgress() throws {
+    launch(scenario: "first-run-queued")
+    XCTAssertTrue(text(containing: "Setting up your search").waitForExistence(timeout: 15))
+
+    launch(scenario: "first-run-running")
+    XCTAssertTrue(text(containing: "Checking today’s auctions").waitForExistence(timeout: 15))
+  }
+
+  func testFirstRunEmptyAndFailedHaveHonestRecovery() throws {
+    launch(scenario: "first-run-empty")
+    XCTAssertTrue(text(containing: "No strong matches today").waitForExistence(timeout: 15))
+    XCTAssertTrue(text(containing: "look again tomorrow").exists)
+
+    launch(scenario: "first-run-failed")
+    XCTAssertTrue(text(containing: "search hit a snag").waitForExistence(timeout: 15))
+    XCTAssertTrue(text(containing: "setup is safe").exists)
+    XCTAssertTrue(app.buttons["Try again"].exists)
+  }
+
+  func testFirstRunOfflinePreservesSetupAndPromisesRetry() throws {
+    launch(scenario: "first-run-offline")
+    XCTAssertTrue(text(containing: "Setting up your search").waitForExistence(timeout: 15))
+    XCTAssertTrue(text(containing: "setup is saved").exists)
+    XCTAssertTrue(text(containing: "retry automatically").exists)
+  }
+
   func testTodayFindsPreservesTitlesAndConsolidatesControls() throws {
     launch(scenario: "active")
     openList()
@@ -302,7 +334,7 @@ final class BeachcarUITests: XCTestCase {
     launch(scenario: "empty-error")
     XCTAssertTrue(text(containing: "Couldn’t load today’s finds").waitForExistence(timeout: 15))
     XCTAssertFalse(text(containing: "No run yet").exists)
-    XCTAssertTrue(app.buttons["Refresh"].exists)
+    XCTAssertTrue(app.buttons["Try again"].exists)
   }
 
   // MARK: Helpers
@@ -355,6 +387,22 @@ final class BeachcarUITests: XCTestCase {
     start.press(forDuration: 0.18, thenDragTo: end)
   }
 
+  private func scrollUntilVisible(_ element: XCUIElement, attempts: Int = 10) -> Bool {
+    for _ in 0..<attempts {
+      if isVisible(element) { return true }
+      identified("shade-review-page").swipeUp(velocity: .slow)
+    }
+    return isVisible(element)
+  }
+
+  private func isVisible(_ element: XCUIElement) -> Bool {
+    guard element.exists else { return false }
+    let frame = element.frame
+    return frame.width > 1
+      && frame.height > 1
+      && frame.intersects(app.windows.firstMatch.frame)
+  }
+
   private func identified(_ identifier: String) -> XCUIElement {
     app.descendants(matching: .any).matching(identifier: identifier).firstMatch
   }
@@ -362,14 +410,12 @@ final class BeachcarUITests: XCTestCase {
   private func launch(
     scenario: String? = nil,
     coachStage: String? = nil,
-    galleryCoach: String? = nil,
     betaDiagnostics: String? = nil
   ) {
     app = XCUIApplication()
-    app.launchArguments = ["--ui-testing"]
+    app.launchArguments = ["--ui-testing", "--reset-onboarding"]
     if let scenario { app.launchArguments += ["--ui-testing-scenario", scenario] }
     if let coachStage { app.launchArguments += ["--coach-stage", coachStage] }
-    if let galleryCoach { app.launchArguments += ["--gallery-coach", galleryCoach] }
     if let betaDiagnostics { app.launchArguments += ["--beta-diagnostics", betaDiagnostics] }
     app.launch()
   }

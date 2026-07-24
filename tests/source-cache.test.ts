@@ -1,8 +1,28 @@
 import { describe, expect, it } from "vitest";
 import { searchSourceCache, upsertSourceCache } from "../src/worker/db";
+import { bringATrailerLivePageUrl, ingestBringATrailerRssCache } from "../src/worker/source-cache";
 import type { SourceCandidate } from "../src/worker/sources/types";
 
 describe("source cache", () => {
+  it("ingests bounded current-auction data from BaT's live page", async () => {
+    const db = new FakeSourceCacheD1();
+    const fetchImpl = async () =>
+      new Response(
+        `<script>var auctionsCurrentInitialData = {"items":[{"active":true,"country":"United States","current_bid":8295,"current_bid_formatted":"USD $8,295","excerpt":"Open-air runabout.","noreserve":true,"thumbnail_url":"https://bringatrailer.com/thing.jpg","timestamp_end":1784739600,"title":"1974 Volkswagen Thing","url":"https://bringatrailer.com/listing/1974-volkswagen-thing/"}]};</script>`,
+        { status: 200, headers: { "content-type": "text/html" } },
+      );
+
+    const result = await ingestBringATrailerRssCache(db as unknown as D1Database, fetchImpl as typeof fetch);
+
+    expect(result).toMatchObject({ source: "bringatrailer", sourceUrl: bringATrailerLivePageUrl, itemCount: 1, newItemCount: 1 });
+    expect(Array.from(db.sourceItems.values())[0]).toMatchObject({
+      title: "1974 Volkswagen Thing",
+      bid_num: 8295,
+      ends_at: "2026-07-22T17:00:00.000Z",
+      is_live: 1,
+    });
+  });
+
   it("stores and searches structured listing fields from cached source candidates", async () => {
     const db = new FakeSourceCacheD1();
     const candidate: SourceCandidate = {
@@ -140,6 +160,44 @@ describe("source cache", () => {
       locationStatus: "ok",
     });
   });
+
+  it("does not return source items explicitly marked no longer live", async () => {
+    const db = new FakeSourceCacheD1();
+    db.sourceItems.set("source-item-ended", {
+      id: "source-item-ended",
+      source: "bringatrailer",
+      site: "Bring a Trailer",
+      source_url: "https://bringatrailer.com/auctions/",
+      item_url: "https://bringatrailer.com/listing/ended-samurai/",
+      title: "Ended Suzuki Samurai",
+      summary: "This auction has ended.",
+      image_urls_json: "[]",
+      payload_json: "{}",
+      published_at: null,
+      bid_num: 7200,
+      location: null,
+      location_city: null,
+      location_region: null,
+      location_country: null,
+      ends_at: "2026-07-01T20:00:00.000Z",
+      no_reserve: null,
+      last_detail_at: null,
+      detail_status: null,
+      detail_error: null,
+      is_live: 0,
+      dossier_json: "{}",
+      first_seen_at: "2026-07-01T10:00:00.000Z",
+      last_seen_at: "2026-07-01T10:00:00.000Z",
+    });
+
+    const search = await searchSourceCache(db as unknown as D1Database, {
+      source: "bringatrailer",
+      terms: ["samurai"],
+      limit: 5,
+    });
+
+    expect(search.candidates).toEqual([]);
+  });
 });
 
 interface FakeSourceItemRow {
@@ -230,7 +288,7 @@ class FakeSourceCacheStatement {
     if (this.sql.includes("FROM source_items") && this.sql.includes("WHERE source = ?")) {
       const source = String(this.values[0] || "");
       const rows = Array.from(this.db.sourceItems.values())
-        .filter((row) => row.source === source)
+        .filter((row) => row.source === source && row.is_live !== 0)
         .sort(compareSourceRows);
       return { results: rows as T[] };
     }
@@ -238,6 +296,15 @@ class FakeSourceCacheStatement {
   }
 
   async run(): Promise<Record<string, unknown>> {
+    if (this.sql.startsWith("UPDATE source_items SET is_live = 0")) {
+      const source = String(this.values[0] || "");
+      const finishedAt = String(this.values[1] || "");
+      for (const row of this.db.sourceItems.values()) {
+        if (row.source === source && row.is_live !== 0 && row.last_seen_at < finishedAt) row.is_live = 0;
+      }
+      return { success: true };
+    }
+
     if (this.sql.includes("INSERT INTO source_items")) {
       const [
         id,

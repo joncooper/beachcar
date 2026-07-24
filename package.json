@@ -56,6 +56,9 @@
     "ios:testflight": "scripts/ios-upload-testflight.sh",
     "ios:testflight:assign": "bun scripts/ios-assign-testflight-group.mjs",
     "ios:release": "scripts/ios-archive.sh && scripts/ios-upload-testflight.sh",
+    "ios:release:friends": "scripts/ios-release-friends.sh",
+    "friend:invite": "bun scripts/friend-invite.mjs",
+    "review:provision": "bun scripts/provision-apple-review.mjs",
     "ios:asc:check": "scripts/ios-appstore-check.sh"
   },
   "dependencies": {

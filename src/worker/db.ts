@@ -3,6 +3,7 @@ import { imageKeyFor, inferTags, listingKeyFor, normalizeAction, normalizeDossie
 import type {
   AccountDeletionResult,
   AccountExport,
+  AdminUserSummary,
   AdminOpsSummary,
   BillingEntitlement,
   AutomationEventRecord,
@@ -16,6 +17,9 @@ import type {
   FeedbackRecord,
   ImageStatus,
   ImportPayload,
+  InvitePayload,
+  ManagedOnboardingInput,
+  NotificationPreferences,
   OAuthAccessTokenRecord,
   PreferenceEvent,
   ProductEventBatchResult,
@@ -60,6 +64,7 @@ interface UserRow {
   email: string;
   display_name: string | null;
   status: UserPayload["status"];
+  usage_subject?: string | null;
 }
 
 interface AdminUserRow extends UserRow {
@@ -76,6 +81,10 @@ interface InviteRow {
   expires_at: string | null;
   created_at: string;
   accepted_at: string | null;
+  acceptance: InvitePayload["acceptance"];
+  access_mode: InvitePayload["accessMode"];
+  managed_research: number;
+  display_name: string | null;
 }
 
 interface ProfileRow {
@@ -137,6 +146,7 @@ interface AiUsageEventRow {
   gateway_id: string | null;
   gateway_key_ref: string | null;
   gateway_request_id: string | null;
+  provider_request_id: string | null;
   input_tokens: number | null;
   output_tokens: number | null;
   total_tokens: number | null;
@@ -307,6 +317,43 @@ interface UsageSumRow {
 
 interface UsageWindowTotalRow extends UsageSumRow {
   event_count: number | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  total_tokens: number | null;
+}
+
+interface NotificationPreferencesRow {
+  user_id: string;
+  ready_email_enabled: number;
+  updated_at: string;
+}
+
+export interface NotificationDeliveryRecord {
+  id: string;
+  userId: string;
+  agentRunId: string;
+  kind: "shortlist_ready";
+  status: "sending" | "sent" | "failed" | "skipped";
+  providerMessageId?: string | null;
+  error?: string | null;
+  attemptedAt: string;
+  deliveredAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface NotificationDeliveryRow {
+  id: string;
+  user_id: string;
+  agent_run_id: string;
+  kind: NotificationDeliveryRecord["kind"];
+  status: NotificationDeliveryRecord["status"];
+  provider_message_id: string | null;
+  error: string | null;
+  attempted_at: string;
+  delivered_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 interface CountByValueRow {
@@ -467,47 +514,146 @@ export async function ensureUser(
 ): Promise<UserPayload> {
   const now = new Date().toISOString();
   const insertStatus = input.isOwner ? "active" : "invited";
+  const usageSubject = newUsageSubject();
   await db
     .prepare(
-      `INSERT INTO users (id, auth_provider, auth_subject, email, status, created_at, last_seen_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO users (id, auth_provider, auth_subject, email, display_name, status, usage_subject, created_at, last_seen_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          auth_provider = excluded.auth_provider,
          auth_subject = excluded.auth_subject,
          email = excluded.email,
+         display_name = COALESCE(excluded.display_name, users.display_name),
+         usage_subject = COALESCE(users.usage_subject, excluded.usage_subject),
          status = CASE
            WHEN ? = 1 AND users.status != 'disabled' THEN 'active'
            ELSE users.status
          END,
          last_seen_at = excluded.last_seen_at`,
     )
-    .bind(authUser.id, authUser.provider, authUser.subject, authUser.email, insertStatus, now, now, input.isOwner ? 1 : 0)
+    .bind(
+      authUser.id,
+      authUser.provider,
+      authUser.subject,
+      authUser.email,
+      authUser.displayName || null,
+      insertStatus,
+      usageSubject,
+      now,
+      now,
+      input.isOwner ? 1 : 0,
+    )
     .run();
 
-  if (
-    authUser.provider === "clerk" ||
-    input.managedResearchPilot ||
-    (authUser.provider === "local" && authUser.features.includes(managedResearchFeature))
-  ) {
-    const clerkEntitled = authUser.features.includes(managedResearchFeature);
-    const pilotEntitled = Boolean(input.managedResearchPilot) && !clerkEntitled;
-    await upsertBillingEntitlement(db, authUser.id, {
-      feature: managedResearchFeature,
-      active: clerkEntitled || pilotEntitled,
-      source: pilotEntitled ? "pilot_allowlist" : "clerk_session",
-      planSlug: pilotEntitled ? "managed-research-pilot" : authUser.plans[0] || null,
-    });
-  }
+  const claimedInvite = await claimVerifiedEmailInvite(db, authUser);
+  const clerkEntitled = authUser.features.includes(managedResearchFeature);
+  const pilotEntitled = Boolean(input.managedResearchPilot || claimedInvite?.managed_research) && !clerkEntitled;
+  const existingEntitlement = await getBillingEntitlement(db, authUser.id, managedResearchFeature);
+  const entitlementUpdate = managedEntitlementDecision({
+    clerkEntitled,
+    pilotEntitled,
+    provider: authUser.provider,
+    existingSource: existingEntitlement.source,
+    clerkPlanSlug: authUser.plans[0] || null,
+  });
+  if (entitlementUpdate) await upsertBillingEntitlement(db, authUser.id, entitlementUpdate);
 
   return getUserPayload(db, authUser.id);
 }
 
+export function managedEntitlementDecision(input: {
+  clerkEntitled: boolean;
+  pilotEntitled: boolean;
+  provider: AuthUser["provider"];
+  existingSource: BillingEntitlement["source"];
+  clerkPlanSlug: string | null;
+}): {
+  feature: typeof managedResearchFeature;
+  active: boolean;
+  source: "pilot_allowlist" | "clerk_session";
+  planSlug: string | null;
+} | null {
+  if (input.clerkEntitled) {
+    return {
+      feature: managedResearchFeature,
+      active: true,
+      source: "clerk_session",
+      planSlug: input.clerkPlanSlug,
+    };
+  }
+  if (input.pilotEntitled) {
+    return {
+      feature: managedResearchFeature,
+      active: true,
+      source: "pilot_allowlist",
+      planSlug: "managed-research-pilot",
+    };
+  }
+  if (input.provider === "clerk" && input.existingSource !== "pilot_allowlist") {
+    return {
+      feature: managedResearchFeature,
+      active: false,
+      source: "clerk_session",
+      planSlug: null,
+    };
+  }
+  return null;
+}
+
+export function canConnectExternalAgent(status: UserPayload["status"]): boolean {
+  return status === "active";
+}
+
 export async function createInvite(
   db: D1Database,
-  input: { email?: unknown; invitedByUserId?: string | null; expiresAt?: unknown },
-): Promise<{ id: string; email: string; code: string; createdAt: string; expiresAt: string | null }> {
+  input: {
+    email?: unknown;
+    displayName?: unknown;
+    invitedByUserId?: string | null;
+    expiresAt?: unknown;
+    acceptance?: unknown;
+    managedResearch?: unknown;
+  },
+): Promise<InvitePayload> {
   const email = typeof input.email === "string" && input.email.trim() ? input.email.trim().toLowerCase() : "";
   if (!email || !email.includes("@")) throw new Error("Invite email is required");
+  const acceptance: InvitePayload["acceptance"] = input.acceptance === "legacy_code" ? "legacy_code" : "verified_email";
+  const managedResearch = input.managedResearch === undefined ? acceptance === "verified_email" : input.managedResearch === true;
+  const accessMode: InvitePayload["accessMode"] = managedResearch ? "managed_pilot" : "legacy";
+  const displayName = stringOrNull(input.displayName, null);
+
+  if (acceptance === "verified_email") {
+    const existing = await db
+      .prepare(
+        `SELECT id, email, accepted_by_user_id, expires_at, created_at, accepted_at,
+                acceptance, access_mode, managed_research, display_name
+         FROM invites
+         WHERE lower(email) = ? AND acceptance = 'verified_email' AND access_mode = ?
+         ORDER BY created_at DESC
+         LIMIT 1`,
+      )
+      .bind(email, accessMode)
+      .first<InviteRow>();
+    const existingIsUsable =
+      existing &&
+      (existing.accepted_at !== null || existing.expires_at === null || new Date(existing.expires_at).getTime() >= Date.now());
+    if (existingIsUsable && existing) {
+      return {
+        id: existing.id,
+        email: existing.email,
+        displayName: existing.display_name,
+        acceptance: existing.acceptance,
+        accessMode: existing.access_mode,
+        managedResearch: existing.managed_research === 1,
+        createdAt: existing.created_at,
+        expiresAt: existing.expires_at,
+        acceptedAt: existing.accepted_at,
+        acceptedByUserId: existing.accepted_by_user_id,
+        alreadyExisted: true,
+      };
+    }
+  }
+
   const createdAt = new Date().toISOString();
   const id = `invite-${createdAt.replace(/[^0-9a-z]/gi, "-").toLowerCase()}-${crypto.randomUUID().slice(0, 8)}`;
   const code = crypto.randomUUID().replace(/-/g, "");
@@ -522,7 +668,81 @@ export async function createInvite(
     .bind(id, email, codeHash, input.invitedByUserId || null, expiresAt, createdAt)
     .run();
 
-  return { id, email, code, createdAt, expiresAt };
+  await db
+    .prepare(
+      `UPDATE invites
+       SET acceptance = ?, access_mode = ?, managed_research = ?, display_name = ?
+       WHERE id = ?`,
+    )
+    .bind(acceptance, accessMode, managedResearch ? 1 : 0, displayName, id)
+    .run();
+
+  return {
+    id,
+    email,
+    displayName,
+    acceptance,
+    accessMode,
+    managedResearch,
+    ...(acceptance === "legacy_code" ? { code } : {}),
+    createdAt,
+    expiresAt,
+    alreadyExisted: false,
+  };
+}
+
+export async function provisionManagedReviewUser(
+  db: D1Database,
+  input: { email?: unknown; displayName?: unknown },
+): Promise<UserPayload> {
+  const email = typeof input.email === "string" ? input.email.trim().toLowerCase() : "";
+  if (!email || !email.includes("@")) throw new Error("Review account email is required");
+  const displayName = stringOrNull(input.displayName, "Apple Review") || "Apple Review";
+  const userId = `email:${email}`;
+  const now = new Date().toISOString();
+  await db
+    .prepare(
+      `INSERT INTO users (
+         id, auth_provider, auth_subject, email, display_name, status, usage_subject, created_at, last_seen_at
+       ) VALUES (?, 'review', ?, ?, ?, 'active', ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         email = excluded.email,
+         display_name = COALESCE(users.display_name, excluded.display_name),
+         status = CASE WHEN users.status = 'disabled' THEN users.status ELSE 'active' END,
+         usage_subject = COALESCE(users.usage_subject, excluded.usage_subject),
+         last_seen_at = excluded.last_seen_at`,
+    )
+    .bind(userId, `review:${email}`, email, displayName, newUsageSubject(), now, now)
+    .run();
+  await createInvite(db, {
+    email,
+    displayName,
+    acceptance: "verified_email",
+    managedResearch: true,
+  });
+  await upsertBillingEntitlement(db, userId, {
+    feature: managedResearchFeature,
+    active: true,
+    source: "pilot_allowlist",
+    planSlug: "managed-research-pilot",
+  });
+  await completeManagedOnboarding(db, userId, displayName, {
+    search: {
+      location: "Portland, ME",
+      pickupDistanceMiles: 750,
+      comfortableCeiling: 30_000,
+      stretchRoom: 2_000,
+    },
+    taste: {
+      showMore: ["open-air", "simple", "kid-plausible"],
+      avoid: ["rust", "salvage", "heavy-project"],
+      notes: "A representative Apple review account for the managed private beta.",
+    },
+    timezone: "America/New_York",
+    dailyTime: "08:00",
+    readyEmailEnabled: false,
+  });
+  return getUserPayload(db, userId);
 }
 
 export async function acceptInvite(db: D1Database, authUser: AuthUser, code: unknown): Promise<UserPayload> {
@@ -530,10 +750,15 @@ export async function acceptInvite(db: D1Database, authUser: AuthUser, code: unk
   if (!rawCode) throw new Error("Invite code is required");
   const codeHash = await sha256Hex(rawCode);
   const invite = await db
-    .prepare("SELECT id, email, accepted_by_user_id, expires_at, created_at, accepted_at FROM invites WHERE code_hash = ?")
+    .prepare(
+      `SELECT id, email, accepted_by_user_id, expires_at, created_at, accepted_at,
+              acceptance, access_mode, managed_research, display_name
+       FROM invites WHERE code_hash = ?`,
+    )
     .bind(codeHash)
     .first<InviteRow>();
   if (!invite) throw new Error("Invite code is invalid");
+  if (invite.acceptance !== "legacy_code") throw new Error("This invitation is accepted automatically after signing in with its email address");
   if (invite.accepted_at || invite.accepted_by_user_id) throw new Error("Invite has already been accepted");
   if (invite.email.toLowerCase() !== authUser.email.toLowerCase()) throw new Error("Invite email does not match signed-in account");
   if (invite.expires_at && new Date(invite.expires_at).getTime() < Date.now()) throw new Error("Invite has expired");
@@ -548,27 +773,242 @@ export async function acceptInvite(db: D1Database, authUser: AuthUser, code: unk
     .bind(authUser.id, acceptedAt, invite.id)
     .run();
   await recordAuditEvent(db, { userId: authUser.id, actorUserId: authUser.id, eventType: "invite.accepted", metadata: { inviteId: invite.id } });
+  if (invite.managed_research) {
+    await upsertBillingEntitlement(db, authUser.id, {
+      feature: managedResearchFeature,
+      active: true,
+      source: "pilot_allowlist",
+      planSlug: "managed-research-pilot",
+    });
+  }
 
   return getUserPayload(db, authUser.id);
 }
 
-export async function listAdminUsers(db: D1Database): Promise<
-  Array<{
-    id: string;
-    email: string;
-    displayName?: string | null;
-    status: UserPayload["status"];
-    onboardingCompletedAt?: string | null;
-    latestRunAt?: string | null;
-    sourceSettings?: SourceSetting[];
-    researchSettings?: UserResearchSettings;
-    managedResearchEntitlement?: BillingEntitlement;
-    aiSettings?: UserAiSettings | null;
-    aiUsage?: AiUsageSummary | null;
-    createdAt: string;
-    lastSeenAt: string;
-  }>
-> {
+async function claimVerifiedEmailInvite(db: D1Database, authUser: AuthUser): Promise<InviteRow | null> {
+  const normalizedEmail = authUser.email.trim().toLowerCase();
+  const now = new Date().toISOString();
+  const invite = await db
+    .prepare(
+      `SELECT id, email, accepted_by_user_id, expires_at, created_at, accepted_at,
+              acceptance, access_mode, managed_research, display_name
+       FROM invites
+       WHERE lower(email) = ?
+         AND acceptance = 'verified_email'
+         AND accepted_by_user_id IS NULL
+         AND accepted_at IS NULL
+         AND (expires_at IS NULL OR expires_at > ?)
+       ORDER BY created_at DESC
+       LIMIT 1`,
+    )
+    .bind(normalizedEmail, now)
+    .first<InviteRow>();
+  if (!invite) return null;
+
+  await db.batch([
+    db
+      .prepare(
+        `UPDATE invites
+         SET accepted_by_user_id = ?, accepted_at = ?
+         WHERE id = ? AND accepted_by_user_id IS NULL AND accepted_at IS NULL`,
+      )
+      .bind(authUser.id, now, invite.id),
+    db
+      .prepare(
+        `UPDATE users
+         SET status = CASE WHEN status = 'disabled' THEN status ELSE 'active' END,
+             display_name = COALESCE(display_name, ?),
+             last_seen_at = ?
+         WHERE id = ?
+           AND EXISTS (
+             SELECT 1 FROM invites
+             WHERE id = ? AND accepted_by_user_id = ? AND accepted_at = ?
+           )`,
+      )
+      .bind(authUser.displayName || invite.display_name || null, now, authUser.id, invite.id, authUser.id, now),
+  ]);
+  const claimed = await db
+    .prepare(
+      `SELECT id, email, accepted_by_user_id, expires_at, created_at, accepted_at,
+              acceptance, access_mode, managed_research, display_name
+       FROM invites WHERE id = ? AND accepted_by_user_id = ? AND accepted_at = ?`,
+    )
+    .bind(invite.id, authUser.id, now)
+    .first<InviteRow>();
+  if (!claimed) return null;
+  await recordAuditEvent(db, {
+    userId: authUser.id,
+    actorUserId: authUser.id,
+    eventType: "invite.accepted_verified_email",
+    metadata: { inviteId: invite.id, accessMode: invite.access_mode },
+  });
+  return claimed;
+}
+
+export async function completeManagedOnboarding(
+  db: D1Database,
+  userId: string,
+  displayName: string | null | undefined,
+  input: ManagedOnboardingInput,
+): Promise<UserProfile> {
+  const normalized = normalizeManagedOnboarding(input);
+  const entitlement = await getBillingEntitlement(db, userId, managedResearchFeature);
+  if (!entitlement.active) throw new Error(managedResearchRequiredError);
+
+  const tasteNotes = [
+    normalized.taste.showMore.length ? `Show more: ${normalized.taste.showMore.join(", ")}.` : "",
+    normalized.taste.notes || "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const avoidNotes = normalized.taste.avoid.length ? `Avoid: ${normalized.taste.avoid.join(", ")}.` : "";
+  const scheduleCron = dailyTimeToCron(normalized.dailyTime);
+  const maxBudgetCents = normalized.search.comfortableCeiling * 100;
+  const sourceSettings = [
+    managedSourceSetting("bringatrailer", true, normalized.search.pickupDistanceMiles, maxBudgetCents),
+    managedSourceSetting("carsandbids", true, normalized.search.pickupDistanceMiles, maxBudgetCents),
+    managedSourceSetting("hemmings", false, normalized.search.pickupDistanceMiles, maxBudgetCents),
+    managedSourceSetting("marketplace", false, normalized.search.pickupDistanceMiles, maxBudgetCents),
+  ];
+
+  const profile = await upsertProfile(db, userId, {
+    displayName: displayName || undefined,
+    niche: "Beach cars and runabouts",
+    budgetMax: normalized.search.comfortableCeiling,
+    stretchBudget: normalized.search.stretchRoom,
+    homeRegion: normalized.search.location,
+    timezone: normalized.timezone,
+    scheduleCron,
+    profile: {
+      tasteNotes,
+      avoidNotes,
+      tasteNotesFreeform: normalized.taste.notes || "",
+      tasteCalibration: normalized.taste.showMore,
+      avoidCalibration: normalized.taste.avoid,
+      pickupDistanceMiles: normalized.search.pickupDistanceMiles,
+      dailyTime: normalized.dailyTime,
+      lanes: ["family", "solo", "curiosity"],
+      sources: ["bringatrailer", "carsandbids"],
+      managedResearchIncluded: true,
+    },
+    completeOnboarding: true,
+  });
+  await upsertSourceSettings(db, userId, { sources: sourceSettings });
+  await upsertResearchSettings(db, userId, { mode: "managed" });
+  await upsertNotificationPreferences(db, userId, { readyEmailEnabled: normalized.readyEmailEnabled });
+  return profile;
+}
+
+export function normalizeManagedOnboarding(input: ManagedOnboardingInput): ManagedOnboardingInput {
+  const location = typeof input?.search?.location === "string" ? input.search.location.trim() : "";
+  if (!location) throw new Error("Enter a city and state or ZIP code");
+  const pickupDistanceMiles = boundedInteger(input?.search?.pickupDistanceMiles, 5, 3_000, "Pickup distance");
+  const comfortableCeiling = boundedInteger(input?.search?.comfortableCeiling, 1_000, 10_000_000, "Comfortable ceiling");
+  const stretchRoom = boundedInteger(input?.search?.stretchRoom, 0, 10_000_000, "Stretch room");
+  const timezone = normalizeTimezone(input?.timezone);
+  const dailyTime = normalizeDailyTime(input?.dailyTime);
+  nextDailyRunAt(dailyTimeToCron(dailyTime), timezone);
+  return {
+    search: { location, pickupDistanceMiles, comfortableCeiling, stretchRoom },
+    taste: {
+      showMore: boundedStringList(input?.taste?.showMore, 12),
+      avoid: boundedStringList(input?.taste?.avoid, 12),
+      notes: typeof input?.taste?.notes === "string" ? input.taste.notes.trim().slice(0, 1_000) || null : null,
+    },
+    timezone,
+    dailyTime,
+    readyEmailEnabled: input?.readyEmailEnabled !== false,
+  };
+}
+
+export async function getNotificationPreferences(db: D1Database, userId: string): Promise<NotificationPreferences> {
+  const row = await db
+    .prepare("SELECT user_id, ready_email_enabled, updated_at FROM notification_preferences WHERE user_id = ?")
+    .bind(userId)
+    .first<NotificationPreferencesRow>();
+  return {
+    readyEmailEnabled: row ? Boolean(row.ready_email_enabled) : true,
+    updatedAt: row?.updated_at || null,
+  };
+}
+
+export async function upsertNotificationPreferences(
+  db: D1Database,
+  userId: string,
+  input: { readyEmailEnabled?: unknown },
+): Promise<NotificationPreferences> {
+  const now = new Date().toISOString();
+  const readyEmailEnabled = input.readyEmailEnabled !== false;
+  await db
+    .prepare(
+      `INSERT INTO notification_preferences (user_id, ready_email_enabled, updated_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET
+         ready_email_enabled = excluded.ready_email_enabled,
+         updated_at = excluded.updated_at`,
+    )
+    .bind(userId, readyEmailEnabled ? 1 : 0, now)
+    .run();
+  return getNotificationPreferences(db, userId);
+}
+
+export async function getUsageSubject(db: D1Database, userId: string): Promise<string> {
+  const row = await db.prepare("SELECT usage_subject FROM users WHERE id = ?").bind(userId).first<{ usage_subject: string | null }>();
+  if (!row) throw new Error("Unknown user");
+  if (row.usage_subject) return row.usage_subject;
+  const subject = newUsageSubject();
+  await db.prepare("UPDATE users SET usage_subject = COALESCE(usage_subject, ?) WHERE id = ?").bind(subject, userId).run();
+  const saved = await db.prepare("SELECT usage_subject FROM users WHERE id = ?").bind(userId).first<{ usage_subject: string | null }>();
+  if (!saved?.usage_subject) throw new Error("Could not create usage attribution subject");
+  return saved.usage_subject;
+}
+
+export async function beginNotificationDelivery(
+  db: D1Database,
+  input: { userId: string; agentRunId: string; kind: "shortlist_ready"; status?: "sending" | "skipped" },
+): Promise<{ delivery: NotificationDeliveryRecord; created: boolean }> {
+  const now = new Date().toISOString();
+  const id = `notification-${crypto.randomUUID()}`;
+  const status = input.status === "skipped" ? "skipped" : "sending";
+  const result = await db
+    .prepare(
+      `INSERT INTO notification_deliveries (
+         id, user_id, agent_run_id, kind, status, attempted_at, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(user_id, agent_run_id, kind) DO NOTHING`,
+    )
+    .bind(id, input.userId, input.agentRunId, input.kind, status, now, now, now)
+    .run();
+  const row = await db
+    .prepare("SELECT * FROM notification_deliveries WHERE user_id = ? AND agent_run_id = ? AND kind = ?")
+    .bind(input.userId, input.agentRunId, input.kind)
+    .first<NotificationDeliveryRow>();
+  if (!row) throw new Error("Could not record notification delivery");
+  return { delivery: notificationDeliveryFromRow(row), created: Boolean(result.meta.changes) };
+}
+
+export async function finishNotificationDelivery(
+  db: D1Database,
+  deliveryId: string,
+  input: { status: "sent" | "failed"; providerMessageId?: string | null; error?: string | null },
+): Promise<NotificationDeliveryRecord> {
+  const now = new Date().toISOString();
+  await db
+    .prepare(
+      `UPDATE notification_deliveries
+       SET status = ?, provider_message_id = ?, error = ?,
+           delivered_at = CASE WHEN ? = 'sent' THEN ? ELSE delivered_at END,
+           updated_at = ?
+       WHERE id = ?`,
+    )
+    .bind(input.status, input.providerMessageId || null, input.error?.slice(0, 1_000) || null, input.status, now, now, deliveryId)
+    .run();
+  const row = await db.prepare("SELECT * FROM notification_deliveries WHERE id = ?").bind(deliveryId).first<NotificationDeliveryRow>();
+  if (!row) throw new Error("Notification delivery not found");
+  return notificationDeliveryFromRow(row);
+}
+
+export async function listAdminUsers(db: D1Database): Promise<AdminUserSummary[]> {
   const { results } = await db
     .prepare(
       `SELECT
@@ -589,12 +1029,14 @@ export async function listAdminUsers(db: D1Database): Promise<
     .all<AdminUserRow>();
   return Promise.all(
     results.map(async (row) => {
-      const [sourceSettings, researchSettings, managedResearchEntitlement, aiSettings, aiUsage] = await Promise.all([
+      const [sourceSettings, researchSettings, managedResearchEntitlement, aiSettings, aiUsage, latestAgentRun, notificationPreferences] = await Promise.all([
         getSourceSettings(db, row.id),
         getResearchSettings(db, row.id),
         getBillingEntitlement(db, row.id, managedResearchFeature),
         getAiSettings(db, row.id),
         getAiUsageSummary(db, row.id),
+        getLatestAgentRun(db, row.id),
+        getNotificationPreferences(db, row.id),
       ]);
       return {
         id: row.id,
@@ -603,11 +1045,14 @@ export async function listAdminUsers(db: D1Database): Promise<
         status: row.status,
         onboardingCompletedAt: row.onboarding_completed_at,
         latestRunAt: row.latest_run_at,
+        latestAgentRun,
+        activationStage: activationStageFor(row.status, row.onboarding_completed_at, latestAgentRun),
         sourceSettings,
         researchSettings,
         managedResearchEntitlement,
         aiSettings,
         aiUsage,
+        notificationPreferences,
         createdAt: row.created_at,
         lastSeenAt: row.last_seen_at,
       };
@@ -682,6 +1127,8 @@ export async function getAdminOpsSummary(db: D1Database, now = new Date()): Prom
       monthlySpendMicros: monthlyAi.spendMicros,
       dailyEvents: dailyAi.eventCount,
       monthlyEvents: monthlyAi.eventCount,
+      dailyTokens: dailyAi.totalTokens,
+      monthlyTokens: monthlyAi.totalTokens,
     },
     sourceCache: { sources: { bringatrailer: bringATrailerCache } },
   };
@@ -690,13 +1137,14 @@ export async function getAdminOpsSummary(db: D1Database, now = new Date()): Prom
 export async function getUserPayload(db: D1Database, userId: string): Promise<UserPayload> {
   const user = await db.prepare("SELECT id, email, display_name, status FROM users WHERE id = ?").bind(userId).first<UserRow>();
   if (!user) throw new Error("Unknown user");
-  const [profile, sourceSettings, researchSettings, managedResearchEntitlement, aiSettings, aiUsage] = await Promise.all([
+  const [profile, sourceSettings, researchSettings, managedResearchEntitlement, aiSettings, aiUsage, notificationPreferences] = await Promise.all([
     getProfile(db, userId),
     getSourceSettings(db, userId),
     getResearchSettings(db, userId),
     getBillingEntitlement(db, userId, managedResearchFeature),
     getAiSettings(db, userId),
     getAiUsageSummary(db, userId),
+    getNotificationPreferences(db, userId),
   ]);
   return {
     id: user.id,
@@ -709,12 +1157,13 @@ export async function getUserPayload(db: D1Database, userId: string): Promise<Us
     managedResearchEntitlement,
     aiSettings,
     aiUsage,
+    notificationPreferences,
     onboarding: {
       completed: Boolean(profile?.onboardingCompletedAt),
       completedAt: profile?.onboardingCompletedAt || null,
     },
     capabilities: {
-      canConnectAgent: user.status === "active",
+      canConnectAgent: canConnectExternalAgent(user.status),
       canUseManagedAi: managedResearchEntitlement.active,
       canUseByok: false,
       canRunNow:
@@ -944,26 +1393,26 @@ export async function getAiUsageSummary(db: D1Database, userId: string, now = ne
   const settings = await getAiSettings(db, userId);
   const daily = usageWindow(now, "daily");
   const monthly = usageWindow(now, "monthly");
-  const [dailySpend, monthlySpend] = await Promise.all([
-    sumAiUsageMicros(db, userId, daily.startsAt, daily.endsAt),
-    sumAiUsageMicros(db, userId, monthly.startsAt, monthly.endsAt),
+  const [dailyTotals, monthlyTotals] = await Promise.all([
+    getAiUsageWindowTotalsForUser(db, userId, daily.startsAt, daily.endsAt),
+    getAiUsageWindowTotalsForUser(db, userId, monthly.startsAt, monthly.endsAt),
   ]);
 
   const dailyBudgetCents = settings?.dailyBudgetCents ?? null;
   const monthlyBudgetCents = settings?.monthlyBudgetCents ?? null;
   const dailyWindow = {
     ...daily,
-    spendMicros: dailySpend,
+    ...dailyTotals,
     budgetCents: dailyBudgetCents,
-    remainingMicros: remainingMicros(dailyBudgetCents, dailySpend),
-    limitExceeded: limitExceeded(dailyBudgetCents, dailySpend),
+    remainingMicros: remainingMicros(dailyBudgetCents, dailyTotals.spendMicros),
+    limitExceeded: limitExceeded(dailyBudgetCents, dailyTotals.spendMicros),
   };
   const monthlyWindow = {
     ...monthly,
-    spendMicros: monthlySpend,
+    ...monthlyTotals,
     budgetCents: monthlyBudgetCents,
-    remainingMicros: remainingMicros(monthlyBudgetCents, monthlySpend),
-    limitExceeded: limitExceeded(monthlyBudgetCents, monthlySpend),
+    remainingMicros: remainingMicros(monthlyBudgetCents, monthlyTotals.spendMicros),
+    limitExceeded: limitExceeded(monthlyBudgetCents, monthlyTotals.spendMicros),
   };
 
   return {
@@ -1003,6 +1452,7 @@ export async function recordAiUsageEvent(
     gatewayId?: unknown;
     gatewayKeyRef?: unknown;
     gatewayRequestId?: unknown;
+    providerRequestId?: unknown;
     inputTokens?: unknown;
     outputTokens?: unknown;
     totalTokens?: unknown;
@@ -1015,15 +1465,20 @@ export async function recordAiUsageEvent(
 ): Promise<AiUsageEventRecord> {
   const now = new Date().toISOString();
   const id = `ai-usage-${now.replace(/[^0-9a-z]/gi, "-").toLowerCase()}-${crypto.randomUUID().slice(0, 8)}`;
+  const mode = input.mode === "managed" || input.mode === "byok" ? input.mode : null;
   const costMicros = normalizeCostMicros(input.costMicros, input.costCents);
-  const inputTokens = integerOrNull(input.inputTokens);
-  const outputTokens = integerOrNull(input.outputTokens);
+  const inputTokens = integerOrNull(input.inputTokens) ?? (mode === "managed" ? 0 : null);
+  const outputTokens = integerOrNull(input.outputTokens) ?? (mode === "managed" ? 0 : null);
   const totalTokens = integerOrNull(input.totalTokens) ?? (inputTokens === null && outputTokens === null ? null : (inputTokens || 0) + (outputTokens || 0));
   const occurredAt = isoDateOrDefault(input.occurredAt, now);
   const status: AiUsageEventRecord["status"] = input.status === "error" || input.status === "cached" ? input.status : "ok";
-  const mode = input.mode === "managed" || input.mode === "byok" ? input.mode : null;
   const metadata = normalizeJsonObject(input.metadata, {});
   const gatewayRequestId = stringOrNull(input.gatewayRequestId, null);
+  const providerRequestId = stringOrNull(input.providerRequestId, null);
+  const agentRunId = stringOrNull(input.agentRunId, null);
+  if (mode === "managed" && !agentRunId) throw new Error("Managed AI usage requires an agent run id");
+  if (mode === "managed" && !providerRequestId) throw new Error("Managed AI usage requires a provider request id");
+  const userId = await usageUserId(db, input.userId, agentRunId);
   const existing = gatewayRequestId
     ? await db.prepare("SELECT id FROM ai_usage_events WHERE gateway_request_id = ?").bind(gatewayRequestId).first<{ id: string }>()
     : null;
@@ -1040,6 +1495,7 @@ export async function recordAiUsageEvent(
              mode = ?,
              gateway_id = ?,
              gateway_key_ref = ?,
+             provider_request_id = ?,
              input_tokens = ?,
              output_tokens = ?,
              total_tokens = ?,
@@ -1050,14 +1506,15 @@ export async function recordAiUsageEvent(
          WHERE id = ?`,
       )
       .bind(
-        input.userId,
-        stringOrNull(input.agentRunId, null),
+        userId,
+        agentRunId,
         stringOrDefault(input.provider, "unknown"),
         stringOrNull(input.model, null),
         stringOrDefault(input.operation, "model_call"),
         mode,
         stringOrNull(input.gatewayId, null),
         stringOrNull(input.gatewayKeyRef, null),
+        providerRequestId,
         inputTokens,
         outputTokens,
         totalTokens,
@@ -1073,15 +1530,15 @@ export async function recordAiUsageEvent(
       .prepare(
         `INSERT INTO ai_usage_events (
          id, user_id, agent_run_id, provider, model, operation, mode, gateway_id, gateway_key_ref,
-         gateway_request_id, input_tokens, output_tokens, total_tokens, cost_micros, status,
+         gateway_request_id, provider_request_id, input_tokens, output_tokens, total_tokens, cost_micros, status,
          metadata_json, occurred_at
        )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         id,
-        input.userId,
-        stringOrNull(input.agentRunId, null),
+        userId,
+        agentRunId,
         stringOrDefault(input.provider, "unknown"),
         stringOrNull(input.model, null),
         stringOrDefault(input.operation, "model_call"),
@@ -1089,6 +1546,7 @@ export async function recordAiUsageEvent(
         stringOrNull(input.gatewayId, null),
         stringOrNull(input.gatewayKeyRef, null),
         gatewayRequestId,
+        providerRequestId,
         inputTokens,
         outputTokens,
         totalTokens,
@@ -1601,7 +2059,7 @@ export async function searchSourceCache(
     .prepare(
       `SELECT *
        FROM source_items
-       WHERE source = ?
+       WHERE source = ? AND (is_live IS NULL OR is_live = 1)
        ORDER BY COALESCE(is_live, 0) DESC,
          CASE WHEN ends_at IS NULL THEN 1 ELSE 0 END,
          ends_at ASC,
@@ -1790,7 +2248,7 @@ export async function upsertSourceSettings(
 
 export async function importRun(db: D1Database, payload: ImportPayload | AuctionListing[], userId?: string): Promise<ImportResult> {
   const rawListings = Array.isArray(payload) ? payload : payload.listings || payload.items || [];
-  if (!Array.isArray(rawListings) || rawListings.length === 0) {
+  if (!Array.isArray(rawListings) || (rawListings.length === 0 && (Array.isArray(payload) || payload.allowEmpty !== true))) {
     throw new Error("Import payload must include at least one listing");
   }
 
@@ -2860,10 +3318,22 @@ async function getImageCounts(
   };
 }
 
-async function getAiUsageWindowTotals(db: D1Database, startsAt: string, endsAt: string): Promise<{ spendMicros: number; eventCount: number }> {
+interface AiUsageWindowTotals {
+  spendMicros: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  eventCount: number;
+}
+
+async function getAiUsageWindowTotals(db: D1Database, startsAt: string, endsAt: string): Promise<AiUsageWindowTotals> {
   const row = await db
     .prepare(
-      `SELECT COALESCE(SUM(cost_micros), 0) AS spend, COUNT(*) AS event_count
+      `SELECT COALESCE(SUM(cost_micros), 0) AS spend,
+              COALESCE(SUM(input_tokens), 0) AS input_tokens,
+              COALESCE(SUM(output_tokens), 0) AS output_tokens,
+              COALESCE(SUM(total_tokens), 0) AS total_tokens,
+              COUNT(*) AS event_count
        FROM ai_usage_events
        WHERE occurred_at >= ? AND occurred_at < ?`,
     )
@@ -2871,6 +3341,36 @@ async function getAiUsageWindowTotals(db: D1Database, startsAt: string, endsAt: 
     .first<UsageWindowTotalRow>();
   return {
     spendMicros: row?.spend || 0,
+    inputTokens: row?.input_tokens || 0,
+    outputTokens: row?.output_tokens || 0,
+    totalTokens: row?.total_tokens || 0,
+    eventCount: row?.event_count || 0,
+  };
+}
+
+async function getAiUsageWindowTotalsForUser(
+  db: D1Database,
+  userId: string,
+  startsAt: string,
+  endsAt: string,
+): Promise<AiUsageWindowTotals> {
+  const row = await db
+    .prepare(
+      `SELECT COALESCE(SUM(cost_micros), 0) AS spend,
+              COALESCE(SUM(input_tokens), 0) AS input_tokens,
+              COALESCE(SUM(output_tokens), 0) AS output_tokens,
+              COALESCE(SUM(total_tokens), 0) AS total_tokens,
+              COUNT(*) AS event_count
+       FROM ai_usage_events
+       WHERE user_id = ? AND occurred_at >= ? AND occurred_at < ?`,
+    )
+    .bind(userId, startsAt, endsAt)
+    .first<UsageWindowTotalRow>();
+  return {
+    spendMicros: row?.spend || 0,
+    inputTokens: row?.input_tokens || 0,
+    outputTokens: row?.output_tokens || 0,
+    totalTokens: row?.total_tokens || 0,
     eventCount: row?.event_count || 0,
   };
 }
@@ -3401,18 +3901,6 @@ async function ensureManagedAiSettings(db: D1Database, userId: string): Promise<
     .run();
 }
 
-async function sumAiUsageMicros(db: D1Database, userId: string, startsAt: string, endsAt: string): Promise<number> {
-  const row = await db
-    .prepare(
-      `SELECT COALESCE(SUM(cost_micros), 0) AS spend
-       FROM ai_usage_events
-       WHERE user_id = ? AND occurred_at >= ? AND occurred_at < ?`,
-    )
-    .bind(userId, startsAt, endsAt)
-    .first<UsageSumRow>();
-  return typeof row?.spend === "number" ? row.spend : 0;
-}
-
 function usageWindow(now: Date, kind: "daily" | "monthly"): { startsAt: string; endsAt: string } {
   if (kind === "monthly") {
     const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
@@ -3474,6 +3962,7 @@ function aiUsageEventFromRow(row: AiUsageEventRow): AiUsageEventRecord {
     gatewayId: row.gateway_id,
     gatewayKeyRef: row.gateway_key_ref,
     gatewayRequestId: row.gateway_request_id,
+    providerRequestId: row.provider_request_id,
     inputTokens: row.input_tokens,
     outputTokens: row.output_tokens,
     totalTokens: row.total_tokens,
@@ -3745,6 +4234,98 @@ function parseObject(value: string): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+function newUsageSubject(): string {
+  return `bcus_${randomBase64Url(18)}`;
+}
+
+async function usageUserId(db: D1Database, submittedUserId: string, agentRunId: string | null): Promise<string> {
+  if (!agentRunId) {
+    const userId = submittedUserId.trim();
+    if (!userId) throw new Error("AI usage requires a user id");
+    return userId;
+  }
+  const run = await db.prepare("SELECT user_id FROM agent_runs WHERE id = ?").bind(agentRunId).first<{ user_id: string }>();
+  if (!run?.user_id) throw new Error("AI usage agent run was not found");
+  return run.user_id;
+}
+
+function activationStageFor(
+  status: UserPayload["status"],
+  onboardingCompletedAt: string | null,
+  latestAgentRun: AgentRunRecord | null,
+): AdminUserSummary["activationStage"] {
+  if (status === "disabled") return "disabled";
+  if (status === "invited") return "invited";
+  if (!onboardingCompletedAt) return "signed_in";
+  if (!latestAgentRun) return "onboarded";
+  if (latestAgentRun.status === "failed" || latestAgentRun.status === "cancelled") return "failed";
+  if (latestAgentRun.status === "queued") return "first_run_queued";
+  if (latestAgentRun.status === "running") return "first_run_running";
+  return "ready";
+}
+
+function boundedInteger(value: unknown, minimum: number, maximum: number, label: string): number {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  if (!Number.isFinite(parsed)) throw new Error(`${label} is required`);
+  const integer = Math.round(parsed);
+  if (integer < minimum || integer > maximum) throw new Error(`${label} must be between ${minimum} and ${maximum}`);
+  return integer;
+}
+
+function boundedStringList(value: unknown, maximum: number): string[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim().slice(0, 80))
+        .filter(Boolean),
+    ),
+  ).slice(0, maximum);
+}
+
+function normalizeDailyTime(value: unknown): string {
+  const raw = typeof value === "string" ? value.trim() : "08:00";
+  const match = raw.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  if (!match) throw new Error("Daily time must use HH:MM");
+  return `${match[1]}:${match[2]}`;
+}
+
+function dailyTimeToCron(value: string): string {
+  const [hour, minute] = value.split(":").map(Number);
+  return `${minute} ${hour} * * *`;
+}
+
+function managedSourceSetting(source: string, enabled: boolean, maxDistanceMiles: number, maxBudgetCents: number) {
+  return {
+    source,
+    enabled,
+    settings: {
+      maxDistanceMiles,
+      maxBudgetCents,
+      noReserveOnly: false,
+      browserRunner: false,
+      searchNotes: null,
+    },
+  };
+}
+
+function notificationDeliveryFromRow(row: NotificationDeliveryRow): NotificationDeliveryRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    agentRunId: row.agent_run_id,
+    kind: row.kind,
+    status: row.status,
+    providerMessageId: row.provider_message_id,
+    error: row.error,
+    attemptedAt: row.attempted_at,
+    deliveredAt: row.delivered_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
 }
 
 function parseStringArray(value: string): string[] {

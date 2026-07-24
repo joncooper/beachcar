@@ -14,7 +14,7 @@ Required Worker secrets:
 Private-pilot configuration:
 
 - Keep `VITE_MANAGED_RESEARCH_CHECKOUT_ENABLED=false`.
-- Set the optional Worker secret `BEACHCAR_MANAGED_PILOT_EMAILS` to a comma-separated list of approved tester emails. Bootstrap owners receive pilot access automatically.
+- Create friends with the managed verified-email invitation flow. `BEACHCAR_MANAGED_PILOT_EMAILS` remains an optional legacy/operator allowlist; bootstrap owners receive pilot access automatically.
 - Do not enable Clerk Billing, connect production Stripe, or configure `CLERK_WEBHOOK_SIGNING_SECRET` yet.
 
 Before deployment, put Clerk values in `.deploy.env` and run:
@@ -35,7 +35,8 @@ Authorization is handled in D1:
 
 - Bootstrap owners matching `BOOTSTRAP_OWNER_EMAILS`, `ALLOWED_EMAILS`, or legacy `ALLOWED_EMAIL` are automatically active.
 - Other signed-in users are created with `invited` status.
-- Invited users can only call `/api/me` and `POST /api/invites/accept` until they accept an invite code.
+- On the first `/api/me`, an unexpired `verified_email` invitation whose normalized email exactly matches Clerk's verified primary email is claimed automatically and activates the friend.
+- Unmatched invited users can only call `/api/me` and the legacy `POST /api/invites/accept` route. Invite codes are not created for new friends.
 - Active users can read/write only their own profile, latest run, feedback, and preference events.
 - Active users can update per-user source toggles with `PUT /api/source-settings`.
 - Active users can choose free agent-connected curation with `PUT /api/research-settings`. Selecting `managed` requires either private-pilot access or the future Clerk `managed_research` feature.
@@ -58,7 +59,7 @@ User invite route:
 
 ## Managed Research authorization
 
-During the private pilot, the Worker grants `managed_research` to bootstrap owners and emails in the `BEACHCAR_MANAGED_PILOT_EMAILS` secret. The entitlement is persisted in D1 with source `pilot_allowlist`, so background schedules use the same gate as foreground requests. Removing an email revokes access the next time that user calls the Worker. There is no checkout and no payment method is collected.
+During the private pilot, a managed verified-email invitation grants `managed_research`; bootstrap owners and the optional legacy `BEACHCAR_MANAGED_PILOT_EMAILS` list can grant it too. The entitlement is persisted in D1 with source `pilot_allowlist`, so background schedules use the same gate as foreground requests. A later Clerk session without a paid feature does not overwrite invite-funded access. Revoke a pilot entitlement deliberately in owner operations rather than by removing an email from an environment variable. There is no checkout and no payment method is collected.
 
 ### Commercial launch later
 
@@ -76,7 +77,7 @@ See [Managed Research pricing](pricing.md) for the plan definition and launch as
 
 ## Native iOS
 
-The SwiftUI app uses ClerkKit and ClerkKitUI with the prebuilt `AuthView()` sheet and `UserButton(signedOutContent:)`. It sends the native Clerk session token as `Authorization: Bearer <token>` to the same Worker API used by the PWA. In this beta slice, iOS is a review client for users who have already accepted an invite and completed onboarding on the web.
+The SwiftUI app uses ClerkKit and ClerkKitUI with the prebuilt `AuthView()` sheet and `UserButton(signedOutContent:)`. It sends the native Clerk session token as `Authorization: Bearer <token>` to the same Worker API used by the PWA. iOS is the primary friend experience: sign in with the invited email, activate automatically, complete three short steps, and wait for the first shortlist in the app.
 
 Native setup also requires Clerk Native API and an Associated Domains entitlement:
 

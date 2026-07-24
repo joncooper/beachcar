@@ -49,6 +49,9 @@ export function dedupeBringATrailerPages(pages: Array<{ label: string; url: stri
 }
 
 export function parseBringATrailerLiveListings(html: string, page: { label: string; url: string }): SourceCandidate[] {
+  const initialDataListings = candidatesFromBatInitialData(html, page);
+  if (initialDataListings.length) return initialDataListings;
+
   const liveHtml = liveListingsSection(html);
   if (!liveHtml) return [];
 
@@ -57,6 +60,79 @@ export function parseBringATrailerLiveListings(html: string, page: { label: stri
     .slice(1)
     .map((card) => candidateFromBatCard(card, page))
     .filter((candidate): candidate is SourceCandidate => candidate !== null);
+}
+
+interface BatInitialDataItem {
+  active?: unknown;
+  comments?: unknown;
+  country?: unknown;
+  current_bid?: unknown;
+  current_bid_formatted?: unknown;
+  excerpt?: unknown;
+  noreserve?: unknown;
+  thumbnail_url?: unknown;
+  timestamp_end?: unknown;
+  title?: unknown;
+  url?: unknown;
+}
+
+function candidatesFromBatInitialData(html: string, page: { label: string; url: string }): SourceCandidate[] {
+  const marker = html.match(/\bvar\s+auctionsCurrentInitialData\s*=\s*/i);
+  if (!marker || marker.index === undefined) return [];
+  const start = marker.index + marker[0].length;
+  const scriptEnd = html.indexOf("</script>", start);
+  if (scriptEnd < 0) return [];
+  const assignment = html.slice(start, scriptEnd);
+  const end = assignment.lastIndexOf("}");
+  if (end < 0) return [];
+
+  let parsed: { items?: BatInitialDataItem[] };
+  try {
+    parsed = JSON.parse(assignment.slice(0, end + 1)) as { items?: BatInitialDataItem[] };
+  } catch {
+    return [];
+  }
+
+  if (!Array.isArray(parsed.items)) return [];
+  return parsed.items
+    .map((item): SourceCandidate | null => candidateFromBatInitialData(item, page))
+    .filter((candidate): candidate is SourceCandidate => candidate !== null);
+}
+
+function candidateFromBatInitialData(item: BatInitialDataItem, page: { label: string; url: string }): SourceCandidate | null {
+  const title = stringValue(item.title);
+  const url = stringValue(item.url);
+  if (!title || !url || item.active === false) return null;
+
+  const bidNum = finiteNumber(item.current_bid);
+  const bid = stringValue(item.current_bid_formatted) || (bidNum !== undefined ? `$${bidNum.toLocaleString("en-US")}` : "Check listing");
+  const timestamp = finiteNumber(item.timestamp_end);
+  const endsAt = timestamp !== undefined && timestamp > 0 ? new Date(timestamp * 1000).toISOString() : undefined;
+  const country = stringValue(item.country);
+  const image = stringValue(item.thumbnail_url);
+  const comments = finiteNumber(item.comments);
+
+  return {
+    source: "bringatrailer",
+    site: "Bring a Trailer",
+    sourceQuery: page.label,
+    title: decodeHtml(title),
+    url: decodeHtml(url),
+    bid: decodeHtml(bid),
+    ...(bidNum !== undefined ? { bidNum, bidCents: centsFromDollars(bidNum) } : {}),
+    total: bidNum !== undefined ? `$${Math.round(bidNum * 1.05).toLocaleString("en-US")} incl. buyer fee estimate` : "Check listing",
+    ...(country ? { locationCountry: decodeHtml(country) } : {}),
+    ...(endsAt ? { endsAt } : {}),
+    timeLeft: "check listing",
+    bids: "check listing",
+    bidders: "check listing",
+    ...(comments !== undefined ? { comments } : { comments: "check listing" }),
+    imageUrls: image ? [decodeHtml(image)] : [],
+    summary: decodeHtml(stripHtml(decodeHtml(stringValue(item.excerpt) || ""))).replace(/\s+([.,;:!?])/g, "$1"),
+    ...(typeof item.noreserve === "boolean" ? { noReserve: item.noreserve } : {}),
+    isLive: true,
+    sourceUrl: page.url,
+  };
 }
 
 export function parseBringATrailerRssFeed(xml: string): SourceCandidate[] {
@@ -83,6 +159,7 @@ export function parseBringATrailerRssFeed(xml: string): SourceCandidate[] {
         comments: "check listing",
         imageUrls: imageUrlsFromText(block).slice(0, 4),
         summary,
+        isLive: true,
         sourceUrl: BAT_RSS_FEED,
         publishedAt,
       } satisfies SourceCandidate;
@@ -649,4 +726,13 @@ function parseMoney(value: string): number | undefined {
 
 function centsFromDollars(value: number | undefined): number | undefined {
   return Number.isFinite(value) && value !== undefined ? Math.round(value * 100) : undefined;
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function finiteNumber(value: unknown): number | undefined {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : undefined;
 }

@@ -7,6 +7,7 @@ import {
   assertManagedResearchAccess,
   createRunnerTask,
   exportFeedback,
+  getAgentRunById,
   getLatestRun,
   getUserPayload,
   importRun,
@@ -17,6 +18,7 @@ import {
   type UserScope,
 } from "../db";
 import { prewarmImportedImages } from "../image-cache";
+import { sendPublishedRunReadyEmail } from "../notifications";
 import { searchBringATrailerCache } from "../source-cache";
 import { createAiGatewayCandidateScorer } from "./ai-gateway-scoring";
 import {
@@ -153,6 +155,7 @@ export class BeachcarRunWorkflow extends AgentWorkflow<BeachcarAgent, BeachcarRu
             sourceCacheUpdates,
             runnerTasks,
           },
+          allowEmpty: true,
           listings: draft.listings,
         };
         const result = await importRun(this.env.DB, payload, params.userId);
@@ -197,6 +200,21 @@ export class BeachcarRunWorkflow extends AgentWorkflow<BeachcarAgent, BeachcarRu
         percent: 1,
         agentRunId: params.runId,
         listingCount: published.listingCount,
+      });
+      await step.do("send shortlist ready email", async () => {
+        try {
+          const agentRun = await getAgentRunById(this.env.DB, params.runId);
+          if (agentRun) await sendPublishedRunReadyEmail(this.env, agentRun);
+        } catch (error) {
+          console.error(
+            JSON.stringify({
+              level: "warn",
+              operation: "shortlist_ready_email",
+              runId: params.runId,
+              message: error instanceof Error ? error.message : String(error),
+            }),
+          );
+        }
       });
       await step.reportComplete({
         agentRunId: params.runId,

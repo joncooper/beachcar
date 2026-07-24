@@ -11,8 +11,10 @@ struct RootView: View {
   @State private var accountIsLoading = false
   @State private var accountError: String?
   @State private var inviteCode = ""
-  @State private var desktopCodexHandoffIsPresented: Bool
+  @State private var desktopCodexHandoffIsPresentedForTesting: Bool
+  @AppStorage("beachcar.desktopCodexHandoffPending") private var desktopCodexHandoffPending = false
   private let isUITesting: Bool
+  private let showsSignedOutViewForTesting: Bool
   #if DEBUG
   @State private var didAttemptLaunchTicket = false
   #endif
@@ -25,9 +27,10 @@ struct RootView: View {
       return arguments.indices.contains(valueIndex) ? arguments[valueIndex] : nil
     }
     self.isUITesting = isUITesting
+    self.showsSignedOutViewForTesting = isUITesting && scenario == "signed-out"
     _store = StateObject(wrappedValue: isUITesting ? BeachcarStore.uiTesting() : BeachcarStore())
     _user = State(initialValue: isUITesting ? Self.uiTestingUser() : nil)
-    _desktopCodexHandoffIsPresented = State(
+    _desktopCodexHandoffIsPresentedForTesting = State(
       initialValue: isUITesting && scenario == "desktop-handoff"
     )
   }
@@ -35,7 +38,7 @@ struct RootView: View {
   var body: some View {
     ZStack {
       BeachcarColors.shell.ignoresSafeArea()
-      if clerk.user == nil && !isUITesting {
+      if showsSignedOutViewForTesting || (clerk.user == nil && !isUITesting) {
         signedOutView
       } else {
         signedInView
@@ -48,6 +51,12 @@ struct RootView: View {
         .preferredColorScheme(.dark)
         .presentationDragIndicator(.visible)
     }
+    .onOpenURL { url in
+      guard url.host == AppConfig.todayURL.host, url.path == "/today" else { return }
+      if user?.status == .active {
+        Task { await store.load(tokenProvider: token, cacheScope: user?.id) }
+      }
+    }
     #if DEBUG
     .task {
       await signInWithLaunchTicketIfPresent()
@@ -59,17 +68,30 @@ struct RootView: View {
     VStack(spacing: 22) {
       Spacer()
       VStack(alignment: .leading, spacing: 14) {
+        Image("BeachcarSurrey")
+          .resizable()
+          .scaledToFit()
+          .frame(maxWidth: .infinity)
+          .frame(height: 190)
+          .padding(.horizontal, 4)
+          .background(
+            Capsule()
+              .fill(BC.brandPink.opacity(0.12))
+              .frame(height: 62)
+              .offset(y: 48)
+          )
+          .accessibilityHidden(true)
         HStack(spacing: 8) {
-          Circle().fill(BC.accent).frame(width: 7, height: 7)
-          Text("YOUR DAILY SHORTLIST")
+          Circle().fill(BC.brandPink).frame(width: 7, height: 7)
+          Text("FOUND BY BEACHCAR · BOUGHT FOR REAL")
         }
           .font(.caption.weight(.bold))
           .tracking(1.6)
-          .foregroundStyle(BC.accent)
+          .foregroundStyle(BC.brandPink)
         Text(AppConfig.appName)
           .font(.archivo(48, .black))
           .foregroundStyle(BC.white)
-        Text("The best beach cars from across the auctions—ranked for your taste, budget, and tolerance for adventure.")
+        Text("A private Codex-powered auction scout that learns your taste. It found this pink 1960 Willys Surrey—and its owner bought it.")
           .font(.archivo(15))
           .foregroundStyle(BeachcarColors.secondary)
           .lineSpacing(3)
@@ -83,6 +105,7 @@ struct RootView: View {
           .stroke(BC.border, lineWidth: 1)
       }
       .shadow(color: .black.opacity(0.5), radius: 24, y: 16)
+      .accessibilityIdentifier("signed-out-brand-card")
 
       HStack(spacing: 8) {
         signedOutFeature("sparkles", "Curated")
@@ -90,21 +113,19 @@ struct RootView: View {
         signedOutFeature("hand.thumbsup.fill", "Learns taste")
       }
 
-      UserButton(signedOutContent: {
-        Button {
-          authIsPresented = true
-        } label: {
-          HStack(spacing: 10) {
-            Image(systemName: "person.crop.circle.badge.checkmark")
-            Text("Sign in")
-          }
-          .font(.archivo(16, .bold))
-          .frame(maxWidth: .infinity)
-          .padding(.vertical, 16)
-          .background(BC.accent, in: Capsule())
-          .foregroundStyle(BC.accentInk)
+      if showsSignedOutViewForTesting {
+        Button(action: {}) {
+          signedOutSignInLabel
         }
-      })
+      } else {
+        UserButton(signedOutContent: {
+          Button {
+            authIsPresented = true
+          } label: {
+            signedOutSignInLabel
+          }
+        })
+      }
       Spacer()
     }
     .padding(20)
@@ -112,6 +133,18 @@ struct RootView: View {
       user = nil
       accountError = nil
     }
+  }
+
+  private var signedOutSignInLabel: some View {
+    HStack(spacing: 10) {
+      Image(systemName: "person.crop.circle.badge.checkmark")
+      Text("Sign in")
+    }
+    .font(.archivo(16, .bold))
+    .frame(maxWidth: .infinity)
+    .padding(.vertical, 16)
+    .background(BC.accent, in: Capsule())
+    .foregroundStyle(BC.accentInk)
   }
 
   private func signedOutFeature(_ icon: String, _ label: String) -> some View {
@@ -140,25 +173,28 @@ struct RootView: View {
             Task {
               await acceptInvite()
             }
+          },
+          onSignOut: {
+            Task { await signOut() }
           }
         )
       case .active:
         if user.onboardingCompleted {
-          if desktopCodexHandoffIsPresented {
-            CompetitionCodexHandoffView(email: user.email) {
-              dismissDesktopCodexHandoff(for: user)
+          if shouldShowDesktopCodexHandoff {
+            DesktopCodexHandoffView(email: user.email) {
+              dismissDesktopCodexHandoff()
             }
           } else {
             deckView
           }
         } else {
-          ProfileOnboardingView(
+          FriendOnboardingView(
             user: user,
             isSaving: accountIsLoading,
             error: accountError,
             onSave: { input in
               Task {
-                await saveProfile(input)
+                await completeExternalOnboarding(input)
               }
             }
           )
@@ -188,14 +224,16 @@ struct RootView: View {
       }
   }
 
-  private func dismissDesktopCodexHandoff(for user: UserPayload) {
-    desktopCodexHandoffIsPresented = false
-    guard !isUITesting else { return }
-    UserDefaults.standard.set(false, forKey: Self.desktopCodexHandoffKey(for: user))
+  private var shouldShowDesktopCodexHandoff: Bool {
+    isUITesting ? desktopCodexHandoffIsPresentedForTesting : desktopCodexHandoffPending
   }
 
-  private static func desktopCodexHandoffKey(for user: UserPayload) -> String {
-    "beachcar.desktopCodexHandoff.v1.\(user.id)"
+  private func dismissDesktopCodexHandoff() {
+    if isUITesting {
+      desktopCodexHandoffIsPresentedForTesting = false
+    } else {
+      desktopCodexHandoffPending = false
+    }
   }
 
   private func loadAccountIfNeeded() async {
@@ -207,11 +245,10 @@ struct RootView: View {
     accountIsLoading = true
     defer { accountIsLoading = false }
     do {
-      let token = try await token()
-      let updatedUser = try await store.api.me(authToken: token)
-      user = updatedUser
-      desktopCodexHandoffIsPresented = updatedUser.onboardingCompleted
-        && UserDefaults.standard.bool(forKey: Self.desktopCodexHandoffKey(for: updatedUser))
+      user = try await AccountAccessRetryPolicy.run {
+        let authToken = try await token()
+        return try await store.api.me(authToken: authToken)
+      }
       accountError = nil
     } catch {
       guard !Self.isCancellation(error) else {
@@ -247,31 +284,33 @@ struct RootView: View {
     }
   }
 
-  private func saveProfile(_ input: ProfileInput) async {
+  private func completeExternalOnboarding(_ input: ExternalOnboardingInput) async {
     if isUITesting {
       user = .uiTestingActive
-      desktopCodexHandoffIsPresented = true
+      desktopCodexHandoffIsPresentedForTesting = true
       accountError = nil
       return
     }
     accountIsLoading = true
     defer { accountIsLoading = false }
     do {
-      let token = try await token()
-      _ = try await store.api.putSourceSettings(input: input.sourceSettings, authToken: token)
-      _ = try await store.api.putResearchSettings(
-        input: ResearchSettingsRequest(mode: "external_agent"),
-        authToken: token
-      )
-      if let currentUser = user {
-        UserDefaults.standard.set(true, forKey: Self.desktopCodexHandoffKey(for: currentUser))
-      }
-      let updatedUser = try await store.api.putProfile(input: input, authToken: token)
-      user = updatedUser
-      desktopCodexHandoffIsPresented = true
+      let authToken = try await token()
+      user = try await store.api.completeExternalOnboarding(input: input, displayName: user?.displayName, authToken: authToken)
+      desktopCodexHandoffPending = true
       accountError = nil
     } catch {
       guard !Self.isCancellation(error) else { return }
+      accountError = error.localizedDescription
+    }
+  }
+
+  private func signOut() async {
+    do {
+      try await clerk.auth.signOut()
+      user = nil
+      inviteCode = ""
+      accountError = nil
+    } catch {
       accountError = error.localizedDescription
     }
   }
@@ -280,7 +319,10 @@ struct RootView: View {
     if isUITesting {
       return nil
     }
-    return try await clerk.session?.getToken()
+    guard let token = try await clerk.auth.getToken(), !token.isEmpty else {
+      throw AccountAccessError.tokenNotReady
+    }
+    return token
   }
 
   #if DEBUG
@@ -409,6 +451,8 @@ private struct InviteGateView: View {
   let isSaving: Bool
   let error: String?
   let onAccept: () -> Void
+  let onSignOut: () -> Void
+  @State private var legacyInviteOpen = false
 
   var body: some View {
     AccountCard {
@@ -416,45 +460,330 @@ private struct InviteGateView: View {
         Image(systemName: "envelope.badge.shield.half.filled")
           .font(.title)
           .foregroundStyle(BeachcarColors.teal)
-        Text("Invite required")
+        Text("This email wasn’t invited")
           .font(.archivo(32, .black))
           .foregroundStyle(BC.ink)
         Text(email)
           .font(.subheadline.weight(.semibold))
           .foregroundStyle(BeachcarColors.secondary)
-        Text("Beachcar is currently shared by invitation. Your invitation email includes the code below; if it’s missing, ask the person who invited you.")
+        Text("Beachcar is a small private beta. Sign out and use the address where your TestFlight invitation arrived, or contact the person who invited you.")
           .font(.archivo(14, .medium))
           .foregroundStyle(BC.sub)
           .lineSpacing(3)
           .fixedSize(horizontal: false, vertical: true)
-        TextField("Invite code", text: $inviteCode)
-          .accessibilityIdentifier("invite-code-field")
-          .textInputAutocapitalization(.never)
-          .autocorrectionDisabled()
-          .font(.headline)
-          .padding(14)
-          .background(BC.faint, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-          .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-              .stroke(BeachcarColors.hairline, lineWidth: 1)
-          }
         if let error {
           Text(error)
             .font(.footnote.weight(.semibold))
             .foregroundStyle(BeachcarColors.stop)
         }
-        Button(action: onAccept) {
-          Label(isSaving ? "Accepting..." : "Accept invite", systemImage: "checkmark.seal")
+        Button(action: onSignOut) {
+          Label("Sign out and try another email", systemImage: "rectangle.portrait.and.arrow.right")
             .frame(maxWidth: .infinity)
         }
-        .accessibilityIdentifier("accept-invite-button")
         .buttonStyle(AccountPrimaryButtonStyle())
         .disabled(isSaving)
+
+        DisclosureGroup("Have an older invite code?", isExpanded: $legacyInviteOpen) {
+          VStack(spacing: 12) {
+            TextField("Invite code", text: $inviteCode)
+              .accessibilityIdentifier("invite-code-field")
+              .textInputAutocapitalization(.never)
+              .autocorrectionDisabled()
+              .font(.headline)
+              .padding(14)
+              .background(BC.faint, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            Button(action: onAccept) {
+              Label(isSaving ? "Accepting…" : "Accept older invite", systemImage: "checkmark.seal")
+                .frame(maxWidth: .infinity)
+            }
+            .accessibilityIdentifier("accept-invite-button")
+            .buttonStyle(AccountPrimaryButtonStyle())
+            .disabled(isSaving)
+          }
+          .padding(.top, 12)
+        }
+        .font(.archivo(13, .semibold))
+        .foregroundStyle(BC.sub)
       }
     }
   }
 }
 
+private struct DesktopCodexHandoffView: View {
+  let email: String
+  let onContinue: () -> Void
+
+  var body: some View {
+    ScrollView {
+      VStack(spacing: 18) {
+        VStack(alignment: .leading, spacing: 16) {
+          Image("BeachcarSurrey")
+            .resizable()
+            .scaledToFit()
+            .frame(maxWidth: .infinity)
+            .frame(height: 150)
+            .padding(.horizontal, 8)
+            .background(BC.brandPink.opacity(0.08), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .accessibilityHidden(true)
+          Label("SEARCH SAVED", systemImage: "checkmark.seal.fill")
+            .font(.mono(11, bold: true))
+            .foregroundStyle(BC.accent)
+          Text("Finish your Codex setup on a desktop.")
+            .font(.archivo(32, .black))
+            .foregroundStyle(BC.white)
+          Text("On your desktop, open Beachcar and sign in as \(email). Beachcar will walk you through downloading its skill, adding a reduced-scope recurring token, and starting your first local run.")
+            .font(.archivo(15, .medium))
+            .foregroundStyle(BC.sub)
+            .lineSpacing(3)
+          VStack(alignment: .leading, spacing: 10) {
+            Text("1. Open beachcar-watch.jon-cooper.workers.dev on your desktop")
+            Text("2. Sign in with this same email")
+            Text("3. Follow the Codex coach — no Beachcar AI or browser credentials are needed")
+          }
+          .font(.archivo(13.5, .bold))
+          .foregroundStyle(BC.white.opacity(0.86))
+        }
+        .padding(22)
+        .background(BC.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(BC.border, lineWidth: 1))
+
+        ShareLink(item: AppConfig.auctionBaseURL) {
+          Label("Send myself the desktop link", systemImage: "square.and.arrow.up")
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(AccountPrimaryButtonStyle())
+        .accessibilityIdentifier("desktop-codex-handoff-share")
+
+        Button("Continue to Beachcar") {
+          onContinue()
+        }
+        .accessibilityIdentifier("desktop-codex-handoff-continue")
+        .font(.archivo(15, .bold))
+        .foregroundStyle(BC.sub)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(BC.faint, in: Capsule())
+      }
+      .padding(20)
+    }
+    .scrollIndicators(.hidden)
+    .accessibilityIdentifier("desktop-codex-handoff")
+  }
+}
+
+private struct FriendOnboardingView: View {
+  let user: UserPayload
+  let isSaving: Bool
+  let error: String?
+  let onSave: (ExternalOnboardingInput) -> Void
+
+  @AppStorage("beachcar.onboarding.step") private var step = 0
+  @AppStorage("beachcar.onboarding.location") private var location = ""
+  @AppStorage("beachcar.onboarding.distance") private var pickupDistance = "750"
+  @AppStorage("beachcar.onboarding.ceiling") private var comfortableCeiling = "30000"
+  @AppStorage("beachcar.onboarding.stretch") private var stretchRoom = "2000"
+  @AppStorage("beachcar.onboarding.showMore") private var selectedTasteValue = "open-air,simple,kid-plausible"
+  @AppStorage("beachcar.onboarding.avoid") private var selectedAvoidValue = "rust,salvage,heavy-project"
+  @AppStorage("beachcar.onboarding.notes") private var notes = ""
+
+  private var firstName: String {
+    let name = user.displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    return name.split(separator: " ").first.map(String.init) ?? "there"
+  }
+
+  var body: some View {
+    VStack(spacing: 0) {
+      header
+      ScrollView {
+        AccountCard {
+          VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 6) {
+              Text(stepTitles[step])
+                .font(.archivo(30, .black))
+                .foregroundStyle(BC.white)
+              Text(stepSubtitles[step])
+                .font(.archivo(14, .medium))
+                .foregroundStyle(BC.sub)
+                .lineSpacing(3)
+            }
+            content
+            if let error {
+              Text(error)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(BeachcarColors.stop)
+            }
+          }
+        }
+      }
+      .scrollDismissesKeyboard(.interactively)
+      .accessibilityIdentifier("onboarding-view")
+      navigation
+    }
+    .onAppear {
+      if ProcessInfo.processInfo.arguments.contains("--reset-onboarding") {
+        step = 0
+        location = ""
+      }
+      step = min(max(step, 0), 2)
+      if location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        location = user.profile?.homeRegion ?? ""
+      }
+    }
+  }
+
+  private var header: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack {
+        Text("WELCOME, \(firstName.uppercased())")
+          .font(.mono(10.5, bold: true))
+          .tracking(1.3)
+          .foregroundStyle(BC.accent)
+        Spacer()
+        Text("\(step + 1) OF 3")
+          .font(.mono(10.5, bold: true))
+          .foregroundStyle(BC.sub)
+      }
+      GeometryReader { proxy in
+        ZStack(alignment: .leading) {
+          Capsule().fill(BC.faint)
+          Capsule().fill(BC.accent).frame(width: proxy.size.width * CGFloat(step + 1) / 3)
+        }
+      }
+      .frame(height: 5)
+    }
+    .padding(.horizontal, 22)
+    .padding(.top, 18)
+    .padding(.bottom, 4)
+  }
+
+  @ViewBuilder
+  private var content: some View {
+    switch step {
+    case 0:
+      AccountField(title: "City and state or ZIP", text: $location)
+      AccountField(title: "Pickup distance (miles)", text: $pickupDistance, keyboard: .numberPad)
+      CurrencyAccountField(title: "Comfortable ceiling", text: $comfortableCeiling)
+      CurrencyAccountField(title: "Stretch room", text: $stretchRoom)
+      Text("Beachcar uses this to rank pickup practicality and price—not to hide an exceptional find.")
+        .font(.archivo(12.5, .medium)).foregroundStyle(BC.muted)
+    case 1:
+      CalibrationGrid(title: "Show me more", choices: tasteChoices, selection: selectedTaste, tint: BC.accent)
+      CalibrationGrid(title: "Help me avoid", choices: avoidChoices, selection: selectedAvoid, tint: BC.danger)
+      AccountTextArea(title: "Anything else? (optional)", text: $notes)
+    default:
+      VStack(alignment: .leading, spacing: 12) {
+        Label("Finish on your desktop", systemImage: "laptopcomputer.and.arrow.down")
+          .font(.archivo(16, .extrabold)).foregroundStyle(BC.accent)
+        Text("Beachcar will save your search and taste now. Then it will guide you through connecting your own local Codex on a desktop computer. Beachcar will not start a paid research run.")
+          .font(.archivo(13.5, .medium)).foregroundStyle(BC.white.opacity(0.78)).lineSpacing(3)
+        Text("\(location.isEmpty ? "Your area" : location) · \(pickupDistance) mi · around $\(comfortableCeiling)")
+          .font(.mono(10.5, bold: true)).foregroundStyle(BC.sub)
+      }
+      .padding(16)
+      .background(BC.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+  }
+
+  private var navigation: some View {
+    HStack(spacing: 10) {
+      if step > 0 {
+        Button("Back") { withAnimation(.easeOut(duration: 0.2)) { step -= 1 } }
+          .font(.archivo(14, .bold))
+          .foregroundStyle(BC.sub)
+          .frame(width: 82, height: 50)
+          .background(BC.faint, in: Capsule())
+      }
+      Button {
+        if step < 2 { withAnimation(.easeOut(duration: 0.2)) { step += 1 } }
+        else { onSave(input) }
+      } label: {
+        Label(
+          step == 2 ? (isSaving ? "Saving…" : "Continue on desktop") : "Continue",
+          systemImage: step == 2 ? "laptopcomputer" : "arrow.right"
+        )
+        .frame(maxWidth: .infinity)
+      }
+      .accessibilityIdentifier(step == 2 ? "save-preferences-button" : "onboarding-continue-button")
+      .buttonStyle(AccountPrimaryButtonStyle())
+      .disabled(isSaving || !stepIsValid)
+    }
+    .padding(.horizontal, 20)
+    .padding(.top, 10)
+    .padding(.bottom, 16)
+    .background(BC.bg)
+  }
+
+  private var stepIsValid: Bool {
+    if step != 0 { return true }
+    return !location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      && integer(pickupDistance) != nil
+      && integer(comfortableCeiling) != nil
+      && integer(stretchRoom) != nil
+  }
+
+  private var input: ExternalOnboardingInput {
+    ExternalOnboardingInput(
+      search: ManagedSearchInput(
+        location: location.trimmingCharacters(in: .whitespacesAndNewlines),
+        pickupDistanceMiles: integer(pickupDistance) ?? 750,
+        comfortableCeiling: integer(comfortableCeiling) ?? 30000,
+        stretchRoom: integer(stretchRoom) ?? 2000
+      ),
+      taste: ManagedTasteInput(
+        showMore: selectedValues(selectedTasteValue),
+        avoid: selectedValues(selectedAvoidValue),
+        notes: notes.trimmedOrNil
+      ),
+      timezone: TimeZone.current.identifier
+    )
+  }
+
+  private var selectedTaste: Binding<Set<String>> { selectedBinding($selectedTasteValue) }
+  private var selectedAvoid: Binding<Set<String>> { selectedBinding($selectedAvoidValue) }
+
+  private func selectedBinding(_ value: Binding<String>) -> Binding<Set<String>> {
+    Binding(
+      get: { Set(selectedValues(value.wrappedValue)) },
+      set: { value.wrappedValue = $0.sorted().joined(separator: ",") }
+    )
+  }
+
+  private func selectedValues(_ value: String) -> [String] {
+    value.split(separator: ",").map(String.init).filter { !$0.isEmpty }
+  }
+
+  private func integer(_ value: String) -> Int? {
+    let digits = value.filter(\.isNumber)
+    return digits.isEmpty ? nil : Int(digits)
+  }
+
+  private var stepTitles: [String] { ["Your search", "Your taste", "Set up Codex"] }
+  private var stepSubtitles: [String] { [
+    "Tell us where to look and what price range feels comfortable.",
+    "A few instincts make the first shortlist feel much more like you.",
+    "You will finish the secure local Codex connection on your desktop.",
+  ] }
+
+  private var tasteChoices: [CalibrationChoice] { [
+    .init(id: "open-air", label: "Open-air", detail: "Convertibles, targas, and door-off 4x4s"),
+    .init(id: "simple", label: "Simple", detail: "Easy parts and light electronics"),
+    .init(id: "kid-plausible", label: "Kid-plausible", detail: "Rear seats and relaxed errands"),
+    .init(id: "small-4x4", label: "Small 4x4", detail: "Samurai, Tracker, Thing, and friends"),
+    .init(id: "no-reserve", label: "No reserve", detail: "Low-drama auctions worth watching"),
+    .init(id: "quirky-clean", label: "Quirky clean", detail: "Unusual, tidy, and charming"),
+  ] }
+
+  private var avoidChoices: [CalibrationChoice] { [
+    .init(id: "rust", label: "Rust", detail: "Structural corrosion or vague undersides"),
+    .init(id: "salvage", label: "Salvage", detail: "Rebuilt, bonded, or title-story cars"),
+    .init(id: "heavy-project", label: "Heavy project", detail: "Non-runners and missing major parts"),
+    .init(id: "overbuilt", label: "Overbuilt", detail: "Extreme lifts and irreversible mods"),
+    .init(id: "fragile", label: "Fragile", detail: "Scarce parts or specialist ownership"),
+    .init(id: "price-chasing", label: "Price chase", detail: "Already beyond the sensible budget"),
+  ] }
+}
+
+#if false
 private struct ProfileOnboardingView: View {
   let user: UserPayload
   let isSaving: Bool
@@ -613,7 +942,7 @@ private struct ProfileOnboardingView: View {
         else { onSave(profileInput) }
       } label: {
         Label(
-          step == 3 ? (isSaving ? "Saving…" : "Save my agent brief") : "Continue",
+          step == 3 ? (isSaving ? "Saving…" : "Save my search") : "Continue",
           systemImage: step == 3 ? "sparkles" : "arrow.right"
         )
         .frame(maxWidth: .infinity)
@@ -644,9 +973,9 @@ private struct ProfileOnboardingView: View {
 
   private var shortlistPreview: some View {
     VStack(alignment: .leading, spacing: 9) {
-      Label("Your agent brief is ready", systemImage: "checkmark.seal.fill")
+      Label("Your search is ready", systemImage: "checkmark.seal.fill")
         .font(.archivo(16, .extrabold)).foregroundStyle(BC.accent)
-      Text("Connect Codex, Claude, or another MCP agent in Beachcar’s web Preferences. It can use this brief to research \(homeRegion.isEmpty ? "your region" : homeRegion), publish the best finds, and learn from every swipe.")
+      Text("Beachcar will research \(homeRegion.isEmpty ? "your region" : homeRegion), publish the best finds, and learn from every swipe.")
         .font(.archivo(13.5, .medium)).foregroundStyle(BC.white.opacity(0.78)).lineSpacing(3)
     }
     .padding(16)
@@ -764,6 +1093,7 @@ private struct ProfileOnboardingView: View {
     )
   }
 }
+#endif
 
 private struct CalibrationChoice: Identifiable {
   let id: String

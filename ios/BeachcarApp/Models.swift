@@ -42,11 +42,51 @@ struct UserPayload: Decodable, Equatable, Identifiable {
   let displayName: String?
   let status: UserStatus
   let profile: UserProfile?
+  let researchSettings: UserResearchSettings?
+  let managedResearchEntitlement: ManagedResearchEntitlement?
+  let aiSettings: UserAISettings?
+  let notificationPreferences: ManagedNotificationPreferences?
   let onboarding: UserOnboarding?
+  let capabilities: UserCapabilities?
 
   var onboardingCompleted: Bool {
     onboarding?.completed == true || profile?.onboardingCompletedAt != nil
   }
+}
+
+struct UserResearchSettings: Decodable, Equatable {
+  let mode: String
+  let updatedAt: String?
+}
+
+struct ManagedResearchEntitlement: Decodable, Equatable {
+  let feature: String
+  let active: Bool
+  let source: String
+  let planSlug: String?
+  let expiresAt: String?
+  let updatedAt: String?
+}
+
+struct UserAISettings: Decodable, Equatable {
+  let mode: String
+  let gatewayKeyRef: String?
+  let monthlyBudgetCents: Int?
+  let dailyBudgetCents: Int?
+  let status: String
+  let updatedAt: String
+}
+
+struct ManagedNotificationPreferences: Decodable, Equatable {
+  let readyEmailEnabled: Bool
+  let updatedAt: String?
+}
+
+struct UserCapabilities: Decodable, Equatable {
+  let canConnectAgent: Bool
+  let canUseManagedAi: Bool
+  let canUseByok: Bool
+  let canRunNow: Bool
 }
 
 struct UserOnboarding: Decodable, Equatable {
@@ -68,55 +108,36 @@ struct UserProfile: Decodable, Equatable {
   let updatedAt: String
 }
 
-struct ProfileInput: Encodable, Equatable {
-  let displayName: String?
-  let niche: String
-  let budgetMax: Int?
-  let stretchBudget: Int?
-  let homeRegion: String?
+struct ManagedOnboardingInput: Encodable, Equatable {
+  let search: ManagedSearchInput
+  let taste: ManagedTasteInput
   let timezone: String
-  let profile: ProfilePreferences
-  let sourceSettings: SourceSettingsRequest
-  let completeOnboarding: Bool
+  let dailyTime: String
+  let readyEmailEnabled: Bool
 }
 
-struct ProfilePreferences: Encodable, Equatable {
-  let tasteNotes: String
-  let avoidNotes: String
-  let lanes: [String]
-  let sources: [String]
-  let sourcePreferences: [SourceSettingInput]
-  let notifications: NotificationPreferences
-  let desktopCodexSetupPending = true
+struct ExternalOnboardingInput: Encodable, Equatable {
+  let search: ManagedSearchInput
+  let taste: ManagedTasteInput
+  let timezone: String
 }
 
-struct NotificationPreferences: Encodable, Equatable {
-  let channel: String
-  let runDigest: Bool
-  let strongFitAlerts: Bool
-  let digestTime: String
+struct ManagedSearchInput: Encodable, Equatable {
+  let location: String
+  let pickupDistanceMiles: Int
+  let comfortableCeiling: Int
+  let stretchRoom: Int
 }
 
-struct SourceSettingsRequest: Encodable, Equatable {
-  let sources: [SourceSettingInput]
+struct ManagedTasteInput: Encodable, Equatable {
+  let showMore: [String]
+  let avoid: [String]
+  let notes: String?
 }
 
-struct ResearchSettingsRequest: Encodable, Equatable {
-  let mode: String
-}
-
-struct SourceSettingInput: Encodable, Equatable {
-  let source: String
-  let enabled: Bool
-  let settings: SourcePreferenceSettings
-}
-
-struct SourcePreferenceSettings: Encodable, Equatable {
-  let maxDistanceMiles: Int?
-  let maxBudgetCents: Int?
-  let noReserveOnly: Bool
-  let browserRunner: Bool
-  let searchNotes: String?
+struct ManagedOnboardingResponse: Decodable, Equatable {
+  let user: UserPayload
+  let firstRun: AgentRunRecord
 }
 
 extension UserPayload {
@@ -127,7 +148,12 @@ extension UserPayload {
       displayName: nil,
       status: .invited,
       profile: nil,
-      onboarding: UserOnboarding(completed: false, completedAt: nil)
+      researchSettings: nil,
+      managedResearchEntitlement: nil,
+      aiSettings: nil,
+      notificationPreferences: nil,
+      onboarding: UserOnboarding(completed: false, completedAt: nil),
+      capabilities: nil
     )
   }
 
@@ -138,7 +164,12 @@ extension UserPayload {
       displayName: "Friend",
       status: .active,
       profile: .uiTesting(completed: false),
-      onboarding: UserOnboarding(completed: false, completedAt: nil)
+      researchSettings: UserResearchSettings(mode: "managed", updatedAt: nil),
+      managedResearchEntitlement: ManagedResearchEntitlement(feature: "managed_research", active: true, source: "pilot_allowlist", planSlug: "managed-research-pilot", expiresAt: nil, updatedAt: nil),
+      aiSettings: nil,
+      notificationPreferences: ManagedNotificationPreferences(readyEmailEnabled: true, updatedAt: nil),
+      onboarding: UserOnboarding(completed: false, completedAt: nil),
+      capabilities: UserCapabilities(canConnectAgent: false, canUseManagedAi: true, canUseByok: false, canRunNow: true)
     )
   }
 
@@ -149,7 +180,12 @@ extension UserPayload {
       displayName: "Friend",
       status: .active,
       profile: .uiTesting(completed: true),
-      onboarding: UserOnboarding(completed: true, completedAt: "2026-06-25T12:00:00.000Z")
+      researchSettings: UserResearchSettings(mode: "managed", updatedAt: nil),
+      managedResearchEntitlement: ManagedResearchEntitlement(feature: "managed_research", active: true, source: "pilot_allowlist", planSlug: "managed-research-pilot", expiresAt: nil, updatedAt: nil),
+      aiSettings: nil,
+      notificationPreferences: ManagedNotificationPreferences(readyEmailEnabled: true, updatedAt: nil),
+      onboarding: UserOnboarding(completed: true, completedAt: "2026-06-25T12:00:00.000Z"),
+      capabilities: UserCapabilities(canConnectAgent: false, canUseManagedAi: true, canUseByok: false, canRunNow: true)
     )
   }
 }
@@ -874,6 +910,20 @@ extension AgentRunRecord {
       error: nil,
       startedAt: "2026-06-23T12:00:00.000Z",
       finishedAt: "2026-06-23T12:02:00.000Z",
+      createdAt: "2026-06-23T12:00:00.000Z",
+      updatedAt: "2026-06-23T12:02:00.000Z"
+    )
+  }
+
+  static func uiTesting(status: AgentRunStatus, error: String? = nil) -> AgentRunRecord {
+    AgentRunRecord(
+      id: "agent-run-ui-test-\(status.rawValue)",
+      userId: "email:friend@example.com",
+      workflowInstanceId: status == .queued ? nil : "workflow-agent-run-ui-test-\(status.rawValue)",
+      status: status,
+      error: error,
+      startedAt: status == .queued ? nil : "2026-06-23T12:00:00.000Z",
+      finishedAt: status == .published || status == .failed ? "2026-06-23T12:02:00.000Z" : nil,
       createdAt: "2026-06-23T12:00:00.000Z",
       updatedAt: "2026-06-23T12:02:00.000Z"
     )

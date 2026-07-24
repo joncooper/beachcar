@@ -14,6 +14,8 @@ import type {
   FeedbackAction,
   FeedbackRecord,
   InvitePayload,
+  ManagedOnboardingInput,
+  ManagedOnboardingResult,
   PreferenceEvent,
   ProductEventSummary,
   RunPayload,
@@ -47,6 +49,14 @@ export async function acceptInvite(code: string): Promise<UserPayload> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ code }),
+  });
+}
+
+export async function completeManagedOnboarding(input: ManagedOnboardingInput): Promise<ManagedOnboardingResult> {
+  return requestJson<ManagedOnboardingResult>("/api/onboarding/complete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
   });
 }
 
@@ -87,6 +97,14 @@ export async function putResearchSettings(mode: ResearchMode): Promise<UserPaylo
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ mode }),
+  });
+}
+
+export async function putNotificationPreferences(readyEmailEnabled: boolean): Promise<UserPayload> {
+  return requestJson<UserPayload>("/api/notification-preferences", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ readyEmailEnabled }),
   });
 }
 
@@ -161,6 +179,10 @@ export async function getLatestAgentRun(): Promise<AgentRunRecord | null> {
   return requestJson<AgentRunRecord | null>("/api/agent-runs/latest");
 }
 
+export async function getAgentRun(id: string): Promise<AgentRunRecord> {
+  return requestJson<AgentRunRecord>(`/api/agent-runs/${encodeURIComponent(id)}`);
+}
+
 export async function requestAgentRun(reason?: string, requestId = globalThis.crypto.randomUUID()): Promise<AgentRunRecord> {
   const input: AgentRunRequest = { requestId, ...(reason ? { reason } : {}) };
   return requestJson<AgentRunRecord>("/api/agent-runs", {
@@ -200,14 +222,14 @@ export async function postPreferenceEvent(input: {
   });
 }
 
-export async function createAdminInvite(publishToken: string, email: string): Promise<InvitePayload> {
+export async function createAdminInvite(publishToken: string, email: string, displayName?: string): Promise<InvitePayload> {
   return requestJson<InvitePayload>("/api/admin/invites", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-Publish-Token": publishToken,
     },
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, displayName, acceptance: "verified_email", managedResearch: true }),
     skipUserToken: true,
   });
 }

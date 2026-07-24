@@ -371,7 +371,10 @@ async function verifyRemoteSourceQualitySchema() {
   const researchColumnsSql = `SELECT COUNT(*) AS found_research_columns FROM pragma_table_info('user_research_settings') WHERE name IN ('user_id','mode','created_at','updated_at')`;
   const billingColumnsSql = `SELECT COUNT(*) AS found_billing_columns FROM pragma_table_info('billing_entitlements') WHERE name IN ('user_id','feature','active','source','plan_slug','expires_at','updated_at')`;
   const billingIndexesSql = `SELECT COUNT(*) AS found_billing_indexes FROM sqlite_master WHERE type = 'index' AND name IN ('idx_billing_entitlements_feature_active')`;
-  const [columns, indexes, productColumns, productIndexes, researchColumns, billingColumns, billingIndexes, quickCheck] = await Promise.all([
+  const friendColumnsSql = `SELECT (SELECT COUNT(*) FROM pragma_table_info('invites') WHERE name IN ('acceptance','access_mode','managed_research','display_name')) + (SELECT COUNT(*) FROM pragma_table_info('users') WHERE name = 'usage_subject') + (SELECT COUNT(*) FROM pragma_table_info('ai_usage_events') WHERE name = 'provider_request_id') AS found_friend_columns`;
+  const friendTablesSql = `SELECT COUNT(*) AS found_friend_tables FROM sqlite_master WHERE type = 'table' AND name IN ('notification_preferences','notification_deliveries')`;
+  const friendIndexesSql = `SELECT COUNT(*) AS found_friend_indexes FROM sqlite_master WHERE type = 'index' AND name IN ('idx_invites_email_acceptance','idx_users_usage_subject','idx_ai_usage_provider_request','idx_notification_deliveries_user_created')`;
+  const [columns, indexes, productColumns, productIndexes, researchColumns, billingColumns, billingIndexes, friendColumns, friendTables, friendIndexes, quickCheck] = await Promise.all([
     run(["bunx", "wrangler", "d1", "execute", d1Name, "--remote", "--json", "--command", columnsSql], {
       env,
       label: "Verify Source Quality v1 D1 columns",
@@ -407,6 +410,21 @@ async function verifyRemoteSourceQualitySchema() {
       label: "Verify billing entitlement D1 indexes",
       quiet: true,
     }),
+    run(["bunx", "wrangler", "d1", "execute", d1Name, "--remote", "--json", "--command", friendColumnsSql], {
+      env,
+      label: "Verify managed-friend D1 columns",
+      quiet: true,
+    }),
+    run(["bunx", "wrangler", "d1", "execute", d1Name, "--remote", "--json", "--command", friendTablesSql], {
+      env,
+      label: "Verify managed-friend D1 tables",
+      quiet: true,
+    }),
+    run(["bunx", "wrangler", "d1", "execute", d1Name, "--remote", "--json", "--command", friendIndexesSql], {
+      env,
+      label: "Verify managed-friend D1 indexes",
+      quiet: true,
+    }),
     run(["bunx", "wrangler", "d1", "execute", d1Name, "--remote", "--json", "--command", "PRAGMA quick_check"], {
       env,
       label: "Run remote D1 quick_check",
@@ -421,14 +439,17 @@ async function verifyRemoteSourceQualitySchema() {
     researchColumns: researchColumns.stdout,
     billingColumns: billingColumns.stdout,
     billingIndexes: billingIndexes.stdout,
+    friendColumns: friendColumns.stdout,
+    friendTables: friendTables.stdout,
+    friendIndexes: friendIndexes.stdout,
     quickCheck: quickCheck.stdout,
   });
   if (!gate.ok) {
     throw new Error(
-      `Post-migration D1 gate failed: expected 12 Source Quality columns, 3 Source Quality indexes, 9 product-event columns, 3 product-event indexes, 4 research-setting columns, 7 billing-entitlement columns, 1 billing index, and quick_check=ok; found ${gate.columnCount}, ${gate.indexCount}, ${gate.productColumnCount}, ${gate.productIndexCount}, ${gate.researchColumnCount}, ${gate.billingColumnCount}, ${gate.billingIndexCount}, quick_check=${gate.quickCheck || "unreadable"}. The Worker was not deployed.`,
+      `Post-migration D1 gate failed: expected 12 Source Quality columns, 3 Source Quality indexes, 9 product-event columns, 3 product-event indexes, 4 research-setting columns, 7 billing-entitlement columns, 1 billing index, 6 managed-friend columns, 2 managed-friend tables, 4 managed-friend indexes, and quick_check=ok; found ${gate.columnCount}, ${gate.indexCount}, ${gate.productColumnCount}, ${gate.productIndexCount}, ${gate.researchColumnCount}, ${gate.billingColumnCount}, ${gate.billingIndexCount}, ${gate.friendColumnCount}, ${gate.friendTableCount}, ${gate.friendIndexCount}, quick_check=${gate.quickCheck || "unreadable"}. The Worker was not deployed.`,
     );
   }
-  console.log("\nD1 post-migration gate passed: Source Quality, product-event, research-mode, and billing-entitlement schemas present; quick_check=ok.");
+  console.log("\nD1 post-migration gate passed: Source Quality, product-event, research-mode, billing-entitlement, and managed-friend schemas present; quick_check=ok.");
 }
 
 async function writeProtectedSecretsFile(secrets) {
@@ -454,7 +475,7 @@ function assertExpectedPendingMigrations(output) {
   const pending = pendingD1MigrationFiles(output);
   const detail = pending.length ? pending.join(", ") : "unrecognized migration-list output";
   throw new Error(
-    `Remote migration gate expected no pending migration or only the reviewed 0011/0012/0013 migrations; found ${detail}.`,
+    `Remote migration gate expected no pending migration or only the reviewed 0011/0012/0013/0014 migrations; found ${detail}.`,
   );
 }
 

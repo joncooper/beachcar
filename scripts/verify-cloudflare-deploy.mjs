@@ -109,8 +109,8 @@ async function checkMcpDiscovery() {
   );
   addCheck(
     "OAuth metadata lists automation scopes",
-    Array.isArray(metadata?.scopes_supported) && metadata.scopes_supported.includes("runs:publish"),
-    "runs:publish is listed.",
+    Array.isArray(metadata?.scopes_supported) && metadata.scopes_supported.includes("runs:publish") && metadata.scopes_supported.includes("setup:write"),
+    "runs:publish and setup:write are listed.",
     "Protected-resource metadata did not list expected automation scopes.",
   );
   addCheck(
@@ -184,7 +184,7 @@ async function checkOAuthAuthorizationCodeFlow() {
 
   try {
     const redirectUri = isLocal ? "http://127.0.0.1:8787/oauth/callback-test" : "https://client.example.com/beachcar/oauth/callback";
-    const scope = "setup:read sources:read runs:publish usage:write events:read";
+    const scope = "setup:read setup:write sources:read runs:publish usage:write events:read";
     const registeredResponse = await request("/oauth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -368,6 +368,7 @@ async function request(path, init = {}) {
     redirect: "error",
     headers: {
       Accept: "application/json, text/html;q=0.9, */*;q=0.8",
+      "Cache-Control": "no-cache",
       ...(init.headers || {}),
     },
   });

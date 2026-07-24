@@ -1,13 +1,14 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
 const jwksByDomain = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
-const userEmailById = new Map<string, string>();
+const userIdentityById = new Map<string, { email: string; displayName: string | null }>();
 
 export interface AuthUser {
   id: string;
   email: string;
   provider: "local" | "clerk" | "cloudflare-access";
   subject: string;
+  displayName?: string | null;
   features: string[];
   plans: string[];
 }
@@ -76,15 +77,16 @@ async function requireClerkUser(token: string, env: Env): Promise<AuthUser> {
   const userId = typeof payload.sub === "string" ? payload.sub : "";
   if (!userId) throw new AuthError("Clerk token is missing a user id", 403);
 
-  const email = await getClerkPrimaryEmail(userId, env.CLERK_SECRET_KEY || "");
-  if (!email) throw new AuthError("Clerk user is missing primary email", 403);
+  const identity = await getClerkPrimaryIdentity(userId, env.CLERK_SECRET_KEY || "");
+  if (!identity.email) throw new AuthError("Clerk user is missing a verified primary email", 403);
 
-  const normalizedEmail = normalizeEmail(email);
+  const normalizedEmail = normalizeEmail(identity.email);
   return {
     id: userIdForEmail(normalizedEmail),
     email: normalizedEmail,
     provider: "clerk",
     subject: userId,
+    displayName: identity.displayName,
     features: scopedClerkClaims(payload.fea, "u"),
     plans: scopedClerkClaims(payload.pla, "u"),
   };
@@ -172,9 +174,12 @@ function getJwks(url: string): ReturnType<typeof createRemoteJWKSet> {
   return jwks;
 }
 
-async function getClerkPrimaryEmail(userId: string, secretKey: string): Promise<string> {
+async function getClerkPrimaryIdentity(
+  userId: string,
+  secretKey: string,
+): Promise<{ email: string; displayName: string | null }> {
   if (!secretKey) throw new AuthError("Clerk secret key is not configured", 403);
-  const cached = userEmailById.get(userId);
+  const cached = userIdentityById.get(userId);
   if (cached) return cached;
 
   const response = await fetch(`https://api.clerk.com/v1/users/${encodeURIComponent(userId)}`, {
@@ -187,13 +192,26 @@ async function getClerkPrimaryEmail(userId: string, secretKey: string): Promise<
 
   const user = (await response.json()) as {
     primary_email_address_id?: string | null;
-    email_addresses?: Array<{ id: string; email_address: string }>;
+    first_name?: string | null;
+    last_name?: string | null;
+    email_addresses?: Array<{
+      id: string;
+      email_address: string;
+      verification?: { status?: string | null } | null;
+    }>;
   };
-  const primary =
-    user.email_addresses?.find((email) => email.id === user.primary_email_address_id) || user.email_addresses?.[0];
+  const primary = user.email_addresses?.find((email) => email.id === user.primary_email_address_id);
+  if (!primary || primary.verification?.status !== "verified") {
+    throw new AuthError("Clerk primary email must be verified", 403);
+  }
   const email = primary?.email_address?.toLowerCase() || "";
-  if (email) userEmailById.set(userId, email);
-  return email;
+  const displayName = [user.first_name, user.last_name]
+    .map((part) => part?.trim() || "")
+    .filter(Boolean)
+    .join(" ") || null;
+  const identity = { email, displayName };
+  if (email) userIdentityById.set(userId, identity);
+  return identity;
 }
 
 function bearerToken(request: Request): string | null {

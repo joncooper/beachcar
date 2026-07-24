@@ -1,6 +1,6 @@
 import { getAgentByName } from "agents";
 import { getContainer } from "@cloudflare/containers";
-import type { AgentRunRecord, ImportPayload, UserProfile } from "../shared/types";
+import type { AgentRunRecord, ImportPayload, ManagedOnboardingInput, UserProfile } from "../shared/types";
 import { AuthError, isBootstrapOwnerId, isManagedResearchPilotEmail, primaryBootstrapOwnerId, requirePublisher, requireUser } from "./auth";
 import {
   acceptInvite,
@@ -10,6 +10,7 @@ import {
   claimNextAgentRun,
   claimRunnerTask,
   completeRunnerTask,
+  completeManagedOnboarding,
   createInvite,
   deleteAccountData,
   deleteFeedback,
@@ -50,17 +51,24 @@ import {
   createPreferenceEvent,
   ProductEventValidationError,
   pruneProductEvents,
+  provisionManagedReviewUser,
   revokeAutomationToken,
   revokeOAuthAccessTokenById,
   RunnerTaskTransitionError,
   type UserScope,
   upsertAiSettings,
   upsertProfile,
+  upsertNotificationPreferences,
   upsertResearchSettings,
   upsertSourceSettings,
   upsertFeedback,
 } from "./db";
-import { agentRunRequestConflictMessage, invalidAgentRunRequestIdMessage, normalizeAgentRunRequestId } from "./agent-run-idempotency";
+import {
+  agentRunRequestConflictMessage,
+  invalidAgentRunRequestIdMessage,
+  normalizeAgentRunRequestId,
+  onboardingAgentRunRequestId,
+} from "./agent-run-idempotency";
 import { handleClerkBillingWebhook } from "./billing";
 import { errorResponse, jsonResponse, readJson } from "./http";
 import { mirrorImage, prewarmImportedImages, serveImage, uploadImage } from "./image-cache";
@@ -77,6 +85,7 @@ import {
 } from "./oauth-server";
 import { ingestBringATrailerRssCache } from "./source-cache";
 import { aiGatewayRuntimeConfigured } from "./workflows/ai-gateway-scoring";
+import { sendPublishedRunReadyEmail } from "./notifications";
 export { BeachcarAgent } from "./agents/beachcar-agent";
 export { BeachcarRunnerContainer } from "./containers/beachcar-runner-container";
 export { BeachcarRunWorkflow } from "./workflows/beachcar-run-workflow";
@@ -85,6 +94,12 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     try {
+      if (url.pathname === "/.well-known/apple-app-site-association") {
+        return appleAppSiteAssociationResponse();
+      }
+      if (url.pathname === "/privacy") {
+        return privacyPolicyResponse();
+      }
       if (isMcpProtectedResourceMetadataPath(url.pathname)) {
         return handleMcpProtectedResourceMetadata(request);
       }
@@ -136,6 +151,29 @@ function withAppSecurityHeaders(response: Response): Response {
   });
 }
 
+function privacyPolicyResponse(): Response {
+  const html = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Beachcar Privacy</title><style>body{margin:0;background:#101719;color:#f5f1e8;font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{max-width:680px;margin:auto;padding:48px 24px}h1,h2{line-height:1.15}h1{font-size:40px}h2{margin-top:32px;color:#71e3c2}a{color:#71e3c2}</style></head>
+<body><main><p>BEACHCAR</p><h1>Privacy policy</h1><p>Last updated July 15, 2026.</p>
+<p>Beachcar is a private beta that prepares personalized auction-car shortlists. We collect only the information needed to provide, secure, and improve that service.</p>
+<h2>Information we use</h2><p>We use your verified sign-in email, optional name, search area, budget, taste preferences, review decisions, and operational records for your research runs. Auction listing data comes from the linked marketplaces.</p>
+<h2>Research and usage records</h2><p>Managed research calls are attributed to an opaque account identifier and run identifier. We retain provider request identifiers, token counts, cost, operation, and status so the beta owner can operate budgets and diagnose failures. The provider does not receive your Beachcar email as attribution metadata.</p>
+<h2>Diagnostics</h2><p>Optional beta diagnostics are off until you choose. If enabled, they contain completed interaction outcomes and coarse timing—not listing titles, URLs, photos, auction notes, exact coordinates, or touch paths. Raw diagnostic events expire after 90 days.</p>
+<h2>Email and choices</h2><p>If enabled, Beachcar emails you when a shortlist is ready. The message contains no dossier details. You can change this in Beachcar preferences.</p>
+<h2>Sharing and retention</h2><p>We use Clerk for authentication and Cloudflare for application hosting, storage, research orchestration, model routing, and transactional email. We do not sell personal information. Account data can be exported or deleted from Beachcar.</p>
+<h2>Contact</h2><p>Questions can be sent to <a href="mailto:jon.cooper@gmail.com">jon.cooper@gmail.com</a>.</p></main></body></html>`;
+  return new Response(html, {
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "public, max-age=3600",
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
+      "Referrer-Policy": "no-referrer",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
+
 async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url: URL): Promise<Response> {
   const imageMatch = url.pathname.match(/^\/api\/images\/([^/]+)$/);
   if (imageMatch && request.method === "GET") {
@@ -169,6 +207,44 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext, url:
   }
 
   requireActiveUser(userPayload);
+
+  if (request.method === "POST" && url.pathname === "/api/onboarding/complete") {
+    const body = await readJson<ManagedOnboardingInput>(request);
+    try {
+      const profile = await completeManagedOnboarding(env.DB, authUser.id, authUser.displayName, body);
+      await syncUserAgentSchedule(env, authUser.id, profile);
+      const agent = await getBeachcarAgent(env, authUser.id);
+      const firstRun = (await agent.queueManualRun({
+        userId: authUser.id,
+        reason: "first_shortlist",
+        requestId: await onboardingAgentRunRequestId(authUser.id),
+      })) as AgentRunRecord;
+      return jsonResponse({ user: await getUserPayload(env.DB, authUser.id), firstRun });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not finish setup";
+      if (message.includes(agentRunRequestConflictMessage)) return errorResponse(agentRunRequestConflictMessage, 409);
+      if (message.includes("AI budget exceeded")) return errorResponse(message, 402);
+      if (message === managedResearchRequiredError) return errorResponse(message, 403);
+      if (message === missingByokAliasError || message === inactiveAiSettingsError || isProfileScheduleValidationError(error)) {
+        return errorResponse(message, 400);
+      }
+      if (
+        message.startsWith("Enter a city") ||
+        message.startsWith("Pickup distance") ||
+        message.startsWith("Comfortable ceiling") ||
+        message.startsWith("Stretch room")
+      ) {
+        return errorResponse(message, 400);
+      }
+      throw error;
+    }
+  }
+
+  if (request.method === "PUT" && url.pathname === "/api/notification-preferences") {
+    const body = await readJson<{ readyEmailEnabled?: unknown }>(request);
+    await upsertNotificationPreferences(env.DB, authUser.id, body);
+    return jsonResponse(await getUserPayload(env.DB, authUser.id));
+  }
 
   if (request.method === "PUT" && url.pathname === "/api/profile") {
     const body = await readJson<{
@@ -445,8 +521,19 @@ async function handleAdmin(request: Request, env: Env, ctx: ExecutionContext, ur
   }
 
   if (request.method === "POST" && url.pathname === "/api/admin/invites") {
-    const body = await readJson<{ email?: unknown; expiresAt?: unknown }>(request);
+    const body = await readJson<{
+      email?: unknown;
+      displayName?: unknown;
+      expiresAt?: unknown;
+      acceptance?: unknown;
+      managedResearch?: unknown;
+    }>(request);
     return jsonResponse(await createInvite(env.DB, body), { status: 201 });
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/admin/review-account") {
+    const body = await readJson<{ email?: unknown; displayName?: unknown }>(request);
+    return jsonResponse(await provisionManagedReviewUser(env.DB, body), { status: 201 });
   }
 
   if (request.method === "GET" && url.pathname === "/api/admin/users") {
@@ -504,6 +591,7 @@ async function handleAdmin(request: Request, env: Env, ctx: ExecutionContext, ur
         gatewayId?: unknown;
         gatewayKeyRef?: unknown;
         gatewayRequestId?: unknown;
+        providerRequestId?: unknown;
         inputTokens?: unknown;
         outputTokens?: unknown;
         totalTokens?: unknown;
@@ -545,6 +633,7 @@ async function handleAdmin(request: Request, env: Env, ctx: ExecutionContext, ur
       gatewayId?: unknown;
       gatewayKeyRef?: unknown;
       gatewayRequestId?: unknown;
+      providerRequestId?: unknown;
       inputTokens?: unknown;
       outputTokens?: unknown;
       totalTokens?: unknown;
@@ -595,6 +684,7 @@ async function handleAdmin(request: Request, env: Env, ctx: ExecutionContext, ur
       env.DB,
       {
         ...payload,
+        allowEmpty: true,
         sourceSummary: {
           ...(payload.sourceSummary || {}),
           agentRunId: payload.sourceSummary?.agentRunId || agentRun.id,
@@ -602,7 +692,7 @@ async function handleAdmin(request: Request, env: Env, ctx: ExecutionContext, ur
       },
       agentRun.userId,
     );
-    ctx.waitUntil(prewarmImportedImages(env, result.images));
+    if (result.images.length) ctx.waitUntil(prewarmImportedImages(env, result.images));
     const updated = await markAgentRunPublished(env.DB, {
       runId: agentRun.id,
       publishedRunId: result.runId,
@@ -610,6 +700,7 @@ async function handleAdmin(request: Request, env: Env, ctx: ExecutionContext, ur
       imageCount: result.imageCount,
     });
     await syncAgentRunState(env, updated, "published");
+    ctx.waitUntil(sendPublishedRunReadyEmail(env, updated).catch(logNotificationFailure));
     return jsonResponse({ agentRun: updated, import: result }, { status: 201 });
   }
 
@@ -698,6 +789,29 @@ function adminScope(url: URL, env: Env, userId?: string): UserScope {
 
 function isMcpProtectedResourceMetadataPath(pathname: string): boolean {
   return pathname === "/.well-known/oauth-protected-resource" || pathname === "/.well-known/oauth-protected-resource/mcp";
+}
+
+function appleAppSiteAssociationResponse(): Response {
+  return jsonResponse({
+    applinks: {
+      details: [
+        {
+          appIDs: ["U7BVS8X483.com.joncooper.beachcar"],
+          components: [{ "/": "/today*", comment: "Open a published Beachcar shortlist in the native app" }],
+        },
+      ],
+    },
+  });
+}
+
+function logNotificationFailure(error: unknown): void {
+  console.error(
+    JSON.stringify({
+      level: "warn",
+      operation: "shortlist_ready_email",
+      message: error instanceof Error ? error.message : String(error),
+    }),
+  );
 }
 
 function isOAuthAuthorizationServerMetadataPath(pathname: string): boolean {

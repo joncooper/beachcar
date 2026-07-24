@@ -6,12 +6,12 @@ Phase 5 now uses a hybrid loop: sparse behavioral telemetry tells us where frict
 
 The full calibration foundation is built:
 
-- `InteractionTuningProfile` is versioned and persisted locally. Quick, Balanced, Deliberate, and Custom profiles drive the real review and gallery decisions.
-- `BetaTuningSheet` includes a non-destructive review/photo practice card, bounded advanced controls, direct reason feedback, reset, explicit consent, and a local diagnostic snapshot.
+- `InteractionTuningProfile` is versioned and persisted locally. Quick, Balanced, Deliberate, and Custom profiles drive the real review decisions.
+- `BetaTuningSheet` includes a non-destructive horizontal-review practice card, bounded advanced controls, direct reason feedback, reset, explicit consent, and a local diagnostic snapshot.
 - `ProductTelemetry` stores no events before consent, queues at most 200 bounded outcomes locally, uploads authenticated batches of 40, and clears the queue on opt-out.
 - `0012_product_events.sql` creates a product-only D1 stream. `/api/product-events/batch` validates an event/property allowlist, derives the user from auth, and deduplicates retry ids.
 - Account export and deletion include product events. Scheduled maintenance and ingestion both enforce the 90-day retention limit.
-- `/api/admin/product-events/summary` and the web admin calibration panel compare committed/cancelled review gestures and gallery exit success by tuning cohort without exposing raw user payloads.
+- `/api/admin/product-events/summary` and the web admin calibration panel compare committed/cancelled review gestures by tuning cohort without exposing raw user payloads. Historic gallery events from older builds remain readable.
 - `/api/product-tuning-config` provides a remote Balanced safeguard while preserving the user's selected profile.
 
 ## Product boundary
@@ -19,24 +19,23 @@ The full calibration foundation is built:
 Interaction tuning must stay separate from auction taste.
 
 - Auction feedback (`like`, `star`, `hide`, `avoid`, and preference notes) continues to steer the research agent.
-- Product feedback ("swipes feel too sensitive", gallery dismissal attempts, hint usefulness) belongs to a separate product-learning stream.
+- Product feedback ("swipes feel too sensitive", effort, and hint usefulness) belongs to a separate product-learning stream.
 - The existing `preference_events` table should **not** be reused. Those records are exported as taste memory and currently accept only `voice_note`, `text_note`, and `viewed`.
 
 ## Beta experience
 
 **Tweaks** appears below **Gestures** in the overflow menu for Debug and TestFlight builds. It leads with three human presets rather than raw numbers:
 
-| Preset | Review feel | Gallery feel |
-| --- | --- | --- |
-| **Quick** | Shorter primary travel and lighter strong resistance | Easier vertical dismissal |
-| **Balanced** | Current production defaults | Current production defaults |
-| **Deliberate** | More travel before committing and firmer strong resistance | More intentional dismissal |
+| Preset | Review feel |
+| --- | --- |
+| **Quick** | Shorter primary travel and lighter strong resistance |
+| **Balanced** | Current production defaults |
+| **Deliberate** | More travel before committing and firmer strong resistance |
 
 An Advanced disclosure exposes bounded controls:
 
 - Swipe commitment: roughly 28–38% of screen width; current default is 32%.
 - Strong commitment: roughly 64–80%; current default is 72%.
-- Gallery dismissal: roughly 10–16% of screen height; current default is 13%.
 - Haptics: Off, Soft, Standard, or Strong.
 - Coaching: Adaptive, Subtle every session, or Always explain.
 
@@ -48,7 +47,6 @@ The same surface asks directly:
 - Takes too much effort
 - Strong action is hard to reach
 - Haptics feel weak or heavy
-- Gallery is hard to leave
 - Something else…
 
 Freeform product comments must be labeled as product feedback and must not enter the agent's preference-note pipeline.
@@ -64,11 +62,10 @@ Record completed interaction outcomes, not raw touch streams:
 | `review_undo` | prior action, seconds since commit bucket |
 | `coach_impression` | hint version and surface |
 | `coach_dismissed` | scroll, swipe, menu, or replay |
-| `gallery_opened` | photo count and remembered index |
-| `gallery_dismissed` | vertical gesture or control, attempt count, zoomed/not zoomed |
-| `gallery_reopened` | seconds since dismissal bucket |
 | `tuning_changed` | from/to preset and changed control names |
 | `experience_feedback_submitted` | fixed reason codes plus optional bounded comment |
+
+Older builds emitted `gallery_opened`, `gallery_dismissed`, and `gallery_reopened`. The inline-photo build no longer emits them, but the server keeps accepting historic rows until their normal retention expiry.
 
 Do not transmit listing titles, URLs, photos, auction preference notes, exact coordinates, complete drag paths, or unbounded device metadata. The server derives the signed-in user id. VoiceOver or Reduce Motion state is not currently collected; a future accessibility-specific study must name that field in the beta disclosure first.
 
@@ -100,8 +97,6 @@ Evaluate by app build and tuning preset:
 - Median time from first dossier render to first judgment.
 - Cancelled-to-committed swipe ratio by direction.
 - Undo within ten seconds, especially after strong actions.
-- First-attempt gallery dismissal success.
-- Gallery reopen rate within thirty seconds.
 - Hint impressions versus immediate interaction, replay, or repeated inactivity.
 - Direct "too sensitive / too effortful" responses.
 

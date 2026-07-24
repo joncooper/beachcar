@@ -467,6 +467,11 @@ struct FeedChrome: View {
     VStack(spacing: 9) {
       progressBar
       HStack {
+        Image("BeachcarSurrey")
+          .resizable()
+          .scaledToFit()
+          .frame(width: 44, height: 28)
+          .accessibilityHidden(true)
         Text("Beachcar")
           .font(.archivo(17, .extrabold))
           .foregroundStyle(BC.white)

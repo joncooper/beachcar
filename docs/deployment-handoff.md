@@ -27,7 +27,7 @@ The remote migration ledger is authoritative:
 bunx wrangler d1 migrations list beach-car-watch --remote
 ```
 
-The rollout accepts no pending migrations or only the reviewed additive set: `0011_source_cache_listing_fields.sql`, `0012_product_events.sql`, and `0013_agent_connected_subscriptions.sql`. Stop if the command reports any other pending migration.
+The rollout accepts no pending migrations or only the reviewed additive set: `0011_source_cache_listing_fields.sql`, `0012_product_events.sql`, `0013_agent_connected_subscriptions.sql`, and `0014_managed_friend_onboarding.sql`. Stop if the command reports any other pending migration.
 
 ## Deployment Environment
 
@@ -48,7 +48,7 @@ The following are required Worker secret names but their local values may remain
 Private-pilot controls:
 
 - Keep `VITE_MANAGED_RESEARCH_CHECKOUT_ENABLED=false`.
-- Optionally set `BEACHCAR_MANAGED_PILOT_EMAILS` to approved non-owner tester emails. Bootstrap owners already receive access.
+- Use `bun run friend:invite -- --name "Friend Name" --email friend@example.com` for new testers. `BEACHCAR_MANAGED_PILOT_EMAILS` is only an optional legacy/operator allowlist; bootstrap owners already receive access.
 - Leave Clerk Billing, production Stripe, and `CLERK_WEBHOOK_SIGNING_SECRET` unconfigured until the paid launch is approved.
 
 Supply a local value only when creating or rotating that secret. Supplied secret values are included atomically in the one Worker deployment through `wrangler deploy --secrets-file`; omitted secrets are preserved. The rollout does not run `wrangler secret bulk` after deployment.
@@ -100,12 +100,12 @@ Before migration, the orchestrator creates a random private `/tmp/beachcar-rollo
 - Current Worker versions and the single active 100%-traffic version needed for a code rollback.
 - Minimal rollback evidence containing the active version id, timestamps, and remote Durable Object migration tag. The tag must already match configured `v2`; otherwise rollout stops before D1 backup or mutation because a code rollback would not be proven available.
 - A pre-migration D1 Time Travel bookmark.
-- The pending-migration report, which must be empty or list only reviewed migrations `0011`, `0012`, and `0013`.
+- The pending-migration report, which must be empty or list only reviewed migrations `0011`, `0012`, `0013`, and `0014`.
 - A full pre-migration D1 SQL export and its SHA-256 digest.
 
 Keep the printed directory until verification is complete, then move the artifacts to durable, access-controlled storage according to the project retention policy. Cloudflare auth tokens and headers, full service metadata, plain variable values, secret values, and the separate temporary Worker-secret staging directory are kept out of these artifacts.
 
-The remaining execution order is: require the configured D1 name and UUID to identify the same remote database; prove rollback availability; capture recovery state; run an exact `wrangler deploy --strict --keep-vars --dry-run` with any supplied secrets; apply only the verified pending migrations; require the Source Quality, product-event, research-mode, and billing-entitlement schemas plus `PRAGMA quick_check=ok`; deploy code and supplied secrets together once with `--strict --keep-vars`; run verification; and repeat the strict resource check. Strict mode stops remote configuration conflicts, while `--keep-vars` preserves audited dashboard-only plain vars. A failed schema gate leaves the old Worker live with the additive migrations applied. There is no post-deploy secret-only release.
+The remaining execution order is: require the configured D1 name and UUID to identify the same remote database; prove rollback availability; capture recovery state; run an exact `wrangler deploy --strict --keep-vars --dry-run` with any supplied secrets; apply only the verified pending migrations; require the Source Quality, product-event, research-mode, billing-entitlement, managed-friend, usage-attribution, and notification schemas plus `PRAGMA quick_check=ok`; deploy code and supplied secrets together once with `--strict --keep-vars`; run verification; and repeat the strict resource check. Strict mode stops remote configuration conflicts, while `--keep-vars` preserves audited dashboard-only plain vars. A failed schema gate leaves the old Worker live with the additive migrations applied. There is no post-deploy secret-only release.
 
 Direct remote migration and bootstrap mutation commands are disabled. `bun run deploy:remote -- --execute --yes` is the sole production mutation entrypoint. If `BEACHCAR_AI_GATEWAY_TOKEN` is unavailable locally and remotely, the free MCP path can still deploy, but the paid managed feature must remain disabled; `CLOUDFLARE_API_TOKEN` is never substituted as a runtime AI credential.
 
@@ -165,7 +165,7 @@ bunx wrangler rollback <activeWorkerVersionId> \
   --message "Rollback Source Quality v1"
 ```
 
-Migrations `0011`–`0013` are additive, so a failed code upload can leave them applied while the old Worker remains live. However, after the new release has resynchronized a profile schedule, do **not** roll directly back to the old `0010` Worker: the new scheduler creates timezone-aware one-shot Durable Object schedules that the old code neither renews nor reconciles. Prefer a forward hotfix or a bridge/reconciliation release. A direct code rollback is only a safe option before the new scheduler has touched production schedule state.
+Migrations `0011`–`0014` are additive, so a failed code upload can leave them applied while the old Worker remains live. However, after the new release has resynchronized a profile schedule, do **not** roll directly back to the old `0010` Worker: the new scheduler creates timezone-aware one-shot Durable Object schedules that the old code neither renews nor reconciles. Prefer a forward hotfix or a bridge/reconciliation release. A direct code rollback is only a safe option before the new scheduler has touched production schedule state.
 
 Only use D1 Time Travel for confirmed database corruption. It is destructive and discards writes after the chosen bookmark. First stop writes and roll back the Worker, then restore deliberately from the saved bookmark and retain the undo bookmark Cloudflare returns:
 

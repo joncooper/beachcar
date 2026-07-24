@@ -29,6 +29,7 @@ import type { ReactNode } from "react";
 import {
   acceptInvite,
   clearFeedback,
+  completeManagedOnboarding,
   createAutomationToken,
   createAdminInvite,
   deleteAccount as deleteAccountRequest,
@@ -44,6 +45,7 @@ import {
   ingestAdminSourceCache,
   listAdminUsers,
   putFeedback,
+  putNotificationPreferences,
   putProfile,
   putResearchSettings,
   putSourceSettings,
@@ -59,6 +61,7 @@ import type {
   AdminUserSummary,
   AdminOpsSummary,
   AiUsageSummary,
+  AutomationScope,
   AutomationStatus,
   AutomationTokenCreateResult,
   AutomationTokenRecord,
@@ -68,6 +71,7 @@ import type {
   FeedbackRecord,
   InvitePayload,
   Lane,
+  ManagedOnboardingInput,
   OAuthAccessTokenRecord,
   ProductEventSummary,
   RunPayload,
@@ -152,6 +156,7 @@ type AiScoringView = {
 };
 type SourceSummaryView = {
   publisher?: string;
+  execution?: string;
   agentRunId?: string;
   workflowInstanceId?: string;
   source?: string;
@@ -183,6 +188,8 @@ const actionLabels: Record<FeedbackAction, string> = {
   hide: "Hidden",
   avoid: "Avoid similar",
 };
+
+const recurringCodexScopes: AutomationScope[] = ["setup:read", "setup:write", "sources:read", "runs:publish", "events:read"];
 
 const actionClasses: Record<FeedbackAction, string> = {
   like: "is-liked",
@@ -391,6 +398,7 @@ function sourceSummaryView(value: unknown): SourceSummaryView {
   const record = normalizeRecord(value);
   return {
     publisher: stringValue(record.publisher),
+    execution: stringValue(record.execution),
     agentRunId: stringValue(record.agentRunId),
     workflowInstanceId: stringValue(record.workflowInstanceId),
     source: stringValue(record.source),
@@ -495,7 +503,37 @@ function aiScoringView(value: unknown): AiScoringView | null {
   };
 }
 
+function isLocalCodexRun(summary: SourceSummaryView): boolean {
+  return summary.execution === "local-codex-browser" || summary.publisher === "remote-mcp";
+}
+
 function timelineItems(run: RunPayload | null, agentRun: AgentRunRecord | null, summary: SourceSummaryView): TimelineItemView[] {
+  if (isLocalCodexRun(summary)) {
+    return [
+      {
+        label: "Local Codex",
+        detail: "GPT-5.6 applied your saved taste on your computer",
+        status: "done",
+      },
+      {
+        label: "Signed-in browser",
+        detail: summary.checkedSources.length
+          ? `${summary.rawCandidateCount} candidates considered across ${summary.checkedSources.length} source checks`
+          : "Source pages researched in your user-authorized browser session",
+        status: summary.checkedSources.length || run?.id ? "done" : "waiting",
+      },
+      {
+        label: "Beachcar MCP",
+        detail: "Taste, evidence, and the shortlist passed through the user-scoped MCP",
+        status: run?.id ? "done" : "waiting",
+      },
+      {
+        label: "Published",
+        detail: run?.id ? `${run.listings.length} picks in ${shortId(run.id)} · $0 Beachcar AI` : "Waiting for Local Codex to publish",
+        status: run?.id ? "done" : "waiting",
+      },
+    ];
+  }
   const progress = normalizeRecord(agentRun?.progress);
   const items: TimelineItemView[] = [
     {
@@ -540,7 +578,8 @@ function timelineItems(run: RunPayload | null, agentRun: AgentRunRecord | null, 
   return items;
 }
 
-function runStatusText(run: RunPayload | null, agentRun: AgentRunRecord | null): string {
+function runStatusText(run: RunPayload | null, agentRun: AgentRunRecord | null, summary?: SourceSummaryView): string {
+  if (summary && isLocalCodexRun(summary) && run?.id) return "Published by your Codex";
   if (agentRun?.status === "running") return "Workflow running";
   if (agentRun?.status === "queued") return "Run queued";
   if (agentRun?.status === "failed") return "Run failed";
@@ -549,6 +588,9 @@ function runStatusText(run: RunPayload | null, agentRun: AgentRunRecord | null):
 }
 
 function runStatusMeta(run: RunPayload | null, agentRun: AgentRunRecord | null, summary: SourceSummaryView): string {
+  if (isLocalCodexRun(summary) && run?.id) {
+    return `${run.listings.length} picks · Local Codex · GPT-5.6 · signed-in browser · Beachcar MCP · $0 Beachcar AI`;
+  }
   if (agentRun?.status === "running") return "Cloudflare Workflow is processing";
   if (agentRun?.status === "queued") return "Waiting for the per-user Agent";
   if (agentRun?.status === "failed") return agentRun.error || "Open details for the failure";
@@ -712,6 +754,59 @@ function isLocalDemoHost(): boolean {
   return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
 }
 
+function needsDesktopCodexSetup(user: UserPayload): boolean {
+  const profile = user.profile?.profile || {};
+  return profile.desktopCodexSetupPending === true && typeof profile.localCodexTasteUpdatedAt !== "string";
+}
+
+function DesktopCodexCoach(props: { email: string; onSetupComplete: (user: UserPayload) => void }) {
+  const [pollMessage, setPollMessage] = useState("Waiting for Codex to save your taste…");
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer: number | undefined;
+
+    const pollSetup = async () => {
+      try {
+        const nextUser = await getMe();
+        if (cancelled) return;
+        if (!needsDesktopCodexSetup(nextUser)) {
+          props.onSetupComplete(nextUser);
+          return;
+        }
+        setPollMessage("Waiting for Codex to save your taste…");
+      } catch {
+        if (!cancelled) setPollMessage("Still waiting. Beachcar will reconnect automatically.");
+      }
+      if (!cancelled) timer = window.setTimeout(() => void pollSetup(), 2_000);
+    };
+
+    void pollSetup();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [props.onSetupComplete]);
+
+  return (
+    <main className="shell is-loading">
+      <section className="setup-card is-wide">
+        <div className="desktop-coach-brand">
+          <img src="/beachcar-surrey-real.webp" alt="The real pink 1960 Willys Surrey Beachcar found" />
+          <p><strong>Beachcar found this one.</strong><span>Then its owner bought it.</span></p>
+        </div>
+        <p className="eyebrow">Desktop setup</p>
+        <h1>Let&apos;s connect your local Codex.</h1>
+        <p className="setup-muted">
+          Your search and initial taste are saved for {props.email}. Finish the setup here on your desktop; Beachcar will not run managed research or charge for local Codex work.
+        </p>
+        <AutomationSettingsPanel />
+        <p className="automation-note" role="status">{pollMessage}</p>
+      </section>
+    </main>
+  );
+}
+
 function demoSettingsUser(): UserPayload {
   return {
     id: "email:friend@example.com",
@@ -851,8 +946,11 @@ function RunDetailDemo() {
     <main className="shell is-deck">
       <header className="app-header">
         <div className="brand-line">
-          <strong>{appName}</strong>
-          <span>{generatedTime(run)}</span>
+          <img className="brand-mark" src="/beachcar-wheel-real.webp" alt="" aria-hidden="true" />
+          <div className="brand-copy">
+            <strong>{appName}</strong>
+            <span>{generatedTime(run)}</span>
+          </div>
         </div>
         <div className="header-actions">
           <button className="icon-toggle is-active" type="button">
@@ -1054,7 +1152,7 @@ function AuthenticatedApp(props: { clerkPublishableKey: string }) {
   const [mode, setMode] = useState<ViewMode>("deck");
   const [filter, setFilter] = useState<ViewFilter>("all");
   const [filterOpen, setFilterOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(window.location.pathname === "/preferences");
   const [pricingOpen, setPricingOpen] = useState(false);
   const [runDetailOpen, setRunDetailOpen] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
@@ -1109,6 +1207,65 @@ function AuthenticatedApp(props: { clerkPublishableKey: string }) {
     setFeedbackByKey(mergedFeedback(nextRun));
   }, []);
 
+  useEffect(() => {
+    if (!user?.onboarding?.completed || (agentRun?.status !== "queued" && agentRun?.status !== "running")) return;
+    let cancelled = false;
+    let timer: number | undefined;
+    const poll = async () => {
+      try {
+        const nextAgentRun = await getLatestAgentRun();
+        if (cancelled || !nextAgentRun) return;
+        setAgentRun(nextAgentRun);
+        if (nextAgentRun.status === "published") {
+          await loadRunForUser(user.id);
+          if (!cancelled) setError(null);
+          return;
+        }
+        if (nextAgentRun.status === "failed" || nextAgentRun.status === "cancelled") return;
+        if (!cancelled) timer = window.setTimeout(() => void poll(), 2_000);
+      } catch (pollError) {
+        if (!cancelled) {
+          setError(pollError instanceof Error ? pollError.message : "Beachcar will retry when you are back online");
+          timer = window.setTimeout(() => void poll(), 4_000);
+        }
+      }
+    };
+    timer = window.setTimeout(() => void poll(), 1_000);
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [agentRun?.status, loadRunForUser, user?.id, user?.onboarding?.completed]);
+
+  useEffect(() => {
+    if (!user?.onboarding?.completed || user.researchSettings?.mode !== "external_agent" || run?.id) return;
+    let cancelled = false;
+    let timer: number | undefined;
+
+    const pollPublishedRun = async () => {
+      try {
+        const nextRun = await getLatestRun(user.id);
+        if (cancelled) return;
+        setError(null);
+        if (nextRun.id) {
+          setRun(nextRun);
+          setFeedbackByKey(mergedFeedback(nextRun));
+          return;
+        }
+      } catch {
+        // A local Codex run may take several minutes. Keep the waiting screen calm
+        // and retry instead of turning a transient poll failure into an error state.
+      }
+      if (!cancelled) timer = window.setTimeout(() => void pollPublishedRun(), 2_000);
+    };
+
+    timer = window.setTimeout(() => void pollPublishedRun(), 1_000);
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [run?.id, user?.id, user?.onboarding?.completed, user?.researchSettings?.mode]);
+
   async function submitInviteCode(code: string) {
     setAccountActionPending(true);
     try {
@@ -1131,28 +1288,15 @@ function AuthenticatedApp(props: { clerkPublishableKey: string }) {
     }
   }
 
-  async function completeProfile(input: {
-    displayName?: string;
-    niche: string;
-    budgetMax?: number | null;
-    stretchBudget?: number | null;
-    homeRegion?: string | null;
-    timezone: string;
-    profile: Record<string, unknown>;
-    researchMode: ResearchMode;
-    sourceSettings?: SourceSettingsInput;
-  }) {
+  async function completeProfile(input: ManagedOnboardingInput) {
     setAccountActionPending(true);
     try {
-      const { researchMode, sourceSettings, ...profileInput } = input;
-      let nextUser = await putProfile({ ...profileInput, completeOnboarding: true });
-      if (sourceSettings) nextUser = await putSourceSettings({ sources: sourceSettings });
-      nextUser = await putResearchSettings(researchMode);
-      setUser(nextUser);
-      await loadRunForUser(nextUser.id).catch(() => {
-        setRun({ id: null, generatedAt: null, listings: [], feedback: [] });
-        setFeedbackByKey(new Map());
-      });
+      const result = await completeManagedOnboarding(input);
+      setUser(result.user);
+      setAgentRun(result.firstRun);
+      setRun({ id: null, generatedAt: null, listings: [], feedback: [] });
+      setFeedbackByKey(new Map());
+      localStorage.removeItem("beachcar:managed-onboarding");
       setError(null);
     } catch (profileError) {
       setError(profileError instanceof Error ? profileError.message : "Could not save profile");
@@ -1175,9 +1319,15 @@ function AuthenticatedApp(props: { clerkPublishableKey: string }) {
     setAccountActionPending(true);
     try {
       const { researchMode, sourceSettings, ...profileInput } = input;
+      profileInput.profile = {
+        ...profileInput.profile,
+        desktopCodexSetupPending: researchMode === "external_agent",
+      };
       let nextUser = await putProfile({ ...profileInput, completeOnboarding: true });
       if (sourceSettings) nextUser = await putSourceSettings({ sources: sourceSettings });
       nextUser = await putResearchSettings(researchMode);
+      const savedNotifications = normalizeRecord(profileInput.profile?.notifications);
+      nextUser = await putNotificationPreferences(savedNotifications.channel !== "none" && savedNotifications.runDigest !== false);
       setUser(nextUser);
       setSettingsOpen(false);
       setError(null);
@@ -1412,11 +1562,14 @@ function AuthenticatedApp(props: { clerkPublishableKey: string }) {
   }
 
   const counts = useMemo(() => {
-    const all = run?.listings.length || 0;
+    const listings = run?.listings || [];
+    const all = listings.length;
     const starred = [...feedbackByKey.values()].filter((feedback) => feedback.action === "star").length;
-    const hidden = (run?.listings || []).filter((listing) => isHiddenAction(feedbackByKey.get(listingKey(listing))?.action)).length;
-    const ending = (run?.listings || []).filter(isEndingSoon).length;
-    return { all, visible: visibleListings.length, starred, hidden, ending };
+    const hidden = listings.filter((listing) => isHiddenAction(feedbackByKey.get(listingKey(listing))?.action)).length;
+    const ending = listings.filter(isEndingSoon).length;
+    const strong = listings.filter((listing) => listing.section === "Strong fits").length;
+    const solo = listings.filter((listing) => listing.lane === "solo").length;
+    return { all, visible: visibleListings.length, starred, hidden, ending, strong, solo };
   }, [feedbackByKey, run?.listings, visibleListings.length]);
 
   if (!auth.isLoaded || (auth.isSignedIn && loading)) {
@@ -1434,9 +1587,13 @@ function AuthenticatedApp(props: { clerkPublishableKey: string }) {
     return (
       <main className="shell is-loading">
         <section className="auth-card">
-          <p className="eyebrow">Private Auction Watch</p>
+          <div className="auth-hero">
+            <img src="/beachcar-surrey-real.webp" alt="The real pink 1960 Willys Surrey Beachcar found" />
+            <span>FOUND BY BEACHCAR · BOUGHT FOR REAL</span>
+          </div>
+          <p className="eyebrow">your codex · your taste · your car</p>
           <h1>{appName}</h1>
-          <p>Sign in with Google to review today&apos;s shortlist and save your stars, skips, and avoid signals.</p>
+          <p>Sign in with Google to review today&apos;s shortlist and save your stars, skips, and avoid signals. The pink Surrey above? Beachcar found it.</p>
           {auth.error || signInError ? <p className="auth-error">{auth.error || signInError}</p> : null}
           <button className="source-link" type="button" onClick={() => void startGoogleSignIn()}>
             Sign in with Google
@@ -1453,6 +1610,7 @@ function AuthenticatedApp(props: { clerkPublishableKey: string }) {
   if (user && user.status !== "active") {
     return (
       <InviteGate
+        clerk={auth.clerk}
         email={user.email || auth.email || ""}
         error={error}
         isPending={accountActionPending}
@@ -1465,12 +1623,13 @@ function AuthenticatedApp(props: { clerkPublishableKey: string }) {
     return (
       <>
         <OnboardingGate
+          automationStatus={undefined}
           email={user.email || auth.email || ""}
           error={error}
           isPending={accountActionPending}
           managedResearchEntitled={Boolean(user.managedResearchEntitlement?.active)}
           onOpenPricing={() => setPricingOpen(true)}
-          onSubmit={(input) => void completeProfile(input)}
+          onSubmit={(input) => void saveSettings(input)}
         />
         {pricingOpen ? <ClerkPricingSheet clerk={auth.clerk} onClose={() => void closePricing()} /> : null}
       </>
@@ -1488,17 +1647,37 @@ function AuthenticatedApp(props: { clerkPublishableKey: string }) {
     );
   }
 
+  if (needsDesktopCodexSetup(user)) {
+    return <DesktopCodexCoach email={user.email || auth.email || ""} onSetupComplete={setUser} />;
+  }
+
   const activeUser = user;
   const aiBudgetExceeded = Boolean(activeUser.aiUsage?.budgetExceeded);
   const canQueueRun = Boolean(activeUser.capabilities?.canRunNow) && !aiBudgetExceeded;
   const sourceSummary = sourceSummaryView(run?.sourceSummary);
 
+  if (!run?.id || run.listings.length === 0) {
+    return (
+      <FirstRunGate
+        agentRun={agentRun}
+        error={error}
+        externalAgent={activeUser.researchSettings?.mode === "external_agent"}
+        isPending={runRequestPending}
+        onRetry={() => void queueAgentRun()}
+        run={run}
+      />
+    );
+  }
+
   return (
     <main className={mode === "deck" ? "shell is-deck" : "shell is-list"}>
       <header className="app-header">
         <div className="brand-line">
-          <strong>{appName}</strong>
-          <span>{generatedTime(run)}</span>
+          <img className="brand-mark" src="/beachcar-wheel-real.webp" alt="" aria-hidden="true" />
+          <div className="brand-copy">
+            <strong>{appName}</strong>
+            <span>{generatedTime(run)}</span>
+          </div>
         </div>
         <div className="header-actions">
           <button className={mode === "deck" ? "icon-toggle is-active" : "icon-toggle"} type="button" onClick={() => setMode("deck")}>
@@ -1761,7 +1940,7 @@ function RunStatusStrip(props: {
       <button className="run-status-main" type="button" onClick={props.onOpen}>
         <Clock3 size={18} aria-hidden="true" />
         <span>
-          <strong>{runStatusText(props.run, props.agentRun)}</strong>
+          <strong>{runStatusText(props.run, props.agentRun, props.sourceSummary)}</strong>
           <small>{runStatusMeta(props.run, props.agentRun, props.sourceSummary)}</small>
         </span>
       </button>
@@ -1797,6 +1976,7 @@ function RunDetailSheet(props: {
   user: UserPayload;
 }) {
   const summary = props.sourceSummary;
+  const localCodexRun = isLocalCodexRun(summary);
   const items = timelineItems(props.run, props.agentRun, summary);
   const sourceChecks = summary.checkedSources.length ? summary.checkedSources : summary.blockedSources;
 
@@ -1821,7 +2001,7 @@ function RunDetailSheet(props: {
         <div className="run-detail-hero">
           <div>
             <p className="eyebrow">Latest status</p>
-            <h2>{runStatusText(props.run, props.agentRun)}</h2>
+            <h2>{runStatusText(props.run, props.agentRun, summary)}</h2>
             <span>{runStatusMeta(props.run, props.agentRun, summary)}</span>
           </div>
           <button
@@ -1883,63 +2063,71 @@ function RunDetailSheet(props: {
 
         <section className="run-detail-section">
           <div className="setup-section-title">
-            <span>AI</span>
-            <small>{summary.aiScoring?.status || props.user.aiSettings?.mode || "not configured"}</small>
+            <span>{localCodexRun ? "Local intelligence" : "AI"}</span>
+            <small>{localCodexRun ? "$0 Beachcar AI" : summary.aiScoring?.status || props.user.aiSettings?.mode || "not configured"}</small>
           </div>
           <div className="run-ai-row">
             <span>
               <small>Mode</small>
-              <strong>{props.user.aiSettings?.mode || "managed"}</strong>
+              <strong>{localCodexRun ? "Local Codex" : props.user.aiSettings?.mode || "managed"}</strong>
             </span>
             <span>
-              <small>Provider</small>
-              <strong>{summary.aiScoring?.provider || "heuristic"}</strong>
+              <small>{localCodexRun ? "Model" : "Provider"}</small>
+              <strong>{localCodexRun ? "GPT-5.6" : summary.aiScoring?.provider || "heuristic"}</strong>
             </span>
             <span>
-              <small>Tokens</small>
-              <strong>{summary.aiScoring?.totalTokens ?? 0}</strong>
+              <small>{localCodexRun ? "Research" : "Tokens"}</small>
+              <strong>{localCodexRun ? "Signed-in browser" : summary.aiScoring?.totalTokens ?? 0}</strong>
             </span>
             <span>
               <small>Cost</small>
-              <strong>{formatMicrosAsDollars(summary.aiScoring?.costMicros || 0)}</strong>
+              <strong>{localCodexRun ? "$0 Beachcar AI" : formatMicrosAsDollars(summary.aiScoring?.costMicros || 0)}</strong>
             </span>
           </div>
-          {summary.aiScoring?.message ? <p className="setup-muted">{summary.aiScoring.message}</p> : null}
+          {localCodexRun ? (
+            <p className="setup-muted">GPT-5.6 ran inside your local Codex. Beachcar stored the result through its MCP without a hosted-model charge.</p>
+          ) : summary.aiScoring?.message ? (
+            <p className="setup-muted">{summary.aiScoring.message}</p>
+          ) : null}
         </section>
 
         <section className="run-detail-section">
           <div className="setup-section-title">
-            <span>Runner tasks</span>
-            <small>{summary.runnerTasks.length}</small>
+            <span>{localCodexRun ? "Research path" : "Runner tasks"}</span>
+            <small>{localCodexRun ? "Beachcar MCP" : summary.runnerTasks.length}</small>
           </div>
-          <div className="runner-task-list">
-            {summary.runnerTasks.map((task) => (
-              <article key={task.id}>
-                <span className={`source-status-dot ${sourceStatusClass(task.status)}`}>{task.status}</span>
-                <div>
-                  <strong>{sourceDisplayLabel(task.source)}</strong>
-                  <small>{runnerTaskDetailText(task)}</small>
-                  {runnerTaskDiagnosticText(task) ? <small className="source-diagnostic-line">{runnerTaskDiagnosticText(task)}</small> : null}
-                </div>
-              </article>
-            ))}
-            {summary.runnerTasks.length === 0 ? <p className="setup-muted">No browser or container runner tasks were needed.</p> : null}
-          </div>
+          {localCodexRun ? (
+            <p className="setup-muted">Local Codex researched with your signed-in browser and published through Beachcar MCP. No hosted runner or managed workflow was used.</p>
+          ) : (
+            <div className="runner-task-list">
+              {summary.runnerTasks.map((task) => (
+                <article key={task.id}>
+                  <span className={`source-status-dot ${sourceStatusClass(task.status)}`}>{task.status}</span>
+                  <div>
+                    <strong>{sourceDisplayLabel(task.source)}</strong>
+                    <small>{runnerTaskDetailText(task)}</small>
+                    {runnerTaskDiagnosticText(task) ? <small className="source-diagnostic-line">{runnerTaskDiagnosticText(task)}</small> : null}
+                  </div>
+                </article>
+              ))}
+              {summary.runnerTasks.length === 0 ? <p className="setup-muted">No browser or container runner tasks were needed.</p> : null}
+            </div>
+          )}
         </section>
 
         <section className="run-detail-section">
           <div className="setup-section-title">
             <span>Run ids</span>
-            <small>{props.agentRun?.status || "idle"}</small>
+            <small>{localCodexRun ? "remote-mcp" : props.agentRun?.status || "idle"}</small>
           </div>
           <div className="run-id-list">
             <span>
-              <small>Agent</small>
-              <strong>{shortId(props.agentRun?.id)}</strong>
+              <small>{localCodexRun ? "Publisher" : "Agent"}</small>
+              <strong>{localCodexRun ? "Beachcar MCP" : shortId(props.agentRun?.id)}</strong>
             </span>
             <span>
-              <small>Workflow</small>
-              <strong>{shortId(props.agentRun?.workflowInstanceId || summary.workflowInstanceId)}</strong>
+              <small>{localCodexRun ? "Execution" : "Workflow"}</small>
+              <strong>{localCodexRun ? "Local Codex" : shortId(props.agentRun?.workflowInstanceId || summary.workflowInstanceId)}</strong>
             </span>
             <span>
               <small>Published</small>
@@ -2167,18 +2355,23 @@ function SettingsSheet(props: {
             <span>Extra avoids</span>
             <textarea value={avoidNotes} onChange={(event) => setAvoidNotes(event.target.value)} />
           </label>
-          <ResearchServiceFields
-            managedResearchEntitled={Boolean(props.user.managedResearchEntitlement?.active)}
-            mode={researchMode}
-            onOpenPricing={props.onOpenPricing}
-            setMode={(mode) => {
-              setResearchMode(mode);
-              if (localError) setLocalError(null);
-            }}
-          />
           <NotificationSettingsFields value={notifications} onChange={setNotifications} />
-          <SourceSettingsFields preferences={sourcePreferences} setPreferences={setSourcePreferences} />
-          <AutomationSettingsPanel demoStatus={props.automationStatus} />
+          {props.user.capabilities?.canConnectAgent ? (
+            <details className="setup-span">
+              <summary>Advanced</summary>
+              <ResearchServiceFields
+                managedResearchEntitled={Boolean(props.user.managedResearchEntitlement?.active)}
+                mode={researchMode}
+                onOpenPricing={props.onOpenPricing}
+                setMode={(mode) => {
+                  setResearchMode(mode);
+                  if (localError) setLocalError(null);
+                }}
+              />
+              <SourceSettingsFields preferences={sourcePreferences} setPreferences={setSourcePreferences} />
+              <AutomationSettingsPanel demoStatus={props.automationStatus} />
+            </details>
+          ) : null}
           {localError || props.error ? <p className="auth-error setup-span">{localError || props.error}</p> : null}
           <button className="source-link setup-span" disabled={props.isPending} type="submit">
             {props.isPending ? "Saving..." : "Save preferences"}
@@ -2247,21 +2440,21 @@ function AutomationSettingsPanel(props: { demoStatus?: AutomationStatus }) {
       const record: AutomationTokenRecord = {
         id: `automation-token-demo-${createdAt.replace(/[^0-9a-z]/gi, "-").toLowerCase()}`,
         userId: "email:friend@example.com",
-        label: "Friend cloud agent",
-        scopes: props.demoStatus.defaultScopes,
+        label: "Local Codex recurring automation",
+        scopes: [...recurringCodexScopes],
         createdAt,
       };
       setCreated({ token: "beachcar_demo_token_shown_once", record });
       setStatus({ ...props.demoStatus, tokens: [record, ...props.demoStatus.tokens] });
-      setMessage("Token created. Store it in your cloud agent now; Beachcar will not show it again.");
+      setMessage("Recurring token created. Save it as BEACHCAR_MCP_TOKEN now; Beachcar will not show it again.");
       return;
     }
     setPending("create");
     try {
-      const token = await createAutomationToken("Friend cloud agent");
+      const token = await createAutomationToken("Local Codex recurring automation", recurringCodexScopes);
       setCreated(token);
       setStatus(await getAutomationStatus());
-      setMessage("Token created. Store it in your cloud agent now; Beachcar will not show it again.");
+      setMessage("Recurring token created. Save it as BEACHCAR_MCP_TOKEN now; Beachcar will not show it again.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not create automation token");
     } finally {
@@ -2333,6 +2526,15 @@ function AutomationSettingsPanel(props: { demoStatus?: AutomationStatus }) {
     }
   }
 
+  async function copyValue(value: string, success: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setMessage(success);
+    } catch {
+      setMessage("Copy failed. Select the text and copy it manually.");
+    }
+  }
+
   async function downloadSkill() {
     if (props.demoStatus) {
       setMessage("The hosted Worker provides the downloadable skill after sign-in.");
@@ -2356,34 +2558,54 @@ function AutomationSettingsPanel(props: { demoStatus?: AutomationStatus }) {
   const activeOAuthTokens = oauthTokens.filter(isOAuthConnectionActive);
   const inactiveOAuthTokens = oauthTokens.filter((token) => !isOAuthConnectionActive(token));
   const activeConnectionCount = activeTokens.length + activeOAuthTokens.length;
+  const codexConfig = status?.mcpEndpoint
+    ? `[mcp_servers.beachcar]\nurl = "${status.mcpEndpoint}"\nbearer_token_env_var = "BEACHCAR_MCP_TOKEN"\ndefault_tools_approval_mode = "approve"`
+    : "";
+  const starterPrompt = "Use the Beachcar skill. Start my first-run taste calibration, ask for confirmation before saving it, then use my logged-in local browser to research and publish a small first shortlist through Beachcar MCP. Do not enable managed research or record local Codex costs.";
 
   return (
-    <section className="automation-settings" aria-label="External agent connection">
+    <section className="automation-settings" aria-label="Local Codex connection">
       <div className="setup-section-title">
-        <span>External agent connection</span>
+        <span>Local Codex connection</span>
         <small>{activeConnectionCount ? `${activeConnectionCount} active` : "none active"}</small>
       </div>
       <p className="automation-note">
-        For technical users who want their own MCP-capable agent to research and publish runs. This is not needed for Beachcar's managed service.
+        Beachcar stores your taste and shortlists. Codex runs locally on your own computer and uses your signed-in browser only after you take over for login.
       </p>
+      <section className="automation-coach" aria-label="Codex desktop coach">
+        <strong>Set up recurring Codex on this desktop</strong>
+        <ol>
+          <li>Download the Beachcar skill and attach it to a new local Codex task.</li>
+          <li>Create the recurring token below and save it as <code>BEACHCAR_MCP_TOKEN</code> in your local secret environment.</li>
+          <li>Add this MCP configuration to your local Codex configuration.</li>
+          <li>Paste the starter prompt below, then schedule it. Codex will ask before saving taste or using a signed-in source.</li>
+        </ol>
+        <p className="automation-note">
+          This persistent token is limited to <code>setup:read setup:write sources:read runs:publish events:read</code>. It cannot bid, buy, delete your account, start paid research, or write AI usage. Your computer and Codex automation must be awake at the scheduled time.
+        </p>
+        {codexConfig ? (
+          <>
+            <textarea aria-label="Codex MCP configuration" readOnly value={codexConfig} />
+            <button type="button" onClick={() => void copyValue(codexConfig, "Codex MCP configuration copied.")}>
+              <Copy size={16} aria-hidden="true" />
+              <span>Copy MCP configuration</span>
+            </button>
+          </>
+        ) : null}
+        <textarea aria-label="Beachcar starter prompt" readOnly value={starterPrompt} />
+        <button type="button" onClick={() => void copyValue(starterPrompt, "Starter prompt copied.")}>
+          <Copy size={16} aria-hidden="true" />
+          <span>Copy starter prompt</span>
+        </button>
+      </section>
       <div className="automation-endpoint">
         <Bot size={18} aria-hidden="true" />
         <span>{status?.mcpEndpoint || "Loading MCP endpoint..."}</span>
       </div>
-      <div className="automation-endpoint">
-        <ShieldCheck size={18} aria-hidden="true" />
-        <span>{status?.protectedResourceMetadataEndpoint || status?.oauth.protectedResourceMetadataEndpoint || "Loading OAuth resource metadata..."}</span>
-      </div>
-      {status?.oauth.authorizationServerMetadataEndpoint ? (
-        <div className="automation-endpoint">
-          <ShieldCheck size={18} aria-hidden="true" />
-          <span>{status.oauth.authorizationServerMetadataEndpoint}</span>
-        </div>
-      ) : null}
       <div className="automation-actions">
         <button disabled={pending !== null} type="button" onClick={createToken}>
           <KeyRound size={16} aria-hidden="true" />
-          <span>{pending === "create" ? "Creating..." : "Create token"}</span>
+          <span>{pending === "create" ? "Creating..." : "Create recurring token"}</span>
         </button>
         <button disabled={pending !== null} type="button" onClick={downloadSkill}>
           <Download size={16} aria-hidden="true" />
@@ -2397,7 +2619,7 @@ function AutomationSettingsPanel(props: { demoStatus?: AutomationStatus }) {
       {created ? (
         <div className="automation-token-reveal">
           <div>
-            <strong>New token</strong>
+            <strong>Recurring token</strong>
             <small>Shown once</small>
           </div>
           <textarea readOnly value={created.token} />
@@ -2407,11 +2629,33 @@ function AutomationSettingsPanel(props: { demoStatus?: AutomationStatus }) {
           </button>
         </div>
       ) : null}
-      {status?.oauth ? <p className="automation-note">{status.oauth.message}</p> : null}
+      <div className="automation-token-list">
+        <div className="automation-list-heading">
+          <strong>Recurring Codex tokens</strong>
+          <small>{activeTokens.length ? `${activeTokens.length} active` : "none active"}</small>
+        </div>
+        {[...activeTokens, ...revokedTokens].slice(0, 5).map((token) => (
+          <article key={token.id}>
+            <span>
+              <strong>{token.label}</strong>
+              <small>{token.lastUsedAt ? `Used ${shortDateTime(token.lastUsedAt)}` : `Created ${shortDateTime(token.createdAt)}`}</small>
+              <small>{token.scopes.join(" · ")}</small>
+            </span>
+            {token.revokedAt ? (
+              <em>revoked</em>
+            ) : (
+              <button disabled={pending !== null} type="button" onClick={() => void revokeToken(token.id)}>
+                Revoke
+              </button>
+            )}
+          </article>
+        ))}
+      </div>
+      {status?.oauth ? <p className="automation-note">Optional for an interactive session: {status.oauth.message}</p> : null}
       {oauthTokens.length ? (
         <div className="automation-token-list" aria-label="OAuth connections">
           <div className="automation-list-heading">
-            <strong>OAuth connections</strong>
+            <strong>Short-lived OAuth connections</strong>
             <small>{activeOAuthTokens.length ? `${activeOAuthTokens.length} active` : "none active"}</small>
           </div>
           {[...activeOAuthTokens, ...inactiveOAuthTokens].slice(0, 5).map((token) => (
@@ -2433,27 +2677,6 @@ function AutomationSettingsPanel(props: { demoStatus?: AutomationStatus }) {
           ))}
         </div>
       ) : null}
-      <div className="automation-token-list">
-        <div className="automation-list-heading">
-          <strong>Fallback tokens</strong>
-          <small>{activeTokens.length ? `${activeTokens.length} active` : "none active"}</small>
-        </div>
-        {[...activeTokens, ...revokedTokens].slice(0, 5).map((token) => (
-          <article key={token.id}>
-            <span>
-              <strong>{token.label}</strong>
-              <small>{token.lastUsedAt ? `Used ${shortDateTime(token.lastUsedAt)}` : `Created ${shortDateTime(token.createdAt)}`}</small>
-            </span>
-            {token.revokedAt ? (
-              <em>revoked</em>
-            ) : (
-              <button disabled={pending !== null} type="button" onClick={() => void revokeToken(token.id)}>
-                Revoke
-              </button>
-            )}
-          </article>
-        ))}
-      </div>
       {status?.recentEvents.length ? (
         <div className="automation-events">
           {status.recentEvents.slice(0, 4).map((event) => (
@@ -2470,7 +2693,7 @@ function AutomationSettingsPanel(props: { demoStatus?: AutomationStatus }) {
 }
 
 function ListView(props: {
-  counts: { all: number; visible: number; ending: number; hidden: number };
+  counts: { all: number; visible: number; ending: number; hidden: number; strong: number; solo: number };
   feedbackByKey: Map<string, FeedbackRecord>;
   listings: AuctionListing[];
   selectedIndex: number;
@@ -2484,6 +2707,16 @@ function ListView(props: {
         <button type="button" onClick={() => props.setFilterOpen(true)}>
           Today {props.counts.visible} picks
         </button>
+        {props.counts.strong ? (
+          <button type="button" onClick={() => props.setFilterOpen(true)}>
+            Strong {props.counts.strong}
+          </button>
+        ) : null}
+        {props.counts.solo ? (
+          <button type="button" onClick={() => props.setFilterOpen(true)}>
+            Solo {props.counts.solo}
+          </button>
+        ) : null}
         <button type="button" onClick={() => props.setFilterOpen(true)}>
           Ending soon {props.counts.ending}
         </button>
@@ -2607,30 +2840,37 @@ function ReviewRail(props: {
   );
 }
 
-function InviteGate(props: { email: string; error: string | null; isPending: boolean; onSubmit: (code: string) => void }) {
+function InviteGate(props: { clerk?: BrowserClerk | null; email: string; error: string | null; isPending: boolean; onSubmit: (code: string) => void }) {
   const [code, setCode] = useState("");
   return (
     <main className="shell is-loading">
       <section className="setup-card">
-        <p className="eyebrow">Invite required</p>
-        <h1>{appName}</h1>
+        <p className="eyebrow">Private beta</p>
+        <h1>This email wasn&apos;t invited</h1>
         <p className="setup-muted">{props.email}</p>
-        <form
-          className="setup-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            props.onSubmit(code);
-          }}
-        >
-          <label>
-            <span>Invite code</span>
-            <input autoComplete="one-time-code" value={code} onChange={(event) => setCode(event.target.value)} />
-          </label>
-          {props.error ? <p className="auth-error">{props.error}</p> : null}
-          <button className="source-link" disabled={props.isPending || !code.trim()} type="submit">
-            {props.isPending ? "Checking..." : "Accept invite"}
-          </button>
-        </form>
+        <p className="setup-muted">Sign out and use the address where your TestFlight invitation arrived, or contact the person who invited you.</p>
+        {props.error ? <p className="auth-error">{props.error}</p> : null}
+        <button className="source-link" type="button" onClick={() => void props.clerk?.signOut({ redirectUrl: "/" })}>
+          Sign out and try another email
+        </button>
+        <details>
+          <summary>Have an older invite code?</summary>
+          <form
+            className="setup-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              props.onSubmit(code);
+            }}
+          >
+            <label>
+              <span>Invite code</span>
+              <input autoComplete="one-time-code" value={code} onChange={(event) => setCode(event.target.value)} />
+            </label>
+            <button className="source-link" disabled={props.isPending || !code.trim()} type="submit">
+              {props.isPending ? "Checking…" : "Accept older invite"}
+            </button>
+          </form>
+        </details>
       </section>
     </main>
   );
@@ -2646,6 +2886,182 @@ function DisabledAccountGate(props: { email: string; clerk: BrowserClerk | null 
         <button className="source-link" type="button" onClick={() => void props.clerk?.signOut({ redirectUrl: "/" })}>
           Sign out
         </button>
+      </section>
+    </main>
+  );
+}
+
+function FirstRunGate(props: {
+  agentRun: AgentRunRecord | null;
+  error: string | null;
+  externalAgent: boolean;
+  isPending: boolean;
+  onRetry: () => void;
+  run: RunPayload | null;
+}) {
+  const isWorking = (props.externalAgent && !props.run?.id) || props.agentRun?.status === "queued" || props.agentRun?.status === "running";
+  const failed = props.agentRun?.status === "failed" || props.agentRun?.status === "cancelled";
+  let title = "Setting up your search";
+  let detail = "Beachcar is preparing your first shortlist. You can close this page and come back anytime.";
+  if (props.externalAgent && !props.run?.id) {
+    title = "Waiting for your first Codex shortlist";
+    detail = "Local Codex will publish here through Beachcar MCP. This page updates automatically.";
+  } else if (props.agentRun?.status === "running") {
+    title = props.agentRun.startedAt && Date.now() - new Date(props.agentRun.startedAt).getTime() > 15_000 ? "Ranking the best finds" : "Checking today’s auctions";
+  } else if (failed) {
+    title = "Today’s search hit a snag";
+    detail = "Your setup is safe. Try the search again whenever you’re ready.";
+  } else if (props.run?.id && props.run.listings.length === 0) {
+    title = "No strong matches today";
+    detail = "Beachcar will look again tomorrow.";
+  } else if (!props.agentRun && props.error) {
+    title = "Couldn’t load today’s finds";
+    detail = "Check your connection and try again.";
+  }
+  return (
+    <main className="shell is-loading">
+      <section className="setup-card first-run-card">
+        <Sparkles aria-hidden="true" />
+        <p className="eyebrow">Your daily Beachcar</p>
+        <h1>{title}</h1>
+        <p className="setup-muted">{detail}</p>
+        {isWorking ? <div className="first-run-progress" role="progressbar" aria-label={title} /> : null}
+        {isWorking && props.error ? <p className="setup-muted">Your setup is saved. Beachcar will retry automatically when you’re back online.</p> : null}
+        {failed || (!props.agentRun && props.error) ? (
+          <button className="source-link" disabled={props.isPending} type="button" onClick={props.onRetry}>
+            {props.isPending ? "Trying…" : "Try again"}
+          </button>
+        ) : null}
+      </section>
+    </main>
+  );
+}
+
+function ManagedOnboardingGate(props: {
+  email: string;
+  error: string | null;
+  isPending: boolean;
+  onSubmit: (input: ManagedOnboardingInput) => void;
+}) {
+  const saved = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem("beachcar:managed-onboarding") || "{}") as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }, []);
+  const [step, setStep] = useState(Math.min(2, Math.max(0, numberValue(saved.step, 0))));
+  const [location, setLocation] = useState(stringValue(saved.location) || "");
+  const [pickupDistance, setPickupDistance] = useState(stringValue(saved.pickupDistance) || "750");
+  const [comfortableCeiling, setComfortableCeiling] = useState(stringValue(saved.comfortableCeiling) || "30000");
+  const [stretchRoom, setStretchRoom] = useState(stringValue(saved.stretchRoom) || "2000");
+  const [tasteCalibration, setTasteCalibration] = useState(() => stringArrayValue(saved.tasteCalibration).length ? stringArrayValue(saved.tasteCalibration) : [...defaultTasteCalibration]);
+  const [avoidCalibration, setAvoidCalibration] = useState(() => stringArrayValue(saved.avoidCalibration).length ? stringArrayValue(saved.avoidCalibration) : [...defaultAvoidCalibration]);
+  const [notes, setNotes] = useState(stringValue(saved.notes) || "");
+  const [dailyTime, setDailyTime] = useState(stringValue(saved.dailyTime) || "08:00");
+  const [readyEmailEnabled, setReadyEmailEnabled] = useState(saved.readyEmailEnabled !== false);
+
+  useEffect(() => {
+    localStorage.setItem(
+      "beachcar:managed-onboarding",
+      JSON.stringify({ step, location, pickupDistance, comfortableCeiling, stretchRoom, tasteCalibration, avoidCalibration, notes, dailyTime, readyEmailEnabled }),
+    );
+  }, [avoidCalibration, comfortableCeiling, dailyTime, location, notes, pickupDistance, readyEmailEnabled, step, stretchRoom, tasteCalibration]);
+
+  const searchIsValid = Boolean(location.trim() && numberFromInput(pickupDistance) && numberFromInput(comfortableCeiling) && numberFromInput(stretchRoom) !== null);
+  const titles = ["Your search", "Your taste", "Your daily Beachcar"];
+  const subtitles = [
+    "Tell us where to look and what price range feels comfortable.",
+    "A few instincts make the first shortlist feel much more like you.",
+    "Choose when Beachcar should look and how you want to hear about it.",
+  ];
+
+  return (
+    <main className="shell is-loading">
+      <section className="setup-card is-wide">
+        <p className="eyebrow">Private beta · {step + 1} of 3</p>
+        <h1>{titles[step]}</h1>
+        <p className="setup-muted">{subtitles[step]}</p>
+        <form
+          className="setup-form setup-grid"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (step < 2) {
+              setStep((value) => value + 1);
+              return;
+            }
+            props.onSubmit({
+              search: {
+                location: location.trim(),
+                pickupDistanceMiles: numberFromInput(pickupDistance) || 750,
+                comfortableCeiling: numberFromInput(comfortableCeiling) || 30000,
+                stretchRoom: numberFromInput(stretchRoom) || 2000,
+              },
+              taste: { showMore: tasteCalibration, avoid: avoidCalibration, notes: notes.trim() || null },
+              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York",
+              dailyTime,
+              readyEmailEnabled,
+            });
+          }}
+        >
+          {step === 0 ? (
+            <>
+              <label className="setup-span">
+                <span>City and state or ZIP</span>
+                <input autoComplete="postal-code" value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Portsmouth, NH or 03801" />
+              </label>
+              <label>
+                <span>Pickup distance (miles)</span>
+                <input inputMode="numeric" value={pickupDistance} onChange={(event) => setPickupDistance(event.target.value)} />
+              </label>
+              <label>
+                <span>Comfortable ceiling</span>
+                <input inputMode="numeric" value={comfortableCeiling} onChange={(event) => setComfortableCeiling(event.target.value)} />
+              </label>
+              <label>
+                <span>Stretch room</span>
+                <input inputMode="numeric" value={stretchRoom} onChange={(event) => setStretchRoom(event.target.value)} />
+              </label>
+            </>
+          ) : null}
+          {step === 1 ? (
+            <>
+              <TasteCalibrationFields
+                selectedAvoid={avoidCalibration}
+                selectedTaste={tasteCalibration}
+                setSelectedAvoid={setAvoidCalibration}
+                setSelectedTaste={setTasteCalibration}
+              />
+              <label className="setup-span">
+                <span>Anything else? (optional)</span>
+                <textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Colors, eras, must-haves, dealbreakers…" />
+              </label>
+            </>
+          ) : null}
+          {step === 2 ? (
+            <>
+              <label>
+                <span>Daily time</span>
+                <input type="time" value={dailyTime} onChange={(event) => setDailyTime(event.target.value)} />
+              </label>
+              <label className="toggle">
+                <input checked={readyEmailEnabled} onChange={(event) => setReadyEmailEnabled(event.target.checked)} type="checkbox" />
+                <span>Email me when it’s ready</span>
+              </label>
+              <section className="managed-service-note setup-span">
+                <strong>Research is included during the private beta.</strong>
+                <p>Beachcar checks Bring a Trailer and Cars & Bids, ranks the strongest matches, and prepares a fresh shortlist each morning for {props.email}.</p>
+              </section>
+            </>
+          ) : null}
+          {props.error ? <p className="auth-error setup-span">{props.error}</p> : null}
+          <div className="admin-actions setup-span">
+            {step > 0 ? <button type="button" onClick={() => setStep((value) => value - 1)}>Back</button> : null}
+            <button className="source-link" disabled={props.isPending || (step === 0 && !searchIsValid)} type="submit">
+              {step === 2 ? (props.isPending ? "Building…" : "Build my first shortlist") : "Continue"}
+            </button>
+          </div>
+        </form>
       </section>
     </main>
   );
@@ -2678,7 +3094,7 @@ function OnboardingGate(props: {
   const [avoidNotes, setAvoidNotes] = useState("Anything that needs a major rescue before it can be enjoyed.");
   const [tasteCalibration, setTasteCalibration] = useState(() => [...defaultTasteCalibration]);
   const [avoidCalibration, setAvoidCalibration] = useState(() => [...defaultAvoidCalibration]);
-  const [researchMode, setResearchMode] = useState<ResearchMode>(props.managedResearchEntitled ? "managed" : "external_agent");
+  const [researchMode, setResearchMode] = useState<ResearchMode>("external_agent");
   const [localError, setLocalError] = useState<string | null>(null);
   const [notifications, setNotifications] = useState(() => initialNotificationSettings({}));
   const [sourcePreferences, setSourcePreferences] = useState(() => initialSourcePreferences([], {}));
@@ -2900,7 +3316,7 @@ function ResearchServiceFields(props: {
       </div>
       <p className="managed-service-note">
         {isExternal
-          ? "Beachcar never charges for agent-connected curation. Create an OAuth connection or one-time token below, then point your agent at the MCP endpoint."
+          ? "Beachcar never charges for agent-connected curation. Create a reduced-scope recurring token below, then connect local Codex to the MCP endpoint."
           : managedResearchCheckoutEnabled
             ? "Managed Research uses Beachcar's AI Gateway budget. Cancel any time while keeping your profile, feedback, and saved finds."
             : "Managed Research is free during the private pilot. Access is limited so we can learn from real usage and keep a close eye on quality and cost."}
@@ -3042,6 +3458,7 @@ function SourceSettingsFields(props: {
 
 function AdminConsole(props: { demo: boolean }) {
   const [publishToken, setPublishToken] = useState("");
+  const [displayName, setDisplayName] = useState("Friend");
   const [email, setEmail] = useState("friend@example.com");
   const [users, setUsers] = useState<AdminUserSummary[]>(
     props.demo
@@ -3050,6 +3467,7 @@ function AdminConsole(props: { demo: boolean }) {
             id: "email:owner@example.com",
             email: "owner@example.com",
             status: "active",
+            activationStage: "ready",
             onboardingCompletedAt: "2026-06-25T12:00:00.000Z",
             latestRunAt: "2026-06-25T13:00:00.000Z",
             aiUsage: demoAiUsage(184000, 482000),
@@ -3060,6 +3478,7 @@ function AdminConsole(props: { demo: boolean }) {
             id: "email:friend@example.com",
             email: "friend@example.com",
             status: "invited",
+            activationStage: "invited",
             onboardingCompletedAt: null,
             latestRunAt: null,
             aiUsage: demoAiUsage(0, 0),
@@ -3074,7 +3493,10 @@ function AdminConsole(props: { demo: boolean }) {
       ? {
           id: "invite-demo",
           email: "friend@example.com",
-          code: "demo-invite-code",
+          displayName: "Friend",
+          acceptance: "verified_email",
+          accessMode: "managed_pilot",
+          managedResearch: true,
           createdAt: "2026-06-25T13:20:00.000Z",
           expiresAt: null,
         }
@@ -3152,9 +3574,9 @@ function AdminConsole(props: { demo: boolean }) {
     }
     setPending(true);
     try {
-      const nextInvite = await createAdminInvite(publishToken.trim(), email.trim());
+      const nextInvite = await createAdminInvite(publishToken.trim(), email.trim(), displayName.trim());
       setInvite(nextInvite);
-      setStatus("Invite created. Share the code with the friend.");
+      setStatus("Managed invitation created. The friend will activate automatically with this verified email.");
       await refreshUsers(publishToken.trim());
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not create invite");
@@ -3221,6 +3643,10 @@ function AdminConsole(props: { demo: boolean }) {
             />
           </label>
           <label>
+            <span>Friend name</span>
+            <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
+          </label>
+          <label>
             <span>Friend email</span>
             <input value={email} onChange={(event) => setEmail(event.target.value)} />
           </label>
@@ -3236,8 +3662,8 @@ function AdminConsole(props: { demo: boolean }) {
         {status ? <p className="admin-status">{status}</p> : null}
         {invite ? (
           <div className="invite-result">
-            <span>Invite code</span>
-            <strong>{invite.code}</strong>
+            <span>{invite.acceptance === "verified_email" ? "Verified-email invitation" : "Older code invitation"}</span>
+            <strong>{invite.displayName || invite.email}</strong>
             <small>{invite.email}</small>
           </div>
         ) : null}
@@ -3308,6 +3734,8 @@ function AdminConsole(props: { demo: boolean }) {
           />
           <Metric label="AI today" value={opsSummary ? formatMicrosAsDollars(opsSummary.aiUsage.dailySpendMicros) : "not loaded"} />
           <Metric label="AI month" value={opsSummary ? formatMicrosAsDollars(opsSummary.aiUsage.monthlySpendMicros) : "not loaded"} />
+          <Metric label="Tokens today" value={opsSummary ? opsSummary.aiUsage.dailyTokens.toLocaleString() : "not loaded"} />
+          <Metric label="Tokens month" value={opsSummary ? opsSummary.aiUsage.monthlyTokens.toLocaleString() : "not loaded"} />
           <Metric label="BaT cached" value={opsSummary ? String(opsSummary.sourceCache.sources.bringatrailer.itemCount) : "not loaded"} />
           <Metric label="BaT status" value={opsSummary?.sourceCache.sources.bringatrailer.latestIngestion?.status || "not loaded"} />
         </div>
@@ -3361,13 +3789,14 @@ function AdminConsole(props: { demo: boolean }) {
           {users.map((user) => (
             <article key={user.id}>
               <div>
-                <strong>{user.email}</strong>
-                <small>{user.id}</small>
+                <strong>{user.displayName || user.email}</strong>
+                <small>{user.email}</small>
               </div>
-              <span className={`admin-status-pill is-${user.status}`}>{user.status}</span>
-              <span>{user.onboardingCompletedAt ? "Onboarded" : "Needs setup"}</span>
+              <span className={`admin-status-pill is-${user.latestAgentRun?.status === "failed" ? "disabled" : user.status}`}>{user.activationStage}</span>
+              <span>{user.latestAgentRun ? `${user.latestAgentRun.status}${user.latestAgentRun.error ? ` · ${user.latestAgentRun.error}` : ""}` : "No search started"}</span>
               <span>
-                {formatMicrosAsDollars(user.aiUsage?.daily.spendMicros || 0)} / {formatMicrosAsDollars(user.aiUsage?.monthly.spendMicros || 0)}
+                {(user.aiUsage?.daily.totalTokens || 0).toLocaleString()} / {(user.aiUsage?.monthly.totalTokens || 0).toLocaleString()} tokens
+                <small>{formatMicrosAsDollars(user.aiUsage?.daily.spendMicros || 0)} / {formatMicrosAsDollars(user.aiUsage?.monthly.spendMicros || 0)}</small>
               </span>
               <span>{user.latestRunAt ? new Date(user.latestRunAt).toLocaleString() : "No run"}</span>
             </article>
@@ -3421,7 +3850,7 @@ function demoAdminOpsSummary(): AdminOpsSummary {
       originals: { total: 24, pending: 0, copied: 22, failed: 2, bytes: 8_700_000 },
       variants: { total: 36, pending: 0, created: 34, failed: 2, bytes: 5_100_000 },
     },
-    aiUsage: { dailySpendMicros: 184000, monthlySpendMicros: 482000, dailyEvents: 7, monthlyEvents: 19 },
+    aiUsage: { dailySpendMicros: 184000, monthlySpendMicros: 482000, dailyEvents: 7, monthlyEvents: 19, dailyTokens: 12_400, monthlyTokens: 41_900 },
     sourceCache: demoSourceCacheStatus(),
   };
 }
@@ -3508,6 +3937,10 @@ function demoAiUsage(dailySpendMicros: number, monthlySpendMicros: number): AiUs
     generatedAt: "2026-06-25T13:00:00.000Z",
     daily: {
       spendMicros: dailySpendMicros,
+      inputTokens: 8_400,
+      outputTokens: 2_100,
+      totalTokens: 10_500,
+      eventCount: 7,
       budgetCents: 250,
       remainingMicros: Math.max(0, 250 * 10_000 - dailySpendMicros),
       limitExceeded: dailySpendMicros >= 250 * 10_000,
@@ -3516,6 +3949,10 @@ function demoAiUsage(dailySpendMicros: number, monthlySpendMicros: number): AiUs
     },
     monthly: {
       spendMicros: monthlySpendMicros,
+      inputTokens: 31_000,
+      outputTokens: 8_900,
+      totalTokens: 39_900,
+      eventCount: 19,
       budgetCents: 2500,
       remainingMicros: Math.max(0, 2500 * 10_000 - monthlySpendMicros),
       limitExceeded: monthlySpendMicros >= 2500 * 10_000,

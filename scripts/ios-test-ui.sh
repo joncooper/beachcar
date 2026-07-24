@@ -13,4 +13,5 @@ xcodebuild \
   -scheme Beachcar \
   -destination "$DESTINATION" \
   -derivedDataPath "$DERIVED_DATA" \
-  test
+  test \
+  "$@"

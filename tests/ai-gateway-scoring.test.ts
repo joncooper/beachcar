@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { recordAiUsageEvent } from "../src/worker/db";
+import { getUsageSubject, recordAiUsageEvent } from "../src/worker/db";
 import { aiGatewayRuntimeConfigured, createAiGatewayCandidateScorer } from "../src/worker/workflows/ai-gateway-scoring";
 
 vi.mock("../src/worker/db", () => ({
+  getUsageSubject: vi.fn(async () => "bcus_test_opaque_subject"),
   recordAiUsageEvent: vi.fn(),
 }));
 
@@ -72,8 +73,10 @@ describe("AI Gateway runtime credential isolation", () => {
   it("defaults Unified Billing scoring to GPT-4.1 mini with a conservative cost estimate", async () => {
     const submittedUrl = "https://bringatrailer.com/listing/default-model-candidate/";
     const requestBodies: Array<Record<string, unknown>> = [];
+    let gatewayMetadata = "";
     vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       requestBodies.push(JSON.parse(String(init?.body || "{}")) as Record<string, unknown>);
+      gatewayMetadata = new Headers(init?.headers).get("cf-aig-metadata") || "";
       return gatewayResponse([{ url: submittedUrl, scoreDelta: 4, why: "Good fit." }]);
     }));
     const scorer = createAiGatewayCandidateScorer(gatewayEnv, context);
@@ -81,6 +84,9 @@ describe("AI Gateway runtime credential isolation", () => {
     const result = await scorer!.scoreCandidates(scoringInput([submittedUrl]));
 
     expect(requestBodies[0]?.model).toBe("openai/gpt-4.1-mini");
+    expect(getUsageSubject).toHaveBeenCalledWith(gatewayEnv.DB, "user-1");
+    expect(JSON.parse(gatewayMetadata)).toMatchObject({ subject: "bcus_test_opaque_subject", agent_run: "agent-run-1" });
+    expect(gatewayMetadata).not.toContain("user-1");
     expect(result).toMatchObject({ status: "ok", model: "openai/gpt-4.1-mini", costMicros: 72 });
   });
 

@@ -26,6 +26,18 @@ export async function scheduledAgentRunRequestId(userId: string, scheduledFor: s
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
+export async function onboardingAgentRunRequestId(userId: string): Promise<string> {
+  const normalizedUserId = userId.trim();
+  if (!normalizedUserId) throw new Error("Onboarding Agent run requires a user id");
+  const digest = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`beachcar:onboarding-agent-run:v1\0${normalizedUserId}`)),
+  ).slice(0, 16);
+  digest[6] = (digest[6] & 0x0f) | 0x80;
+  digest[8] = (digest[8] & 0x3f) | 0x80;
+  const hex = [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 export function normalizeAgentRunRequestId(value: unknown): string {
   const requestId = typeof value === "string" ? value.trim().toLowerCase() : "";
   if (!canonicalUuidPattern.test(requestId)) throw new Error(invalidAgentRunRequestIdMessage);

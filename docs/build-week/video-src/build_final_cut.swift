@@ -17,6 +17,7 @@ private let narrationVolume: Float = 0.95
 private let ink = NSColor(calibratedRed: 8 / 255, green: 10 / 255, blue: 11 / 255, alpha: 1)
 private let paper = NSColor(calibratedRed: 247 / 255, green: 242 / 255, blue: 232 / 255, alpha: 1)
 private let pink = NSColor(calibratedRed: 239 / 255, green: 75 / 255, blue: 137 / 255, alpha: 1)
+private let likeGreen = NSColor(calibratedRed: 95 / 255, green: 207 / 255, blue: 142 / 255, alpha: 1)
 
 private struct Cue {
     let start: Double
@@ -44,6 +45,7 @@ private enum Visual {
     case endBrand
     case ownerPhoto(String)
     case capture(String, ImageFit)
+    case swipeLike(String)
     case opinionBoard
     case workingReplay(String, Int)
 }
@@ -122,7 +124,7 @@ private let sectionSpecs: [SectionSpec] = [
             CaptionPhrase("this one fits, this one's overpriced, this one could ruin my summer."),
         ],
         shots: [
-            ShotSpec(startFraction: 0, endFraction: 0.24, visual: .capture("ios/taste-onboarding-step1.png", .contain), label: "TELL IT WHAT YOU LOVE", zoom: 0.005),
+            ShotSpec(startFraction: 0, endFraction: 0.24, visual: .swipeLike("ios/agent-dossier.png"), label: nil, zoom: 0),
             ShotSpec(startFraction: 0.24, endFraction: 0.48, visual: .capture("ios/taste-onboarding-calibrate.png", .contain), label: "YOUR CODEX GOES HUNTING", zoom: 0.005),
             ShotSpec(startFraction: 0.48, endFraction: 1, visual: .opinionBoard, label: nil, zoom: 0),
         ]
@@ -447,6 +449,106 @@ private func drawWorkingReplay(
     pointer.stroke()
 }
 
+private func smoothStep(_ value: CGFloat) -> CGFloat {
+    let clamped = max(0, min(1, value))
+    return clamped * clamped * (3 - 2 * clamped)
+}
+
+private func drawSwipeLike(
+    _ capture: NSImage,
+    progress: CGFloat
+) {
+    ink.setFill()
+    NSBezierPath(rect: NSRect(x: 0, y: 0, width: width, height: height)).fill()
+
+    drawText(
+        "SWIPE RIGHT",
+        rect: NSRect(x: 122, y: 676, width: 430, height: 72),
+        font: .monospacedSystemFont(ofSize: 50, weight: .black),
+        color: paper
+    )
+    drawText(
+        "to teach your Codex",
+        rect: NSRect(x: 122, y: 624, width: 430, height: 42),
+        font: .systemFont(ofSize: 29, weight: .semibold),
+        color: pink
+    )
+
+    // Use the upper, interaction-rich portion of the real app screenshot so the
+    // loaded car, swipe instruction, and rationale remain legible at 1080p.
+    let source = NSRect(
+        x: 0,
+        y: capture.size.height * 0.22,
+        width: capture.size.width,
+        height: capture.size.height * 0.78
+    )
+    let phoneRect = NSRect(x: 640, y: -20, width: 640, height: 1100)
+    roundedRect(phoneRect.insetBy(dx: -10, dy: -10), radius: 62, color: NSColor.black)
+    NSGraphicsContext.saveGraphicsState()
+    NSBezierPath(roundedRect: phoneRect, xRadius: 54, yRadius: 54).addClip()
+    capture.draw(
+        in: phoneRect,
+        from: source,
+        operation: .sourceOver,
+        fraction: 1,
+        respectFlipped: false,
+        hints: [.interpolation: NSImageInterpolation.high]
+    )
+    NSGraphicsContext.restoreGraphicsState()
+    strokeRoundedRect(
+        phoneRect.insetBy(dx: 2, dy: 2),
+        radius: 52,
+        color: NSColor(calibratedWhite: 0.32, alpha: 1),
+        lineWidth: 4
+    )
+
+    let gesturePhase = smoothStep((progress - 0.14) / 0.56)
+    let gestureStart = NSPoint(x: 794, y: 690)
+    let gestureEnd = NSPoint(x: 1164, y: 690)
+    let finger = NSPoint(
+        x: gestureStart.x + (gestureEnd.x - gestureStart.x) * gesturePhase,
+        y: gestureStart.y
+    )
+
+    let trail = NSBezierPath()
+    trail.move(to: gestureStart)
+    trail.line(to: finger)
+    trail.lineWidth = 15
+    trail.lineCapStyle = .round
+    likeGreen.withAlphaComponent(0.88).setStroke()
+    trail.stroke()
+
+    if gesturePhase > 0.08 {
+        let arrow = NSBezierPath()
+        arrow.move(to: NSPoint(x: finger.x - 30, y: finger.y + 22))
+        arrow.line(to: finger)
+        arrow.line(to: NSPoint(x: finger.x - 30, y: finger.y - 22))
+        arrow.lineWidth = 12
+        arrow.lineCapStyle = .round
+        arrow.lineJoinStyle = .round
+        likeGreen.setStroke()
+        arrow.stroke()
+    }
+
+    NSColor.black.withAlphaComponent(0.42).setFill()
+    NSBezierPath(ovalIn: NSRect(x: finger.x - 31, y: finger.y - 31, width: 62, height: 62)).fill()
+    paper.withAlphaComponent(0.96).setFill()
+    NSBezierPath(ovalIn: NSRect(x: finger.x - 22, y: finger.y - 22, width: 44, height: 44)).fill()
+
+    let confirmation = smoothStep((progress - 0.44) / 0.28)
+    if confirmation > 0 {
+        let badgeRect = NSRect(x: 1360, y: 616, width: 390, height: 146)
+        roundedRect(badgeRect, radius: 38, color: likeGreen.withAlphaComponent(0.96 * confirmation))
+        drawText(
+            "♥  LIKE",
+            rect: NSRect(x: 1382, y: 653, width: 346, height: 70),
+            font: .monospacedSystemFont(ofSize: 48, weight: .black),
+            color: ink.withAlphaComponent(confirmation),
+            alignment: .center
+        )
+    }
+}
+
 private func drawBrand(endCard: Bool = false) {
     paper.setFill()
     NSBezierPath(rect: NSRect(x: 0, y: 0, width: width, height: height)).fill()
@@ -562,6 +664,10 @@ private func renderFrame(
     case let .capture(name, fit):
         if let capture = captures[name] {
             drawImage(capture, fit: fit, progress: shotProgress, zoomAmount: shot.zoom)
+        }
+    case let .swipeLike(name):
+        if let capture = captures[name] {
+            drawSwipeLike(capture, progress: shotProgress)
         }
     case .opinionBoard:
         drawOpinionBoard(ownerPhotos: ownerPhotos, progress: shotProgress)
@@ -986,7 +1092,6 @@ private func main() throws {
         directory: capturesDirectory.appendingPathComponent("owner-car", isDirectory: true)
     )
     let captureNames = [
-        "ios/taste-onboarding-step1.png",
         "ios/taste-onboarding-calibrate.png",
         "demo/teach.jpg",
         "demo/research.jpg",
@@ -998,6 +1103,10 @@ private func main() throws {
             description: "capture \(name)"
         )
     }
+    captures["ios/agent-dossier.png"] = try loadImage(
+        root.appendingPathComponent("docs/screenshots/ios-agent-dossier.png"),
+        description: "real iPhone agent dossier capture"
+    )
 
     let cues = buildCues(sections: sections)
     let shots = buildShots(sections: sections, finalDuration: finalDuration)

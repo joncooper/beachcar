@@ -226,10 +226,9 @@
         <p class="eyebrow">Beachcar friend beta</p>
         <h1>Friend setup guide</h1>
         <p class="lead">
-          A detailed runbook for setting up one friend with Beachcar: TestFlight access, Clerk and Beachcar provisioning, initial preferences,
-          remote automation, and AI payment choices.
+          The managed private-beta runbook: one verified-email invite, external TestFlight, three short setup steps, and an immediate owner-funded shortlist.
         </p>
-        <p class="small">Last updated: 2026-06-26. Current deployed Worker: <a href="https://beachcar-watch.jon-cooper.workers.dev">https://beachcar-watch.jon-cooper.workers.dev</a>.</p>
+        <p class="small">Last updated: 2026-07-15. Current deployed Worker: <a href="https://beachcar-watch.jon-cooper.workers.dev">https://beachcar-watch.jon-cooper.workers.dev</a>.</p>
       </header>
 
       <section>
@@ -241,23 +240,23 @@
           </article>
           <article class="card">
             <strong>Data</strong>
-            D1 database <code>beach-car-watch</code> has migrations <code>0001</code> through <code>0010</code> applied. R2 bucket is <code>beachcar-watch-images</code>.
+            D1 database <code>beach-car-watch</code> and R2 bucket <code>beachcar-watch-images</code> live in Jon's personal Cloudflare account. Apply the guarded migrations through <code>0014</code> before inviting.
           </article>
           <article class="card">
             <strong>Auth</strong>
-            Clerk app is <code>Beach Car Watch</code>. Bootstrap owners are <code>jon.cooper@gmail.com</code> and <code>jon@dockett.ai</code>.
+            Clerk app is <code>Beach Car Watch</code> in <code>jon.cooper@gmail.com</code>. Debug uses its development instance; Release uses the <code>dockett.ai</code> production instance.
           </article>
           <article class="card">
             <strong>iOS</strong>
-            Latest uploaded TestFlight build recorded locally is <code>0.1.0 (202606252208)</code>, assigned to <code>Beachcar Internal</code>.
+            Owner builds remain in <code>Beachcar Internal</code>. Ordinary friends receive app-store-eligible builds through the external <code>Beachcar Friends</code> group.
           </article>
           <article class="card">
             <strong>Automation</strong>
-            Hosted MCP is available at <a href="https://beachcar-watch.jon-cooper.workers.dev/mcp">/mcp</a>. Friends can create scoped tokens in Preferences.
+            Friends do not configure automation. The hosted MCP surface remains an Advanced option for existing technical users.
           </article>
           <article class="card">
             <strong>AI</strong>
-            Real app-managed AI Gateway scoring is optional. If Gateway credentials are not configured, Beachcar can still run deterministic/source-cache flows.
+            The owner funds managed AI Gateway scoring. Every call is attributed to a server-derived user and run; a missing scorer fails honestly instead of publishing filler.
           </article>
         </div>
       </section>
@@ -265,13 +264,12 @@
       <section>
         <h2>Fast Path</h2>
         <ol class="checklist">
-          <li>Confirm the deployed Worker and TestFlight build are healthy.</li>
-          <li>Decide how AI will be paid for this friend: owner-managed Gateway, friend-run cloud agent, owner Codex push, BYOK alias, or deterministic no-paid-AI.</li>
-          <li>Add the friend to TestFlight, or create an external testing group if they should not be an App Store Connect internal user.</li>
-          <li>Sign in to the Beachcar PWA as an owner and create a Beachcar invite code for the friend's exact sign-in email.</li>
-          <li>Send the friend the TestFlight invite/link, PWA URL, invite code, and the AI/automation instructions for the mode you chose.</li>
-          <li>Have the friend sign in, accept the invite code, complete onboarding, and open the iOS app with the same Clerk identity.</li>
-          <li>If they will run their own automation, have them open Preferences, create an automation token, download the Beachcar skill, and connect their cloud agent to the hosted MCP endpoint.</li>
+          <li>Verify Wrangler is authenticated as <code>jon.cooper@gmail.com</code> in account <code>b8873e78bf5e48fcdc91e87f2324cf55</code>, and Clerk is linked under <code>jon.cooper@gmail.com</code>.</li>
+          <li>Apply migration <code>0014</code>, deploy the Worker, and confirm managed AI Gateway scoring plus the ready-email binding.</li>
+          <li>Submit an external build with <code>bun run ios:release:friends</code>.</li>
+          <li>Invite once with <code>bun run friend:invite -- --name "Friend Name" --email friend@example.com</code>. Re-run the same command to check status safely.</li>
+          <li>Send no code or technical setup. The friend accepts TestFlight, signs in with that exact address, completes three steps, and waits for the first shortlist.</li>
+          <li>Verify their activation, first run, ready email, tokens, and cost in owner admin before expanding the cohort.</li>
         </ol>
       </section>
 
@@ -287,7 +285,7 @@ bun run ios:asc:check</code></pre>
           <li><code>git status --short --branch</code> should show <code>codex/remote-mcp-friend-automation</code> and ideally no uncommitted changes except deliberate doc edits.</li>
           <li><code>bun run preflight</code> should pass typecheck, tests, service-worker syntax, deploy readiness, and client build.</li>
           <li><code>bun run cloudflare:check</code> should report the Worker, D1, R2, and required secrets. A warning for optional <code>BEACHCAR_AI_GATEWAY_TOKEN</code> is acceptable only if you are not testing owner-managed AI scoring.</li>
-          <li><code>bun run ios:asc:check</code> should find the <code>Beachcar</code> App Store Connect app, bundle id <code>com.joncooper.beachcar</code>, and TestFlight group <code>Beachcar Internal</code>.</li>
+          <li><code>bun run ios:asc:check</code> should find the <code>Beachcar</code> App Store Connect app and bundle id <code>com.joncooper.beachcar</code>. The friend release command creates or verifies external group <code>Beachcar Friends</code>.</li>
         </ul>
         <div class="note">
           <strong>Do not give the friend these secrets:</strong> <code>PUBLISH_TOKEN</code>, <code>CLERK_SECRET_KEY</code>, Cloudflare API tokens, App Store Connect API keys, or raw OpenAI/OpenRouter provider keys.
@@ -337,6 +335,13 @@ bun run cloudflare:verify
 bun run cloudflare:check</code></pre>
         <p>When <code>BEACHCAR_RUNNER_MODE=deterministic</code>, the rollout skips Cloudflare Container image publishing. Only add <code>--deploy-containers</code> when intentionally testing the Codex/browser-heavy Container path.</p>
 
+        <h3>Ready-email sending</h3>
+        <p>The Worker is restricted to <code>finds@dockett.ai</code>. The personal Wrangler login is correct, but as of July 15, 2026, <code>dockett.ai</code> was not yet a zone in that Cloudflare account and its authoritative DNS remained at GoDaddy. Add the zone or eligible subdomain first, then enable Email Sending and publish the exact SPF and DKIM records Cloudflare returns; also verify a DMARC policy.</p>
+        <pre><code>bunx wrangler email sending enable dockett.ai
+bunx wrangler email sending dns get dockett.ai
+bunx wrangler email sending settings dockett.ai</code></pre>
+        <p>Do not invite until settings reports the domain ready and one production publish produces exactly one delivery record and one email. A delivery failure is recorded separately and never makes the shortlist run fail.</p>
+
         <h3>Required Worker secrets</h3>
         <ul>
           <li><code>PUBLISH_TOKEN</code> - owner/admin import and invite operations.</li>
@@ -351,7 +356,7 @@ bun run cloudflare:check</code></pre>
           <li><code>BEACHCAR_AI_GATEWAY_MODEL</code>, using the model id expected by the selected provider.</li>
           <li><code>BEACHCAR_AI_ESTIMATED_MICROS_PER_1K_TOKENS</code>, if Gateway/provider responses do not return exact cost.</li>
         </ul>
-        <p>If the dedicated Gateway token is absent, the guarded rollout explicitly reports heuristic-only mode and the first friend pilot can proceed without paid AI scoring.</p>
+        <p>If the dedicated Gateway token is absent, do not grant managed friend access. Managed runs fail closed when model-backed scoring is unavailable.</p>
       </section>
 
       <section>
@@ -361,35 +366,31 @@ bun run cloudflare:check</code></pre>
         <h3>Clerk dashboard checks</h3>
         <ol>
           <li>Open the <a href="https://dashboard.clerk.com/">Clerk dashboard</a> and select the <code>Beach Car Watch</code> app.</li>
-          <li>Confirm Google sign-in is enabled for the web and native app sign-in flow.</li>
+          <li>Confirm email one-time code is enabled as the primary path and Google as the secondary shortcut. Do not enable Sign in with Apple for this email-specific cohort.</li>
           <li>Confirm the publishable key in <code>.env.local</code> and <code>.deploy.env</code> matches this Clerk instance.</li>
           <li>For iOS, confirm Clerk Native API is enabled and the native application is configured for bundle id <code>com.joncooper.beachcar</code>.</li>
-          <li>Confirm the iOS Associated Domain used by the app is still valid. Current local docs mention <code>webcredentials:brief-coyote-47.clerk.accounts.dev</code>.</li>
+          <li>Confirm Release uses <code>webcredentials:clerk.dockett.ai</code>; Debug retains <code>webcredentials:brief-coyote-47.clerk.accounts.dev</code>.</li>
+          <li>Confirm <code>com.joncooper.beachcar://callback</code> remains in the production mobile SSO redirect allowlist. The Clerk CLI added it on July 15, 2026.</li>
+          <li>Publish the five Clerk CNAMEs for <code>clerk</code>, <code>accounts</code>, <code>clkmail</code>, <code>clk._domainkey</code>, and <code>clk2._domainkey</code> at the authoritative DNS host.</li>
+          <li>Supply production Google OAuth credentials before describing Google as available to friends; email one-time code remains the reliable primary path.</li>
         </ol>
 
         <h3>Beachcar invite behavior</h3>
         <ul>
-          <li>Any signed-in non-owner user is created as <code>invited</code>.</li>
-          <li>The owner creates an invite from <code>https://beachcar-watch.jon-cooper.workers.dev/?admin=1</code>.</li>
-          <li>The invite code is single-use, stored as a hash, and must be accepted by the same email address used when the invite was created.</li>
-          <li>After invite acceptance, the friend becomes <code>active</code> and sees onboarding.</li>
-          <li>After onboarding, their profile, source settings, AI settings, feedback, runs, automation tokens, and usage ledger are scoped to their user id.</li>
+          <li>The owner creates a managed, verified-email invitation. Codes are reserved for older invitations.</li>
+          <li>On first authenticated <code>/api/me</code>, the normalized verified primary email must exactly match an unexpired invitation.</li>
+          <li>The claim activates the friend and persists <code>pilot_allowlist</code> managed access across later Clerk sessions.</li>
+          <li>After onboarding, profile, sources, schedule, feedback, runs, notification delivery, and usage ledger are scoped to that friend.</li>
         </ul>
 
         <h3>Create the Beachcar invite</h3>
-        <ol>
-          <li>Open <a href="https://beachcar-watch.jon-cooper.workers.dev/?admin=1">the Beachcar admin console</a>.</li>
-          <li>Paste your <code>PUBLISH_TOKEN</code> into the publish-token field. It is only kept in the browser tab.</li>
-          <li>Enter the friend's exact email address. Use the same address they will use for Google/Clerk sign-in.</li>
-          <li>Click <strong>Create invite</strong>.</li>
-          <li>Copy the invite code and send it directly to the friend. Do not send the publish token.</li>
-          <li>Click <strong>Refresh users</strong> after they sign in and accept the code.</li>
-        </ol>
+        <pre><code>bun run friend:invite -- --name "Friend Name" --email friend@example.com</code></pre>
+        <p>This one idempotent command verifies the latest external build, adds the tester to <code>Beachcar Friends</code>, and creates the matching managed Beachcar invitation. It reports sent, pending review, already accepted, or blocked.</p>
       </section>
 
       <section>
         <h2>TestFlight Setup</h2>
-        <p>The current command-line build pipeline uses App Store Connect API-key authentication and Xcode automatic signing. The latest uploaded build should already be in the <code>Beachcar Internal</code> group.</p>
+        <p>The command-line build pipeline uses App Store Connect API-key authentication and Xcode automatic signing. Internal builds remain for the owner; ordinary friends always use the external <code>Beachcar Friends</code> group.</p>
 
         <h3>Current build check</h3>
         <pre><code>bun run ios:asc:check</code></pre>
@@ -397,36 +398,22 @@ bun run cloudflare:check</code></pre>
         <ul>
           <li>App: <code>Beachcar</code></li>
           <li>Bundle ID: <code>com.joncooper.beachcar</code></li>
-          <li>Internal group: <code>Beachcar Internal</code></li>
-          <li>Latest uploaded build: <code>0.1.0 (202606252208)</code></li>
+          <li>Owner group: <code>Beachcar Internal</code></li>
+          <li>Friend group: <code>Beachcar Friends</code> (external)</li>
         </ul>
 
-        <h3>Internal tester path</h3>
-        <p>Use this when the friend can be added as an App Store Connect user. It is fastest because internal testing usually avoids the external beta review loop.</p>
+        <h3>External friend path</h3>
+        <p>Friends are not App Store Connect users. Apple requires an app-store-eligible build and may require Beta App Review before installation.</p>
         <ol>
-          <li>Open <a href="https://appstoreconnect.apple.com/">App Store Connect</a>.</li>
-          <li>Add the friend under Users and Access with the least access that still allows internal TestFlight testing.</li>
-          <li>Open Apps - Beachcar - TestFlight - Internal Testing.</li>
-          <li>Add the friend to <code>Beachcar Internal</code>, or confirm the group has access to the latest build.</li>
-          <li>Ask the friend to install Apple's <a href="https://apps.apple.com/app/testflight/id899247664">TestFlight app</a> and accept the invite email.</li>
-        </ol>
-
-        <h3>External tester path</h3>
-        <p>Use this when the friend should not have App Store Connect access. This is the more realistic outside-friend path, but Apple may require beta app review before external testers can install a build.</p>
-        <ol>
-          <li>Create an external testing group in App Store Connect - Apps - Beachcar - TestFlight - External Testing.</li>
-          <li>Switch future uploads to external-eligible builds by setting <code>TESTFLIGHT_INTERNAL_ONLY=NO</code> in your local ignored <code>.env.apple.local</code>.</li>
-          <li>Upload a new build with <code>bun run ios:release</code>.</li>
-          <li>Attach the build to the external group and complete any required Beta App Review metadata.</li>
-          <li>Send the TestFlight public link or invite email after Apple marks the build available for external testing.</li>
+          <li>Fill the external beta metadata and pre-provisioned Apple review account values in ignored <code>.env.apple.local</code>.</li>
+          <li>Run <code>bun run review:provision</code> to create or verify the production Clerk user, managed Beachcar profile, and seeded shortlist.</li>
+          <li>Run <code>bun run ios:release:friends</code>. It uploads with <code>TESTFLIGHT_INTERNAL_ONLY=NO</code>, assigns <code>Beachcar Friends</code>, and submits review.</li>
+          <li>Use <code>friend:invite</code> for an email-specific invitation; this cohort does not use a public TestFlight link.</li>
+          <li>If review is pending, the command records both invitations and reports that TestFlight will become available after approval.</li>
         </ol>
 
         <h3>Upload a new build if needed</h3>
-        <pre><code>bun run ios:build
-bun run ios:archive
-bun run ios:testflight</code></pre>
-        <p>Or run both archive and upload:</p>
-        <pre><code>bun run ios:release</code></pre>
+        <pre><code>bun run ios:release:friends</code></pre>
         <p>Each upload needs a new build number. If omitted, the archive script uses a timestamp build number.</p>
       </section>
 
@@ -435,38 +422,33 @@ bun run ios:testflight</code></pre>
         <h3>What to send</h3>
         <p>Send one message with the following items:</p>
         <ul>
-          <li>TestFlight invite or public link.</li>
-          <li>PWA URL: <a href="https://beachcar-watch.jon-cooper.workers.dev">https://beachcar-watch.jon-cooper.workers.dev</a>.</li>
-          <li>Beachcar invite code.</li>
-          <li>The sign-in email they must use.</li>
-          <li>Which AI mode they should select during onboarding.</li>
-          <li>If they will run their own automation, instructions to create an automation token and download the Beachcar skill after onboarding.</li>
+          <li>The email-specific TestFlight invitation.</li>
+          <li>A reminder to sign in with the same invited email.</li>
+          <li>No Beachcar code, AI choice, payment, key, or automation instructions.</li>
         </ul>
 
         <h3>Friend steps</h3>
         <ol>
           <li>Install TestFlight from the App Store and accept the Beachcar TestFlight invitation.</li>
-          <li>Open the PWA URL in Safari or Chrome and sign in with Google using the invited email.</li>
-          <li>Enter the Beachcar invite code at the invite gate.</li>
-          <li>Complete onboarding: name, region, budget ceiling, stretch room, taste calibration, avoid notes, source toggles, notification preference, and AI mode.</li>
-          <li>Install/open the iOS TestFlight build and sign in with the same email.</li>
-          <li>Confirm the iOS app either shows the latest run or a no-listings state instead of the invite gate.</li>
+          <li>Open the iOS TestFlight build and sign in with email code or Google using the invited email.</li>
+          <li>Complete three steps: search, taste, and daily schedule.</li>
+          <li>Tap <strong>Build my first shortlist</strong> and follow the setting-up, auction-checking, and ranking progress.</li>
+          <li>Confirm the first shortlist or the honest no-strong-matches state, and receive the ready email if enabled.</li>
           <li>Use feedback controls in the iOS app or PWA: like, star, hide, avoid, and freeform notes. These feed future runs.</li>
         </ol>
 
         <h3>First smoke test as the owner</h3>
         <ol>
           <li>Open the admin console and refresh users. Confirm the friend is <code>active</code> and onboarded.</li>
-          <li>Ask the friend to open Preferences and confirm their AI mode and daily/monthly caps.</li>
-          <li>Use Run Now if the friend has budget and owner-managed/heuristic workflow is acceptable.</li>
-          <li>Open Run detail and check listings, sources, AI provider/status, cost, and runner tasks.</li>
-          <li>Confirm the same latest run appears on iOS.</li>
+          <li>Confirm the first run moved through queued/running to published, empty, or an actionable failure.</li>
+          <li>Check input, output, and total tokens, call count, provider request id, cost, and the default owner-only caps.</li>
+          <li>Confirm exactly one ready email and open it into the same latest run on iOS.</li>
         </ol>
       </section>
 
       <section>
-        <h2>AI Options</h2>
-        <p>There are several valid operating modes. Pick one deliberately for each friend. Do not assume a ChatGPT or Codex subscription pays for backend API calls.</p>
+        <h2>Advanced Operating Reference</h2>
+        <p>This section documents existing technical and future modes; it is not part of friend setup. The managed cohort always uses owner-funded AI Gateway scoring and owner-only budgets.</p>
 
         <table>
           <thead>
@@ -519,8 +501,7 @@ bun run ios:testflight</code></pre>
 
         <h3>Recommended first friend choice</h3>
         <div class="callout">
-          For a real friend beta, start with <strong>deterministic/no paid AI</strong> or <strong>owner-managed AI Gateway with tight caps</strong>.
-          Use friend-run hosted MCP when the friend is comfortable driving their own cloud agent. Defer BYOK until you want to operationalize provider-key aliases and support.
+          For this cohort, use <strong>owner-managed AI Gateway</strong> with the server defaults of $0.50/day and $5/month per friend. Keep deterministic, BYOK, and hosted MCP choices out of the friend-facing journey.
         </div>
 
         <h3>Configure owner-managed AI Gateway</h3>
@@ -539,8 +520,8 @@ BEACHCAR_AI_ESTIMATED_MICROS_PER_1K_TOKENS=600</code></pre>
 BEACHCAR_AI_GATEWAY_MODEL=&lt;openrouter-model-id&gt;</code></pre>
           </li>
           <li>Run <code>bun run deploy:env:check</code>, then deploy intentionally with <code>bun run deploy:remote -- --execute --yes</code>.</li>
-          <li>Ask the friend to select <strong>Managed</strong> in onboarding/Preferences and set low daily/monthly caps.</li>
-          <li>Queue a run and check Run detail - AI plus Preferences - usage summary.</li>
+          <li>The server selects managed mode and owner caps; the friend never sees this configuration.</li>
+          <li>Complete onboarding and check the owner admin view for the exact run, provider request, tokens, and cost.</li>
         </ol>
 
         <h3>Configure friend BYOK via Gateway alias</h3>
@@ -552,20 +533,20 @@ BEACHCAR_AI_GATEWAY_MODEL=&lt;openrouter-model-id&gt;</code></pre>
           <li>Keep daily/monthly budget caps set even for BYOK. Beachcar budgets gate app-run creation, but the actual provider account is still the source of truth for spend.</li>
         </ol>
 
-        <h3>Configure friend-run hosted MCP</h3>
+        <h3>Configure local Codex with Beachcar MCP</h3>
         <ol>
           <li>After onboarding, the friend opens Preferences - Connect automation.</li>
-          <li>They click <strong>Create token</strong>. The token is shown once. If lost, revoke it and create a new one.</li>
           <li>They click <strong>Download skill</strong>. The downloaded <code>SKILL.md</code> contains the deployed MCP endpoint.</li>
-          <li>Their cloud agent should connect to <code>https://beachcar-watch.jon-cooper.workers.dev/mcp</code> with <code>Authorization: Bearer &lt;token&gt;</code>, or use OAuth protected-resource discovery if supported.</li>
-          <li>The agent should call <code>get_setup_context</code>, <code>plan_daily_research</code>, <code>search_bat_cache</code>, <code>publish_run</code>, <code>record_usage</code>, and <code>verify_latest_run</code>.</li>
+          <li>They add the hosted MCP endpoint to their local Codex configuration and run <code>codex mcp login beachcar</code>. OAuth is preferred; create a scoped token only for clients that cannot use OAuth.</li>
+          <li>Codex asks a short taste interview, confirms it, then calls <code>save_taste_calibration</code>. It should then call <code>get_setup_context</code>, <code>plan_daily_research</code>, <code>search_bat_cache</code>, <code>publish_run</code>, and <code>verify_latest_run</code>.</li>
           <li>The friend can revoke manual tokens and OAuth connections from Preferences.</li>
         </ol>
-        <p>Codex Streamable HTTP MCP config example for a friend-owned environment:</p>
+        <p>Codex Streamable HTTP MCP config example for a local, friend-owned environment:</p>
         <pre><code>[mcp_servers.beachcar]
 url = "https://beachcar-watch.jon-cooper.workers.dev/mcp"
-bearer_token_env_var = "BEACHCAR_MCP_TOKEN"</code></pre>
-        <p>Then the friend stores their token as <code>BEACHCAR_MCP_TOKEN</code> in that cloud environment. If the client supports OAuth, use the hosted metadata instead of a manually copied token.</p>
+auth = "oauth"
+default_tools_approval_mode = "writes"</code></pre>
+        <p>The user signs in to auction sites in their own local browser. Codex should hand sign-in, MFA, CAPTCHA, and permissions back to the user; it must never bypass those controls.</p>
 
         <h3>Configure owner Codex pushing</h3>
         <p>Use this when you want to do the research for a friend from your own Codex environment and publish into their Beachcar account.</p>
@@ -583,7 +564,7 @@ bearer_token_env_var = "BEACHCAR_MCP_TOKEN"</code></pre>
         <p>Beachcar has two source patterns today.</p>
         <ul>
           <li><strong>Bring a Trailer cache first:</strong> BaT public RSS candidates are ingested into D1 every 15 minutes and are available through admin source-cache controls and MCP <code>search_bat_cache</code>.</li>
-          <li><strong>Browser-capable agent for rendered sources:</strong> Cars &amp; Bids and other rendered/fragile sites should be handled by a user-authorized browser/cloud-agent environment when needed.</li>
+          <li><strong>Local browser for rendered sources:</strong> Cars &amp; Bids and other rendered/fragile sites should be handled by the user's already-authorized local Codex browser session when needed.</li>
         </ul>
         <p>Agents should respect source terms, rate limits, authentication boundaries, and bot controls. They should record blocked sources in <code>sourceSummary</code> rather than inventing listings.</p>
       </section>
@@ -606,10 +587,11 @@ bearer_token_env_var = "BEACHCAR_MCP_TOKEN"</code></pre>
         <h2>Verification Checklist</h2>
         <ol class="checklist">
           <li><span class="status-good">Backend:</span> <code>bun run cloudflare:check</code> reports Worker deployed, D1 migrated, R2 exists, required secrets set.</li>
-          <li><span class="status-good">Auth:</span> Friend signs in with the invited email and accepts the invite code.</li>
-          <li><span class="status-good">Onboarding:</span> Friend saves budget, region, taste, avoid notes, sources, AI mode, and caps.</li>
-          <li><span class="status-good">iOS:</span> Friend opens the TestFlight build and sees the same account state as the PWA.</li>
-          <li><span class="status-good">Run:</span> Run Now queues or the hosted MCP publishes a run; Run detail shows sources, listings, AI status, and cost.</li>
+          <li><span class="status-good">Auth:</span> Friend signs in with the invited email and activates automatically without a code.</li>
+          <li><span class="status-good">Onboarding:</span> Friend completes search, taste, and daily schedule in under three minutes.</li>
+          <li><span class="status-good">iOS:</span> Friend moves directly from setup progress into the first shortlist or honest empty state.</li>
+          <li><span class="status-good">Run:</span> Owner admin shows activation, exact run status, input/output/total tokens, call count, cost, and any failure.</li>
+          <li><span class="status-good">Email:</span> Exactly one ready email arrives and <strong>Open today’s finds</strong> opens the app, with web fallback.</li>
           <li><span class="status-good">Images:</span> First cards show <code>deck</code> image variants and become fast after prefetch/cache warmup.</li>
           <li><span class="status-good">Automation:</span> If used, Preferences shows the token/OAuth connection last-used time and recent automation events.</li>
           <li><span class="status-warn">Spend:</span> For owner-managed AI, validate daily/monthly caps and Cloudflare AI Gateway logs before broad friend access.</li>
@@ -626,9 +608,9 @@ bearer_token_env_var = "BEACHCAR_MCP_TOKEN"</code></pre>
         <h3>Tester script</h3>
         <ol class="checklist">
           <li>Install Beachcar through TestFlight.</li>
-          <li>Sign into the PWA, accept the Beachcar invite, and complete onboarding.</li>
-          <li>Open the iOS app and confirm it shows the same account state as the PWA.</li>
-          <li>Review one existing or generated run.</li>
+          <li>Sign into the iOS app with the invited address and complete the three setup steps.</li>
+          <li>Wait for Beachcar to build and open the first shortlist.</li>
+          <li>Open the ready email’s link back into today’s finds.</li>
           <li>Mark at least five listings with like, star, hide, or avoid.</li>
           <li>Change one preference after seeing the first results.</li>
           <li>Optional for technical testers: connect a cloud agent with the downloaded skill and publish a run through hosted MCP.</li>
@@ -638,7 +620,7 @@ bearer_token_env_var = "BEACHCAR_MCP_TOKEN"</code></pre>
         <h3>Setup friction</h3>
         <ul>
           <li>How long did it take from invite to usable app?</li>
-          <li>Did TestFlight, Clerk sign-in, or the Beachcar invite code confuse you?</li>
+          <li>Did TestFlight or sign-in with the invited email confuse you?</li>
           <li>Did the web app and iOS app feel like the same account?</li>
           <li>What was the first point where you almost stopped?</li>
           <li>What device, iOS version, and browser were you using?</li>
@@ -717,7 +699,7 @@ bearer_token_env_var = "BEACHCAR_MCP_TOKEN"</code></pre>
           <li>Number of listings reviewed.</li>
           <li>Feedback counts: like, star, hide, and avoid.</li>
           <li>Run quality score from the user.</li>
-          <li>AI mode used and any cost incurred.</li>
+          <li>Input/output/total tokens, call count, cost, and failure state.</li>
           <li>Whether owner intervention was needed.</li>
           <li>Top three requested changes.</li>
         </ul>
@@ -740,23 +722,23 @@ bearer_token_env_var = "BEACHCAR_MCP_TOKEN"</code></pre>
           <tbody>
             <tr>
               <td>Friend sees invite gate after signing in</td>
-              <td>Expected before accepting a Beachcar invite.</td>
-              <td>Create/share the invite code from <code>?admin=1</code>.</td>
+              <td>The verified primary email did not match an unexpired invitation.</td>
+              <td>Sign out and use the TestFlight-invited address, or rerun <code>friend:invite</code> for the correct email.</td>
             </tr>
             <tr>
-              <td>Invite code says email mismatch</td>
-              <td>Invite email differs from the Google/Clerk sign-in email.</td>
-              <td>Create a new invite for the exact signed-in email.</td>
+              <td>Older invite code says email mismatch</td>
+              <td>A legacy code differs from the Clerk verified primary email.</td>
+              <td>Create a new verified-email managed invitation instead.</td>
             </tr>
             <tr>
               <td>TestFlight says no build available</td>
-              <td>Friend is not in the correct internal/external group, or Apple has not finished processing/review.</td>
-              <td>Check App Store Connect - TestFlight - Groups and build processing status.</td>
+              <td>The external build is processing, pending review, expired, rejected, or the friend is not in <code>Beachcar Friends</code>.</td>
+              <td>Rerun <code>friend:invite</code>; its status explains the exact block.</td>
             </tr>
             <tr>
               <td>Run button says Budget</td>
               <td>Daily/monthly AI usage cap is exceeded or user capability is disabled.</td>
-              <td>Raise caps in Preferences or use deterministic/friend-run MCP mode.</td>
+              <td>Review that friend in owner admin and deliberately adjust the owner-only cap if appropriate.</td>
             </tr>
             <tr>
               <td>AI provider is heuristic</td>

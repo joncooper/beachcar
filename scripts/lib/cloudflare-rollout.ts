@@ -6,6 +6,7 @@ export const REQUIRED_WORKER_SECRET_NAMES = [
 export const SOURCE_QUALITY_V1_MIGRATION = "0011_source_cache_listing_fields.sql";
 export const PRODUCT_EVENTS_V1_MIGRATION = "0012_product_events.sql";
 export const AGENT_CONNECTED_SUBSCRIPTIONS_MIGRATION = "0013_agent_connected_subscriptions.sql";
+export const MANAGED_FRIEND_ONBOARDING_MIGRATION = "0014_managed_friend_onboarding.sql";
 
 export const WORKER_SECRET_NAMES = [
   ...REQUIRED_WORKER_SECRET_NAMES,
@@ -225,7 +226,12 @@ export function pendingD1MigrationFiles(output: string): string[] {
 export function isSafeSourceQualityMigrationSet(output: string): boolean {
   const pending = pendingD1MigrationFiles(output);
   if (pending.length === 0) return /No migrations to apply!/i.test(output);
-  const allowed = new Set([SOURCE_QUALITY_V1_MIGRATION, PRODUCT_EVENTS_V1_MIGRATION, AGENT_CONNECTED_SUBSCRIPTIONS_MIGRATION]);
+  const allowed = new Set([
+    SOURCE_QUALITY_V1_MIGRATION,
+    PRODUCT_EVENTS_V1_MIGRATION,
+    AGENT_CONNECTED_SUBSCRIPTIONS_MIGRATION,
+    MANAGED_FRIEND_ONBOARDING_MIGRATION,
+  ]);
   return pending.every((migration) => allowed.has(migration));
 }
 
@@ -237,6 +243,9 @@ export function evaluateSourceQualitySchemaGate(outputs: {
   researchColumns: string;
   billingColumns: string;
   billingIndexes: string;
+  friendColumns: string;
+  friendTables: string;
+  friendIndexes: string;
   quickCheck: string;
 }): {
   columnCount: number;
@@ -246,6 +255,9 @@ export function evaluateSourceQualitySchemaGate(outputs: {
   researchColumnCount: number;
   billingColumnCount: number;
   billingIndexCount: number;
+  friendColumnCount: number;
+  friendTableCount: number;
+  friendIndexCount: number;
   quickCheck: string;
   ok: boolean;
 } {
@@ -256,6 +268,9 @@ export function evaluateSourceQualitySchemaGate(outputs: {
   const researchColumnCount = numericResult(outputs.researchColumns, "found_research_columns");
   const billingColumnCount = numericResult(outputs.billingColumns, "found_billing_columns");
   const billingIndexCount = numericResult(outputs.billingIndexes, "found_billing_indexes");
+  const friendColumnCount = numericResult(outputs.friendColumns, "found_friend_columns");
+  const friendTableCount = numericResult(outputs.friendTables, "found_friend_tables");
+  const friendIndexCount = numericResult(outputs.friendIndexes, "found_friend_indexes");
   const quickRows = d1RowsFromJson(outputs.quickCheck);
   const quickCheck = clean(quickRows[0]?.quick_check || quickRows[0]?.integrity_check);
   return {
@@ -266,6 +281,9 @@ export function evaluateSourceQualitySchemaGate(outputs: {
     researchColumnCount,
     billingColumnCount,
     billingIndexCount,
+    friendColumnCount,
+    friendTableCount,
+    friendIndexCount,
     quickCheck,
     ok:
       columnCount === 12 &&
@@ -275,6 +293,9 @@ export function evaluateSourceQualitySchemaGate(outputs: {
       researchColumnCount === 4 &&
       billingColumnCount === 7 &&
       billingIndexCount === 1 &&
+      friendColumnCount === 6 &&
+      friendTableCount === 2 &&
+      friendIndexCount === 4 &&
       quickCheck.toLowerCase() === "ok",
   };
 }

@@ -71,6 +71,11 @@ check(
   migrationFiles.includes("0013_agent_connected_subscriptions.sql"),
   "Add/apply 0013_agent_connected_subscriptions.sql.",
 );
+check(
+  "Managed friend onboarding migration is present",
+  migrationFiles.includes("0014_managed_friend_onboarding.sql"),
+  "Add/apply 0014_managed_friend_onboarding.sql.",
+);
 check("Preflight script is available", !!packageJson?.scripts?.preflight, "Add bun run preflight.");
 check("Local Worker preflight script is available", !!packageJson?.scripts?.["preflight:local"], "Add bun run preflight:local.");
 check("Full preflight script is available", !!packageJson?.scripts?.["preflight:full"], "Add bun run preflight:full.");

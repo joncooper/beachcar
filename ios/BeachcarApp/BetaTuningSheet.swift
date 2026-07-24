@@ -133,13 +133,6 @@ struct BetaTuningSheet: View {
           range: 0.64...0.80,
           format: { "\(Int($0 * 100))% of the screen" }
         )
-        tuningSlider(
-          title: "Gallery dismissal",
-          value: galleryBinding,
-          range: 0.10...0.16,
-          format: { "\(Int($0 * 100))% of the screen" }
-        )
-
         VStack(alignment: .leading, spacing: 9) {
           Text("HAPTICS").font(.mono(9.5, bold: true)).tracking(1).foregroundStyle(BC.muted)
           Picker("Haptics", selection: hapticsBinding) {
@@ -182,7 +175,7 @@ struct BetaTuningSheet: View {
   private var feedbackSection: some View {
     tuningSection("HOW DOES IT FEEL?") {
       VStack(spacing: 8) {
-        ForEach(ExperienceFeedbackReason.allCases) { reason in
+        ForEach(ExperienceFeedbackReason.allCases.filter { $0 != .galleryHardToLeave }) { reason in
           Button {
             if selectedReasons.contains(reason) { selectedReasons.remove(reason) }
             else { selectedReasons.insert(reason) }
@@ -336,7 +329,6 @@ struct BetaTuningSheet: View {
 
   private var primaryBinding: Binding<Double> { customBinding(\.primaryCommitFraction) }
   private var strongBinding: Binding<Double> { customBinding(\.strongCommitFraction) }
-  private var galleryBinding: Binding<Double> { customBinding(\.galleryDismissFraction) }
   private var hapticsBinding: Binding<InteractionHapticStyle> { customBinding(\.haptics) }
   private var coachingBinding: Binding<InteractionCoachingMode> { customBinding(\.coaching) }
 
@@ -471,96 +463,59 @@ struct BetaDiagnosticsDisclosure: View {
   }
 }
 
-private enum TuningPracticeMode: String, CaseIterable, Identifiable {
-  case review = "Review"
-  case gallery = "Photos"
-  var id: String { rawValue }
-}
-
 private struct TuningPracticeCard: View {
   let profile: InteractionTuningProfile
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @State private var mode: TuningPracticeMode = .review
   @State private var offset: CGSize = .zero
   @State private var crossedGate = false
   @State private var result = "Swipe the card"
 
   var body: some View {
-    VStack(spacing: 12) {
-      Picker("Practice", selection: $mode) {
-        ForEach(TuningPracticeMode.allCases) { Text($0.rawValue).tag($0) }
-      }
-      .pickerStyle(.segmented)
-
-      GeometryReader { proxy in
-        ZStack {
-          RoundedRectangle(cornerRadius: 19, style: .continuous)
-            .fill(mode == .review ? BC.accent.opacity(0.09) : Color.black)
-          VStack(spacing: 8) {
-            Image(systemName: practiceSymbol(width: proxy.size.width, height: proxy.size.height))
-              .font(.system(size: 29, weight: .bold))
-              .foregroundStyle(practiceColor(width: proxy.size.width, height: proxy.size.height))
-            Text(result)
-              .font(.archivo(13.5, .bold))
-              .foregroundStyle(BC.white)
-            Text(mode == .review ? "Left to pass · right to like · keep going for strong" : "Swipe decisively up or down")
-              .font(.archivo(10.5, .medium))
-              .foregroundStyle(BC.muted)
-              .multilineTextAlignment(.center)
-          }
-          .padding(.horizontal, 18)
+    GeometryReader { proxy in
+      ZStack {
+        RoundedRectangle(cornerRadius: 19, style: .continuous)
+          .fill(BC.accent.opacity(0.09))
+        VStack(spacing: 8) {
+          Image(systemName: practiceSymbol(width: proxy.size.width))
+            .font(.system(size: 29, weight: .bold))
+            .foregroundStyle(practiceColor(width: proxy.size.width))
+          Text(result)
+            .font(.archivo(13.5, .bold))
+            .foregroundStyle(BC.white)
+          Text("Left to pass · right to like · keep going for strong")
+            .font(.archivo(10.5, .medium))
+            .foregroundStyle(BC.muted)
+            .multilineTextAlignment(.center)
         }
-        .offset(offset)
-        .rotationEffect(.degrees(mode == .review ? Double(offset.width / max(proxy.size.width, 1)) * 2 : 0))
-        .gesture(practiceGesture(size: proxy.size))
+        .padding(.horizontal, 18)
       }
-      .frame(height: 154)
-      .accessibilityIdentifier("shade-tuning-practice-card")
+      .offset(offset)
+      .rotationEffect(.degrees(Double(offset.width / max(proxy.size.width, 1)) * 2))
+      .gesture(practiceGesture(size: proxy.size))
     }
-    .onChange(of: mode) { _, _ in reset() }
+    .frame(height: 154)
+    .accessibilityIdentifier("shade-tuning-practice-card")
   }
 
   private func practiceGesture(size: CGSize) -> some Gesture {
     DragGesture(minimumDistance: 8)
       .onChanged { value in
-        if mode == .review {
-          let primary = ReviewSwipeDecision.primaryDistance(for: size.width, profile: profile)
-          offset.width = ReviewSwipeDecision.displayOffset(for: value.translation.width, primary: primary, profile: profile)
-          let gate = abs(value.translation.width) >= primary
-          if gate && !crossedGate { InteractionHaptics.fire(.primaryGate, style: profile.haptics) }
-          crossedGate = gate
-          result = reviewLabel(rawOffset: value.translation.width, width: size.width)
-        } else {
-          offset.height = GalleryDismissDecision.displayOffset(for: value.translation, height: size.height, profile: profile)
-          let gate = GalleryDismissDecision.shouldDismiss(
-            translation: value.translation,
-            predictedEndTranslation: value.predictedEndTranslation,
-            height: 844,
-            profile: profile
-          )
-          if gate && !crossedGate { InteractionHaptics.fire(.galleryGate, style: profile.haptics) }
-          crossedGate = gate
-          result = gate ? "Would close" : "Keep going"
-        }
+        let primary = ReviewSwipeDecision.primaryDistance(for: size.width, profile: profile)
+        offset.width = ReviewSwipeDecision.displayOffset(for: value.translation.width, primary: primary, profile: profile)
+        let gate = abs(value.translation.width) >= primary
+        if gate && !crossedGate { InteractionHaptics.fire(.primaryGate, style: profile.haptics) }
+        crossedGate = gate
+        result = reviewLabel(rawOffset: value.translation.width, width: size.width)
       }
       .onEnded { value in
-        if mode == .review {
-          let action = ReviewSwipeDecision.action(
-            translation: value.translation.width,
-            predicted: value.predictedEndTranslation.width,
-            velocity: value.velocity.width,
-            width: size.width,
-            profile: profile
-          )
-          result = action.map(actionLabel) ?? "No decision"
-        } else {
-          result = GalleryDismissDecision.shouldDismiss(
-            translation: value.translation,
-            predictedEndTranslation: value.predictedEndTranslation,
-            height: 844,
-            profile: profile
-          ) ? "Would close" : "Would stay open"
-        }
+        let action = ReviewSwipeDecision.action(
+          translation: value.translation.width,
+          predicted: value.predictedEndTranslation.width,
+          velocity: value.velocity.width,
+          width: size.width,
+          profile: profile
+        )
+        result = action.map(actionLabel) ?? "No decision"
         crossedGate = false
         withAnimation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.8)) { offset = .zero }
       }
@@ -586,23 +541,15 @@ private struct TuningPracticeCard: View {
     }
   }
 
-  private func practiceSymbol(width: CGFloat, height: CGFloat) -> String {
-    if mode == .gallery { return crossedGate ? "arrow.up.and.down.circle.fill" : "photo.fill" }
+  private func practiceSymbol(width: CGFloat) -> String {
     if offset.width < 0 { return abs(offset.width) >= width * 0.5 ? Icon.avoid : Icon.hide }
     if offset.width > 0 { return abs(offset.width) >= width * 0.5 ? Icon.star : Icon.like }
     return "hand.draw.fill"
   }
 
-  private func practiceColor(width: CGFloat, height: CGFloat) -> Color {
-    if mode == .gallery { return crossedGate ? BC.accent : BC.sub }
+  private func practiceColor(width: CGFloat) -> Color {
     if offset.width < 0 { return Icon.color(for: abs(offset.width) >= width * 0.5 ? .avoid : .hide) }
     if offset.width > 0 { return Icon.color(for: abs(offset.width) >= width * 0.5 ? .star : .like) }
     return BC.accent
-  }
-
-  private func reset() {
-    offset = .zero
-    crossedGate = false
-    result = mode == .review ? "Swipe the card" : "Swipe the photo"
   }
 }

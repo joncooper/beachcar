@@ -12,9 +12,9 @@ Beachcar includes a native SwiftUI app in `ios/` for an iPhone-first review loop
   - Far left past the second gate: Never again (`avoid` in the API)
 - Distance, underlay labels, color, and two haptic gates make the stronger actions deliberate. Flick velocity can commit a primary action but cannot accidentally commit a strong action.
 - A versioned interaction coach teaches direction first, names the stronger outcome only after the primary gate, respects Reduce Motion, and retires learned instructions. The overflow menu keeps a replayable Gestures sheet available after mastery.
-- Tapping the cover opens a separate full-screen, horizontally paged photo gallery with selected-photo continuity and a matched transition. Pinch or double-tap zooms, zoomed photos pan within bounds, and a single tap hides or restores chrome. Adjacent full-resolution photos prefetch as the selection changes.
-- A decisive swipe up or down shrinks and rounds the gallery while fading its backdrop to reveal the dossier, then dismisses it. The first-use instruction retires after a successful gesture; a compact bottom safe-area control remains as a tap and VoiceOver fallback without competing with system chrome.
-- `FIND x OF y` always counts listings; `PHOTO x OF y` appears only in the gallery. No-image listings use a compact fallback rather than an empty hero.
+- The cover is the first photo. Every additional photo appears inline near the top of the dossier at its natural aspect ratio, with a simple position label.
+- Photos have no separate mode or horizontal paging. Vertical movement always scrolls the car; horizontal movement always records taste.
+- `FIND x OF y` always counts listings. No-image listings use a compact fallback rather than an empty hero.
 - Today's Finds provides search, judgment and lane filters, sorting, source health, and direct navigation without changing the review order.
 - After every listing has a judgment, a completion summary replaces the dossier and keeps Today's Finds available.
 - The dossier includes voice/text feedback that posts preference notes to the Worker for the next AI run.
@@ -27,14 +27,14 @@ The app uses Clerk native iOS auth:
 - `ClerkKitUI`
 - prebuilt `AuthView()` in a sheet
 - `UserButton(signedOutContent:)`
-- Google auth through Clerk
+- email one-time code as the preferred friend path, Google as a secondary shortcut, and password only for the Apple review account
 
-The Worker uses `BOOTSTRAP_OWNER_EMAILS` or legacy `ALLOWED_EMAIL` only to bootstrap owner accounts. Other signed-in users are created as `invited` and must accept an invite code before they can load runs, save feedback, or submit preference notes.
+The Worker uses `BOOTSTRAP_OWNER_EMAILS` or legacy `ALLOWED_EMAIL` only to bootstrap owner accounts. Friends are invited by verified email. On the first authenticated `/api/me`, an unexpired matching invitation activates the account and persists owner-funded managed research access. Invite codes remain only for legacy invitations.
 
 The native app checks `/api/me` after sign-in:
 
-- `invited` users see an invite-code gate.
-- `active` users without completed onboarding see the preferences setup screen.
+- unmatched `invited` users see a friendly email-mismatch screen with sign-out guidance and a collapsed legacy-code option.
+- active users without completed onboarding see the resumable three-step search, taste, and daily-schedule setup.
 - active users with completed onboarding enter the scrolling review surface.
 - `disabled` users are blocked before deck load.
 
@@ -51,15 +51,15 @@ The native app checks `/api/me` after sign-in:
 - If `/api/runs/latest` fails and a cached run exists for that user, the deck falls back to the cached run.
 - Listing images use `CachedRemoteImage`, which reads through a decoded in-memory image cache and `URLCache`.
 - After a run loads, the store prefetches bounded `deck` and `thumb` image variants for the first listings so the next cards are already warm.
-- While the gallery is open, it additionally prefetches the current photo's immediate `full`-resolution neighbors.
+- Additional full-resolution photos load lazily as their inline rows approach the viewport.
 
 ## Beta Interaction Tuning
 
 Phase 5 is implemented as a reversible beta calibration loop:
 
 - **Tweaks** appears below **Gestures** in Debug and TestFlight builds, with Quick, Balanced, and Deliberate presets.
-- Advanced controls tune primary and strong swipe gates, gallery dismissal distance, haptic style, and coaching mode within bounded ranges.
-- A non-destructive practice card previews the draft profile; live review behavior changes only after **Apply**.
+- Advanced controls tune primary and strong swipe gates, haptic style, and coaching mode within bounded ranges.
+- A non-destructive horizontal-swipe practice card previews the draft profile; live review behavior changes only after **Apply**.
 - The one-time diagnostics disclosure requires an explicit share/private choice and names the data that is never collected.
 - Consented outcome events queue locally, upload in authenticated batches, and expire from D1 after 90 days. Product diagnostics never enter auction preference memory.
 - Direct product feedback stays local when diagnostics are private and remains available in the user-initiated diagnostic snapshot.
@@ -71,7 +71,16 @@ Clerk quickstart prerequisites:
 
 - Enable Clerk Native API in the Clerk dashboard.
 - Add the native application in Clerk with bundle ID `com.joncooper.beachcar`.
-- Add Associated Domains for `webcredentials:brief-coyote-47.clerk.accounts.dev`.
+- Debug uses the linked development instance; Release uses the personal production instance for `dockett.ai`.
+- Add Associated Domains for both `webcredentials:brief-coyote-47.clerk.accounts.dev` and `webcredentials:clerk.dockett.ai`.
+- The production mobile SSO allowlist includes `com.joncooper.beachcar://callback` (verified through the Clerk CLI on July 15, 2026).
+- Verify the production Native Application record and publish Clerk's current CNAMEs at the authoritative DNS host:
+  - `clerk.dockett.ai` → `frontend-api.clerk.services`
+  - `accounts.dockett.ai` → `accounts.clerk.services`
+  - `clkmail.dockett.ai` → `mail.e2gs5kmuc4tw.clerk.services`
+  - `clk._domainkey.dockett.ai` → `dkim1.e2gs5kmuc4tw.clerk.services`
+  - `clk2._domainkey.dockett.ai` → `dkim2.e2gs5kmuc4tw.clerk.services`
+- Production Google sign-in needs its own Google OAuth client ID and secret before it can be offered as the secondary shortcut. Email one-time code is already enabled; Sign in with Apple remains intentionally disabled for this email-specific cohort.
 
 ## Command-Line Workflow
 
@@ -117,7 +126,7 @@ Run UI tests:
 bun run ios:test-ui
 ```
 
-The UI tests launch local fixtures with `--ui-testing`; `--ui-testing-scenario invited|onboarding|active` covers invite, onboarding, and active deck entry without Clerk or Worker access.
+The UI tests launch local fixtures with `--ui-testing`; invite, three-step onboarding, queued/running/published/empty/failed first-run states, offline recovery, and active review run without Clerk or Worker access.
 
 ## Simulator Runtime
 
@@ -138,7 +147,7 @@ bun scripts/create-clerk-dev-token.mjs
 bun run ios:sim
 ```
 
-When `CLERK_DEV_SIGN_IN_TOKEN` is present, `ios:sim` launches the DEBUG build with `--clerk-ticket`, signs in through ClerkKit, and then loads the production Worker with the native Clerk session token. This is for local DEBUG testing only; normal users still sign in with Google through Clerk.
+When `CLERK_DEV_SIGN_IN_TOKEN` is present, `ios:sim` launches the DEBUG build with `--clerk-ticket`, signs in through ClerkKit, and then loads the production Worker with the native Clerk session token. This is for local DEBUG testing only; ordinary friends use email one-time code.
 
 ## TestFlight Publishing
 
@@ -170,6 +179,28 @@ Or do both in one command:
 bun run ios:release
 ```
 
+Create an app-store-eligible build, assign it to the external `Beachcar Friends` group, supply beta metadata and review credentials, and submit it for external beta review:
+
+```bash
+bun run ios:release:friends
+```
+
+After submission, invite or re-check a friend idempotently in both App Store Connect and Beachcar:
+
+```bash
+bun run friend:invite -- --name "Friend Name" --email friend@example.com
+```
+
+The command refuses internal-only, expired, invalid, unsubmitted, or unassigned builds. It reports whether TestFlight was sent, is pending Apple review, was already accepted, or is blocked. Repeating it does not create another Beachcar invitation or TestFlight tester.
+
+Provision the password-capable Apple review user and its seeded shortlist from the ignored review credentials in `.env.apple.local`:
+
+```bash
+bun run review:provision
+```
+
+The command is idempotent and keeps credentials in a mode-`0600` temporary file only for the Clerk request.
+
 The scripts write outputs under `build/ios/` and record the latest archive path in `build/ios/latest-archive-path`.
 
 By default, `ios:testflight` also assigns the uploaded build to `TESTFLIGHT_BETA_GROUP_NAME` so internal testers see the new build after Apple processing completes. App Store Connect can lag after accepting an upload, so the assignment script polls for the new build before attaching it. If App Store Connect already grants the group access to all builds, the assignment step is a no-op.
@@ -186,7 +217,7 @@ IOS_MARKETING_VERSION=0.1.0 IOS_BUILD_NUMBER=202606231425 bun run ios:release
 
 ### Internal-Only Builds
 
-By default, `TESTFLIGHT_INTERNAL_ONLY=YES`, so uploaded builds are meant for internal TestFlight testing. Change it to `NO` only when the build should be eligible for external testers or App Review workflows.
+By default, `TESTFLIGHT_INTERNAL_ONLY=YES`, so `ios:release` remains the owner/internal path. Use `ios:release:friends`; it explicitly uploads with `TESTFLIGHT_INTERNAL_ONLY=NO` and never silently attaches an ordinary friend to an internal group.
 
 ### Common Failures
 

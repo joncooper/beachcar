@@ -13,6 +13,15 @@ describe("Clerk browser loader", () => {
     expect(source).not.toContain('const clerkBrowserVersion = "6.10.4";');
   });
 
+  it("finishes Google OAuth on a dedicated callback route with Clerk bot protection available", async () => {
+    const source = await readFile(resolve("src/client/clerk-browser.ts"), "utf8");
+
+    expect(source).toContain('new URL("/sso-callback", window.location.origin)');
+    expect(source).toContain('window.location.pathname !== "/sso-callback"');
+    expect(source).toContain("await clerk.handleRedirectCallback({});");
+    expect(source).toContain('captcha.id = "clerk-captcha";');
+  });
+
   it("does not mount optional Clerk UI from the core-only browser bundle", async () => {
     const appSource = await readFile(resolve("src/client/App.tsx"), "utf8");
 

@@ -6,13 +6,16 @@ import {
   type SourceCacheStatus,
   type SourceCacheUpsertResult,
 } from "./db";
-import { parseBringATrailerRssFeed } from "./sources/bringatrailer";
+import { parseBringATrailerLiveListings, parseBringATrailerRssFeed } from "./sources/bringatrailer";
 import type { SourceCandidate } from "./sources/types";
 
 export const bringATrailerRssFeedUrl = "https://bringatrailer.com/auctions/feed/";
+export const bringATrailerLivePageUrl = "https://bringatrailer.com/auctions/";
 
 const source = "bringatrailer";
 const maxRssBytes = 1_000_000;
+const maxLivePageBytes = 4_000_000;
+const maxCachedLiveItems = 300;
 const staleAfterMs = 15 * 60 * 1000;
 
 export interface SourceCacheSearchResult {
@@ -31,30 +34,62 @@ export interface SourceCacheSearchResult {
 
 export async function ingestBringATrailerRssCache(db: D1Database, fetchImpl: typeof fetch = fetch): Promise<SourceCacheUpsertResult> {
   const startedAt = new Date().toISOString();
+  let sourceUrl = bringATrailerLivePageUrl;
+  let candidates: SourceCandidate[] = [];
+  let livePageError: string | null = null;
+
   try {
-    const response = await fetchImpl(bringATrailerRssFeedUrl, {
+    const response = await fetchImpl(bringATrailerLivePageUrl, {
       headers: {
-        Accept: "application/rss+xml, application/xml;q=0.9, text/xml;q=0.8",
+        Accept: "text/html,application/xhtml+xml;q=0.9",
         "User-Agent": "BeachcarSourceCache/0.1 (+https://beachcar.local)",
       },
     });
-    const text = await readTextWithLimit(response, maxRssBytes);
-    if (!response.ok) throw new Error(`Bring a Trailer RSS returned HTTP ${response.status}`);
-    const candidates = parseBringATrailerRssFeed(text);
-    return upsertSourceCache(db, {
+    const text = await readTextWithLimit(response, maxLivePageBytes);
+    if (!response.ok) throw new Error(`Bring a Trailer live page returned HTTP ${response.status}`);
+    candidates = parseBringATrailerLiveListings(text, { label: "Live Auctions", url: bringATrailerLivePageUrl });
+    if (!candidates.length) throw new Error("Bring a Trailer live page contained no parseable current auctions");
+    candidates = candidates.slice(0, maxCachedLiveItems);
+  } catch (error) {
+    livePageError = errorMessage(error);
+  }
+
+  try {
+    if (!candidates.length) {
+      sourceUrl = bringATrailerRssFeedUrl;
+      const response = await fetchImpl(bringATrailerRssFeedUrl, {
+        headers: {
+          Accept: "application/rss+xml, application/xml;q=0.9, text/xml;q=0.8",
+          "User-Agent": "BeachcarSourceCache/0.1 (+https://beachcar.local)",
+        },
+      });
+      const text = await readTextWithLimit(response, maxRssBytes);
+      if (!response.ok) throw new Error(`Bring a Trailer RSS returned HTTP ${response.status}`);
+      candidates = parseBringATrailerRssFeed(text);
+      if (!candidates.length) throw new Error("Bring a Trailer RSS contained no parseable current auctions");
+    }
+
+    const finishedAt = new Date().toISOString();
+    const result = await upsertSourceCache(db, {
       source,
-      sourceUrl: bringATrailerRssFeedUrl,
+      sourceUrl,
       candidates,
       startedAt,
-      finishedAt: new Date().toISOString(),
+      finishedAt,
     });
+    await db
+      .prepare("UPDATE source_items SET is_live = 0 WHERE source = ? AND is_live IS NOT 0 AND last_seen_at < ?")
+      .bind(source, finishedAt)
+      .run();
+    return result;
   } catch (error) {
     const finishedAt = new Date().toISOString();
+    const fallbackError = errorMessage(error);
     await recordSourceIngestionRun(db, {
       source,
-      sourceUrl: bringATrailerRssFeedUrl,
+      sourceUrl,
       status: "failed",
-      error: errorMessage(error),
+      error: livePageError ? `Live page: ${livePageError}; fallback: ${fallbackError}` : fallbackError,
       startedAt,
       finishedAt,
     });
@@ -93,7 +128,7 @@ export async function searchBringATrailerCache(
     site: "Bring a Trailer",
     mode: "d1_cache",
     cacheStatus,
-    feed: bringATrailerRssFeedUrl,
+    feed: bringATrailerLivePageUrl,
     terms: input.terms,
     candidateCount: candidates.length,
     status: freshStatus,

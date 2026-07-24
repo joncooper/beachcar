@@ -15,6 +15,7 @@ final class BeachcarStore: ObservableObject {
   let api: AuctionAPI
   private let offlineMode: Bool
   private var prefetchTask: Task<Void, Never>?
+  private var firstRunTask: Task<Void, Never>?
   private static let pendingPreferenceNotesKey = "beachcar.pendingPreferenceNotes.v1"
   private static let latestRunCachePrefix = "beachcar.latestRun.v3"
 
@@ -72,7 +73,7 @@ final class BeachcarStore: ObservableObject {
       }
   }
 
-  func load(tokenProvider: AuctionAPI.TokenProvider, cacheScope: String? = nil) async {
+  func load(tokenProvider: @escaping AuctionAPI.TokenProvider, cacheScope: String? = nil) async {
     guard !isLoading else { return }
     isLoading = true
     defer { isLoading = false }
@@ -91,6 +92,9 @@ final class BeachcarStore: ObservableObject {
       startImagePrefetch(for: payload)
       await retryPendingPreferenceNotes(authToken: token)
       errorMessage = nil
+      if let agentRun, agentRun.status == .queued || agentRun.status == .running {
+        startWatchingFirstRun(agentRun, tokenProvider: tokenProvider, cacheScope: cacheScope)
+      }
     } catch {
       if run == nil, let cached = Self.loadCachedRun(cacheScope: cacheScope) {
         apply(payload: cached)
@@ -98,6 +102,73 @@ final class BeachcarStore: ObservableObject {
         startImagePrefetch(for: cached)
       }
       errorMessage = error.localizedDescription
+    }
+  }
+
+  func adoptFirstRun(
+    _ firstRun: AgentRunRecord,
+    tokenProvider: @escaping AuctionAPI.TokenProvider,
+    cacheScope: String?
+  ) {
+    agentRun = firstRun
+    run = nil
+    errorMessage = nil
+    startWatchingFirstRun(firstRun, tokenProvider: tokenProvider, cacheScope: cacheScope)
+  }
+
+  func retryFirstRun(tokenProvider: @escaping AuctionAPI.TokenProvider, cacheScope: String?) async {
+    do {
+      let token = try await tokenProvider()
+      let queued = try await api.requestAgentRun(reason: "retry_first_shortlist", authToken: token)
+      adoptFirstRun(queued, tokenProvider: tokenProvider, cacheScope: cacheScope)
+    } catch {
+      errorMessage = error.localizedDescription
+    }
+  }
+
+  private func startWatchingFirstRun(
+    _ firstRun: AgentRunRecord,
+    tokenProvider: @escaping AuctionAPI.TokenProvider,
+    cacheScope: String?
+  ) {
+    firstRunTask?.cancel()
+    firstRunTask = Task { [weak self] in
+      await self?.watchFirstRun(firstRun.id, tokenProvider: tokenProvider, cacheScope: cacheScope)
+    }
+  }
+
+  private func watchFirstRun(
+    _ id: String,
+    tokenProvider: @escaping AuctionAPI.TokenProvider,
+    cacheScope: String?
+  ) async {
+    while !Task.isCancelled {
+      do {
+        let token = try await tokenProvider()
+        let updated = try await api.agentRun(id: id, authToken: token)
+        agentRun = updated
+        errorMessage = nil
+        switch updated.status {
+        case .published:
+          let payload = try await api.latestRun(authToken: token)
+          apply(payload: payload)
+          isUsingCachedRun = false
+          Self.persistCachedRun(payload, cacheScope: cacheScope)
+          startImagePrefetch(for: payload)
+          return
+        case .failed, .cancelled:
+          return
+        case .queued, .running:
+          break
+        }
+      } catch {
+        if run == nil, let cached = Self.loadCachedRun(cacheScope: cacheScope) {
+          apply(payload: cached)
+          isUsingCachedRun = true
+        }
+        errorMessage = error.localizedDescription
+      }
+      try? await Task.sleep(for: .seconds(2))
     }
   }
 
@@ -364,6 +435,47 @@ extension BeachcarStore {
         offlineMode: true,
         initialPendingPreferenceNotes: [],
         initialErrorMessage: "Could not load today's run."
+      )
+    }
+
+    if scenario == "first-run-queued" || scenario == "first-run-offline" {
+      return BeachcarStore(
+        initialAgentRun: .uiTesting(status: .queued),
+        offlineMode: true,
+        initialPendingPreferenceNotes: [],
+        initialErrorMessage: scenario == "first-run-offline" ? "You appear to be offline." : nil
+      )
+    }
+
+    if scenario == "first-run-running" {
+      return BeachcarStore(
+        initialAgentRun: .uiTesting(status: .running),
+        offlineMode: true,
+        initialPendingPreferenceNotes: []
+      )
+    }
+
+    if scenario == "first-run-empty" {
+      return BeachcarStore(
+        initialRun: RunPayload(
+          id: "run-ui-test-empty",
+          generatedAt: "2026-06-23T12:02:00.000Z",
+          sourceSummary: nil,
+          listings: [],
+          feedback: []
+        ),
+        initialAgentRun: .uiTesting(status: .published),
+        offlineMode: true,
+        initialPendingPreferenceNotes: []
+      )
+    }
+
+    if scenario == "first-run-failed" {
+      return BeachcarStore(
+        initialAgentRun: .uiTesting(status: .failed, error: "Auction check failed."),
+        offlineMode: true,
+        initialPendingPreferenceNotes: [],
+        initialErrorMessage: "Auction check failed."
       )
     }
 

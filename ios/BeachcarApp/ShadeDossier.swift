@@ -1,7 +1,7 @@
 import SwiftUI
 
 // One listing is one vertically readable dossier. Horizontal movement belongs to
-// judgment; tapping the cover opens a separate photo-gallery mode.
+// judgment; every listing photo stays in the vertical dossier.
 
 struct ShadeReviewPage: View {
   @ObservedObject var controller: ShadeController
@@ -11,14 +11,13 @@ struct ShadeReviewPage: View {
   let sourceSummary: RunSourceSummary?
   let api: AuctionAPI
   let geo: FeedGeometry
-  let photoNamespace: Namespace.ID
   let onNote: (String) -> Void
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
     ScrollViewReader { proxy in
       ScrollView {
-        LazyVStack(spacing: 12) {
+        VStack(spacing: 12) {
           Color.clear.frame(height: 1).id("review-top")
           hero
           quickFacts
@@ -83,21 +82,13 @@ struct ShadeReviewPage: View {
           endPoint: .bottom
         )
       }
-      .matchedGeometryEffect(id: photoTransitionID(car.key, selectedPhotoIndex), in: photoNamespace, isSource: true)
       .frame(height: heroHeight)
       .frame(maxWidth: .infinity)
       .clipped()
       .overlay(alignment: .topLeading) { heroBadges.padding(12) }
       .overlay(alignment: .topTrailing) { countdownChip.padding(12) }
-      .overlay(alignment: .bottomTrailing) {
+      .overlay(alignment: .bottom) {
         photoBadge.padding(12)
-      }
-      .contentShape(Rectangle())
-      .onTapGesture {
-        guard !car.displayImages.isEmpty else { return }
-        withAnimation(reduceMotion ? nil : .galleryTransition) {
-          controller.openGallery(at: selectedPhotoIndex)
-        }
       }
 
       VStack(alignment: .leading, spacing: 7) {
@@ -120,11 +111,7 @@ struct ShadeReviewPage: View {
   }
 
   private var heroHeight: CGFloat {
-    car.displayImages.isEmpty ? 126 : clamp(geo.width * 0.67, 230, 310)
-  }
-
-  private var selectedPhotoIndex: Int {
-    clamp(controller.photo(for: car.key), 0, max(car.displayImages.count - 1, 0))
+    car.displayImages.isEmpty ? 126 : clamp(geo.width * 0.61, 218, 282)
   }
 
   private var heroBadges: some View {
@@ -147,7 +134,7 @@ struct ShadeReviewPage: View {
     let count = car.displayImages.count
     return HStack(spacing: 6) {
       Image(systemName: count == 0 ? "photo.badge.exclamationmark" : "photo.stack.fill")
-      Text(count == 0 ? "NO PHOTOS" : "\(count) PHOTO\(count == 1 ? "" : "S")")
+      Text(count == 0 ? "NO PHOTOS" : "\(count) PHOTO\(count == 1 ? "" : "S") BELOW")
     }
     .font(.mono(10, bold: true))
     .foregroundStyle(count == 0 ? BC.muted : BC.white)
@@ -155,39 +142,78 @@ struct ShadeReviewPage: View {
     .frame(minHeight: 30)
     .background(Color(hex: 0x080a0e).opacity(0.82), in: Capsule())
     .overlay(Capsule().stroke(Color.white.opacity(0.14), lineWidth: 1))
-    .accessibilityLabel(count == 0 ? "No photos provided" : "\(count) photos, tap to open gallery")
+    .accessibilityLabel(count == 0 ? "No photos provided" : "\(count) photos in this page. Scroll vertically to see them.")
   }
 
   @ViewBuilder
   private var heroImage: some View {
-    if car.displayImages.indices.contains(selectedPhotoIndex), !car.displayImages[selectedPhotoIndex].isEmpty {
-      CachedRemoteImage(url: api.resolvedImageURL(car.displayImages[selectedPhotoIndex], variant: .deck)) { img in
+    if let firstImage = car.displayImages.first, !firstImage.isEmpty {
+      CachedRemoteImage(url: api.resolvedImageURL(firstImage, variant: .deck)) { img in
         img.resizable().scaledToFill()
       } placeholder: {
         BC.imageBg
       } failure: {
-        ZStack {
-          BC.imageBg
-          VStack(spacing: 7) {
-            Image(systemName: "photo.badge.exclamationmark")
-              .font(.system(size: 24, weight: .semibold))
-            Text("Image unavailable").font(.archivo(12, .bold))
-          }
-          .foregroundStyle(BC.muted)
-        }
+        PhotoFailureState(
+          title: "Preview unavailable",
+          detail: "The listing details are still ready below.",
+          compact: false
+        )
       }
     } else {
       ZStack {
         BC.imageBg
-        VStack(spacing: 7) {
-          Image(systemName: "photo.badge.exclamationmark")
-            .font(.system(size: 32, weight: .semibold))
-        }
-        .foregroundStyle(BC.muted)
+        PhotoFailureState(
+          title: "No listing photos",
+          detail: "The written dossier is still ready below.",
+          compact: true
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel("No photos provided for \(car.title)")
         .accessibilityIdentifier("shade-dossier-no-image-\(car.id)")
       }
+    }
+  }
+
+  @ViewBuilder
+  private var inlinePhotos: some View {
+    if car.displayImages.count > 1 {
+      VStack(alignment: .leading, spacing: 13) {
+        HStack(alignment: .center, spacing: 10) {
+          Image(systemName: "photo.stack.fill")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(BC.accentInk)
+            .frame(width: 32, height: 32)
+            .background(BC.accent, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+          VStack(alignment: .leading, spacing: 2) {
+            Text("MORE PHOTOS · \(car.displayImages.count - 1)")
+              .font(.mono(10, bold: true))
+              .tracking(1.2)
+              .foregroundStyle(BC.white)
+            Text("Every listing photo, in order.")
+              .font(.archivo(12.5, .medium))
+              .foregroundStyle(BC.sub)
+          }
+          Spacer(minLength: 8)
+          Text("SCROLL")
+            .font(.mono(9, bold: true))
+            .tracking(0.8)
+            .foregroundStyle(BC.accent)
+        }
+
+        VStack(spacing: 16) {
+          ForEach(Array(car.displayImages.dropFirst().enumerated()), id: \.offset) { offset, image in
+            InlineListingPhoto(
+              url: api.resolvedImageURL(image, variant: .deck),
+              index: offset + 2,
+              total: car.displayImages.count
+            )
+            .accessibilityIdentifier("shade-inline-photo-\(offset + 1)")
+          }
+        }
+      }
+      .padding(.horizontal, 16)
+      .padding(.vertical, 8)
+      .accessibilityElement(children: .contain)
     }
   }
 
@@ -244,6 +270,7 @@ struct ShadeReviewPage: View {
     watchoutsSection
     biddingSection
     vehicleSection
+    inlinePhotos
     if let listing = car.dossier?.listing, !listing.isEmpty {
       DossierSection(glyph: Icon.listingBody, label: "FROM THE LISTING") {
         VStack(alignment: .leading, spacing: 13) {
@@ -572,6 +599,97 @@ struct ShadeReviewPage: View {
   private func twoColumn<T, RowContent: View>(_ items: [T], @ViewBuilder row: @escaping (T) -> RowContent) -> some View {
     LazyVGrid(columns: [GridItem(.flexible(), alignment: .topLeading), GridItem(.flexible(), alignment: .topLeading)], alignment: .leading, spacing: 11) {
       ForEach(Array(items.enumerated()), id: \.offset) { _, item in row(item) }
+    }
+  }
+}
+
+private struct InlineListingPhoto: View {
+  let url: URL?
+  let index: Int
+  let total: Int
+
+  var body: some View {
+    VStack(spacing: 0) {
+      ZStack {
+        BC.imageBg
+        CachedRemoteImage(url: url) { image in
+          image
+            .resizable()
+            .scaledToFit()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } placeholder: {
+          ProgressView().tint(BC.sub)
+        } failure: {
+          PhotoFailureState(
+            title: "Photo unavailable",
+            detail: "Open the live auction for the original.",
+            compact: false
+          )
+        }
+      }
+      .frame(maxWidth: .infinity)
+      .aspectRatio(4.0 / 3.0, contentMode: .fit)
+      .clipped()
+
+      HStack(spacing: 8) {
+        Text("PHOTO \(index)")
+          .font(.mono(9.5, bold: true))
+          .tracking(0.8)
+          .foregroundStyle(BC.white)
+        Text("OF \(total)")
+          .font(.mono(9.5))
+          .foregroundStyle(BC.sub)
+        Spacer()
+        Text("LISTING IMAGE")
+          .font(.mono(9, bold: true))
+          .tracking(0.7)
+          .foregroundStyle(BC.muted)
+      }
+      .padding(.horizontal, 13)
+      .frame(minHeight: 42)
+      .background(BC.card)
+    }
+    .frame(maxWidth: .infinity)
+    .background(BC.card)
+    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    .overlay(
+      RoundedRectangle(cornerRadius: 18, style: .continuous)
+        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+    )
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("Photo \(index) of \(total)")
+  }
+}
+
+private struct PhotoFailureState: View {
+  let title: String
+  let detail: String
+  let compact: Bool
+
+  var body: some View {
+    ZStack {
+      LinearGradient(
+        colors: [BC.imageBg, BC.card.opacity(0.72)],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+      )
+      VStack(spacing: compact ? 6 : 9) {
+        Image(systemName: "photo.badge.exclamationmark")
+          .font(.system(size: compact ? 24 : 29, weight: .semibold))
+          .foregroundStyle(BC.sub)
+          .frame(width: compact ? 42 : 50, height: compact ? 42 : 50)
+          .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        Text(title)
+          .font(.archivo(compact ? 12 : 13.5, .bold))
+          .foregroundStyle(BC.white.opacity(0.78))
+        if !compact {
+          Text(detail)
+            .font(.archivo(11.5, .medium))
+            .foregroundStyle(BC.sub)
+            .multilineTextAlignment(.center)
+        }
+      }
+      .padding(20)
     }
   }
 }

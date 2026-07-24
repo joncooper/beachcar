@@ -34,7 +34,7 @@ The remote D1 migration ledger is authoritative:
 bunx wrangler d1 migrations list beach-car-watch --remote
 ```
 
-The guarded rollout accepts only the reviewed additive migrations `0011_source_cache_listing_fields.sql`, `0012_product_events.sql`, and `0013_agent_connected_subscriptions.sql` (or no pending migrations). Do not infer remote state from an older handoff note. Stop and investigate if any other migration is pending or the remote database identity differs from `wrangler.jsonc`.
+The guarded rollout accepts only the reviewed additive migrations `0011_source_cache_listing_fields.sql`, `0012_product_events.sql`, `0013_agent_connected_subscriptions.sql`, and `0014_managed_friend_onboarding.sql` (or no pending migrations). Do not infer remote state from an older handoff note. Stop and investigate if any other migration is pending or the remote database identity differs from `wrangler.jsonc`.
 
 The bootstrap helper remains available for read-only inspection, local config updates, and strict deploy dry-run validation:
 
@@ -60,6 +60,20 @@ bun run cloudflare:bootstrap -- --write-config --owner-emails "owner@example.com
 
 If a differently named D1 database already exists in the account, inspect its identity, tables, and remote migration ledger before reusing it. Do not point `wrangler.jsonc` at a non-empty legacy database unless its schema matches this repository.
 
+## Ready Email
+
+The Worker binding is already restricted to `finds@dockett.ai`. Before the first friend release, `dockett.ai` must be available as a zone or eligible subdomain in the personal Cloudflare account above, then Email Sending must be enabled and its records published:
+
+```bash
+bunx wrangler email sending enable dockett.ai
+bunx wrangler email sending dns get dockett.ai
+bunx wrangler email sending settings dockett.ai
+```
+
+As of July 15, 2026, the personal Wrangler login was verified but `email sending list dockett.ai` reported that `dockett.ai` was not a zone in that account. Its authoritative DNS is still at GoDaddy, so finish the Cloudflare zone/subdomain onboarding before running the enable command. Publish and verify the returned SPF and DKIM records, and add a DMARC policy for the domain. Do not invite a friend until `settings` reports a ready sending domain and a production smoke proves exactly one ready email per published run.
+
+Email delivery failure is deliberately isolated from research publication: it is recorded in `notification_deliveries`, but it cannot mark the shortlist run failed.
+
 ## Guarded Remote Rollout
 
 Prepare the ignored local handoff file and rehearse without remote mutations:
@@ -82,9 +96,9 @@ The guarded rollout:
 2. Strictly verifies the authenticated production account, Worker, R2 bucket, required secret names, and that the configured D1 name and UUID identify the same remote database.
 3. Requires exactly one active Worker version at 100% traffic and reads the remote Worker service metadata in memory. The remote Durable Object migration tag must already equal the final configured tag (`v2`), so this release cannot introduce a rollback-blocking DO migration or overwrite an in-progress split deployment.
 4. Creates a private `/tmp/beachcar-rollout-*` directory with mode `0700`. It stores only minimal Worker rollback evidence (active deployments/versions, active version id, migration tag and timestamps), a D1 Time Travel bookmark, pending migration output, and a full D1 export plus SHA-256 digest. Authentication tokens, auth headers, full Worker service metadata, plain variable values, secret values, and the separately staged Worker-secret file are never written to these artifacts.
-5. Stops unless the pending D1 set is empty or contains only reviewed migrations `0011`, `0012`, and `0013`.
+5. Stops unless the pending D1 set is empty or contains only reviewed migrations `0011`, `0012`, `0013`, and `0014`.
 6. Runs a second exact `wrangler deploy --strict --keep-vars --dry-run`, including any protected local secrets, before changing D1. `--strict` stops remote config conflicts; `--keep-vars` preserves audited dashboard-only plain vars. Existing omitted Worker secrets remain inherited.
-7. Applies the gated D1 migrations, then requires the Source Quality, product-event, research-mode, and billing-entitlement schemas plus `PRAGMA quick_check=ok`. A failure leaves the old Worker live.
+7. Applies the gated D1 migrations, then requires the Source Quality, product-event, research-mode, billing-entitlement, managed-invite, usage-attribution, and notification schemas plus `PRAGMA quick_check=ok`. A failure leaves the old Worker live.
 8. Runs one strict `--keep-vars` Worker deploy, then verifies the effective non-secret runtime mode and deployment surface before a final strict resource check.
 
 Execution requires `BEACHCAR_RUNNER_MODE=deterministic|codex` explicitly in `.deploy.env`. With `deterministic`, the rollout passes `--containers-rollout none`, so Cloudflare Container image publishing is not required. `codex` requires `--deploy-containers` and an `OPENAI_API_KEY` supplied in `.deploy.env`; an ambient shell key is never uploaded.

@@ -143,6 +143,7 @@ export interface ImportPayload {
   sourceSummary?: RunSourceSummary | null;
   listings?: AuctionListing[];
   items?: AuctionListing[];
+  allowEmpty?: boolean;
 }
 
 export type RunSourceStatus = "ok" | "blocked" | "failed" | "skipped" | "fallback";
@@ -264,6 +265,33 @@ export interface UserRecord {
   status: "invited" | "active" | "disabled";
 }
 
+export interface NotificationPreferences {
+  readyEmailEnabled: boolean;
+  updatedAt?: string | null;
+}
+
+export interface ManagedOnboardingInput {
+  search: {
+    location: string;
+    pickupDistanceMiles: number;
+    comfortableCeiling: number;
+    stretchRoom: number;
+  };
+  taste: {
+    showMore: string[];
+    avoid: string[];
+    notes?: string | null;
+  };
+  timezone: string;
+  dailyTime: string;
+  readyEmailEnabled: boolean;
+}
+
+export interface ManagedOnboardingResult {
+  user: UserPayload;
+  firstRun: AgentRunRecord;
+}
+
 export interface UserProfile {
   userId: string;
   displayName?: string | null;
@@ -313,6 +341,10 @@ export interface BillingEntitlement {
 
 export interface AiUsageWindow {
   spendMicros: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  eventCount: number;
   budgetCents?: number | null;
   remainingMicros?: number | null;
   limitExceeded: boolean;
@@ -338,6 +370,7 @@ export interface AiUsageEventRecord {
   gatewayId?: string | null;
   gatewayKeyRef?: string | null;
   gatewayRequestId?: string | null;
+  providerRequestId?: string | null;
   inputTokens?: number | null;
   outputTokens?: number | null;
   totalTokens?: number | null;
@@ -439,6 +472,7 @@ export interface UserPayload extends UserRecord {
   managedResearchEntitlement?: BillingEntitlement;
   aiSettings?: UserAiSettings | null;
   aiUsage?: AiUsageSummary | null;
+  notificationPreferences?: NotificationPreferences;
   onboarding?: {
     completed: boolean;
     completedAt?: string | null;
@@ -452,13 +486,16 @@ export interface UserPayload extends UserRecord {
 }
 
 export interface AdminUserSummary extends UserRecord {
+  activationStage: "invited" | "signed_in" | "onboarded" | "first_run_queued" | "first_run_running" | "ready" | "failed" | "disabled";
   onboardingCompletedAt?: string | null;
   latestRunAt?: string | null;
+  latestAgentRun?: AgentRunRecord | null;
   sourceSettings?: SourceSetting[];
   researchSettings?: UserResearchSettings;
   managedResearchEntitlement?: BillingEntitlement;
   aiSettings?: UserAiSettings | null;
   aiUsage?: AiUsageSummary | null;
+  notificationPreferences?: NotificationPreferences;
   createdAt: string;
   lastSeenAt: string;
 }
@@ -515,6 +552,8 @@ export interface AdminOpsSummary {
     monthlySpendMicros: number;
     dailyEvents: number;
     monthlyEvents: number;
+    dailyTokens: number;
+    monthlyTokens: number;
   };
   sourceCache: SourceCacheAdminStatus;
 }
@@ -644,7 +683,14 @@ export interface AccountDeletionResult {
 export interface InvitePayload {
   id: string;
   email: string;
-  code: string;
+  displayName?: string | null;
+  acceptance: "legacy_code" | "verified_email";
+  accessMode: "legacy" | "managed_pilot";
+  managedResearch: boolean;
+  code?: string;
   createdAt: string;
   expiresAt?: string | null;
+  acceptedAt?: string | null;
+  acceptedByUserId?: string | null;
+  alreadyExisted?: boolean;
 }

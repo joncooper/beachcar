@@ -1,4 +1,9 @@
 :root {
+  --brand-pink: #ef5b91;
+  --brand-blush: #f6a8b1;
+  --brand-cream: #f7f4ec;
+  --brand-ink: #07080a;
+  --brand-mint: #9bcbb2;
   color-scheme: light;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -23,6 +28,7 @@ body {
   min-height: 100vh;
   margin: 0;
   background:
+    radial-gradient(circle at 12% 5%, rgba(239, 91, 145, 0.15), transparent 24rem),
     linear-gradient(180deg, rgba(248, 247, 240, 0.98), rgba(239, 243, 238, 0.98)),
     linear-gradient(135deg, rgba(45, 118, 101, 0.1), rgba(204, 89, 65, 0.08));
 }
@@ -78,10 +84,61 @@ img {
 }
 
 .auth-card {
+  position: relative;
   display: grid;
   width: min(460px, 100%);
   gap: 16px;
+  overflow: hidden;
   padding: 28px;
+}
+
+.auth-card::before,
+.setup-card.is-wide::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 6px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--brand-pink) 0 24px,
+    var(--brand-cream) 24px 48px
+  );
+  content: "";
+}
+
+.auth-hero {
+  position: relative;
+  display: grid;
+  min-height: 210px;
+  place-items: center;
+  margin: -12px -12px 2px;
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--brand-cream);
+}
+
+.auth-hero::after {
+  content: none;
+}
+
+.auth-hero img {
+  z-index: 1;
+  width: 100%;
+  height: 210px;
+  object-fit: cover;
+}
+
+.auth-hero span {
+  position: absolute;
+  z-index: 2;
+  right: 10px;
+  bottom: 10px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  background: var(--brand-ink);
+  color: var(--brand-cream);
+  font-size: 0.64rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
 }
 
 .auth-card h1 {
@@ -112,7 +169,45 @@ img {
 }
 
 .setup-card.is-wide {
+  position: relative;
   width: min(720px, 100%);
+  overflow: hidden;
+}
+
+.desktop-coach-brand {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.9fr) minmax(210px, 1.1fr);
+  align-items: center;
+  gap: 20px;
+  margin: -12px -12px 2px;
+  padding: 16px 20px;
+  border-radius: 14px;
+  background: linear-gradient(120deg, var(--brand-cream) 0 56%, var(--brand-pink) 56%);
+}
+
+.desktop-coach-brand img {
+  width: 100%;
+  max-height: 150px;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.desktop-coach-brand p {
+  display: grid;
+  gap: 4px;
+  color: var(--brand-ink);
+}
+
+.desktop-coach-brand strong {
+  font-size: clamp(1.25rem, 4vw, 2rem);
+  line-height: 0.98;
+}
+
+.desktop-coach-brand span {
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .setup-card h1,
@@ -128,6 +223,37 @@ img {
 
 .setup-muted {
   color: #53625c;
+}
+
+.first-run-card {
+  text-align: center;
+}
+
+.first-run-card > svg {
+  margin-inline: auto;
+  color: #2d7665;
+}
+
+.first-run-progress {
+  width: 100%;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(0, 122, 96, 0.14);
+}
+
+.first-run-progress::after {
+  display: block;
+  width: 44%;
+  height: 100%;
+  border-radius: inherit;
+  background: #2d7665;
+  content: "";
+  animation: first-run-progress 1.4s ease-in-out infinite alternate;
+}
+
+@keyframes first-run-progress {
+  to { transform: translateX(128%); }
 }
 
 .setup-form {
@@ -625,6 +751,43 @@ img {
   font-size: 0.78rem;
   font-weight: 750;
   line-height: 1.35;
+}
+
+.automation-coach {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(113, 227, 194, 0.12);
+  color: #283b34;
+}
+
+.automation-coach strong {
+  font-size: 0.9rem;
+}
+
+.automation-coach ol {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 20px;
+  font-size: 0.78rem;
+  line-height: 1.42;
+}
+
+.automation-coach textarea {
+  min-height: 94px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+}
+
+.automation-coach button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
 }
 
 .source-toggle-list {
@@ -1176,8 +1339,23 @@ img {
 .brand-line {
   display: flex;
   min-width: 0;
-  align-items: baseline;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand-mark {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(239, 91, 145, 0.5);
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 4px 10px rgba(20, 32, 28, 0.18);
+}
+
+.brand-copy {
+  display: grid;
+  min-width: 0;
 }
 
 .brand-line strong {
@@ -2219,12 +2397,20 @@ h2 {
   z-index: 20;
   display: flex;
   gap: 8px;
+  overflow-x: auto;
   padding: 4px 0 8px;
   background: linear-gradient(180deg, rgba(247, 247, 240, 0.98), rgba(247, 247, 240, 0.86));
   backdrop-filter: blur(18px);
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.scan-toolbar::-webkit-scrollbar {
+  display: none;
 }
 
 .scan-toolbar button {
+  flex: 0 0 auto;
   min-height: 38px;
   border-radius: 14px;
   padding: 0 12px;
@@ -2764,7 +2950,14 @@ h2 {
 
   .brand-line {
     display: grid;
-    gap: 0;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 5px;
+  }
+
+  .brand-mark {
+    width: 30px;
+    height: 30px;
+    grid-row: 1 / span 2;
   }
 
   .brand-line strong {
@@ -2773,6 +2966,16 @@ h2 {
 
   .brand-line span {
     font-size: 0.76rem;
+  }
+
+  .desktop-coach-brand {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    text-align: center;
+  }
+
+  .desktop-coach-brand img {
+    max-height: 180px;
   }
 
   .icon-toggle {

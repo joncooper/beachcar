@@ -55,6 +55,30 @@ describe("source discovery", () => {
     expect(listings[0]?.imageUrls[0]).toContain("?w=470&h=318&crop=1");
   });
 
+  it("parses the current BaT live-auction JSON model", () => {
+    const listings = parseBringATrailerLiveListings(batCurrentLiveHtml(), {
+      label: "Live Auctions",
+      url: "https://bringatrailer.com/auctions/",
+    });
+
+    expect(listings).toHaveLength(1);
+    expect(listings[0]).toMatchObject({
+      site: "Bring a Trailer",
+      sourceQuery: "Live Auctions",
+      title: "1974 Volkswagen Thing",
+      url: "https://bringatrailer.com/listing/1974-volkswagen-thing/",
+      bid: "USD $8,295",
+      bidNum: 8295,
+      bidCents: 829500,
+      locationCountry: "United States",
+      endsAt: "2026-07-22T17:00:00.000Z",
+      noReserve: true,
+      isLive: true,
+      imageUrls: ["https://bringatrailer.com/wp-content/uploads/2026/07/thing.jpg?w=470&h=318&crop=1"],
+    });
+    expect(listings[0]?.summary).toBe("Open-air beach-town runabout with simple mechanicals.");
+  });
+
   it("covers the generic BaT auctions page and ignores malformed/challenge pages", () => {
     expect(BAT_KEYWORD_PAGES).toContainEqual({
       label: "Live Auctions",
@@ -1075,6 +1099,27 @@ function batLiveHtml(title: string, bid: string, location = "Downey, CA"): strin
       ${batLiveCard(title, bid, location, url)}
     </div>
     <div class="auctions-completed page-section"></div>
+  `;
+}
+
+function batCurrentLiveHtml(): string {
+  return `
+    <script type="text/javascript" id="bat-theme-auctions-current-initial-data">
+      var auctionsCurrentInitialData = {"items":[{
+        "active":true,
+        "comments":12,
+        "country":"United States",
+        "current_bid":8295,
+        "current_bid_formatted":"USD $8,295",
+        "excerpt":"Open-air beach-town runabout with &lt;strong&gt;simple mechanicals&lt;/strong&gt;.",
+        "noreserve":true,
+        "thumbnail_url":"https:\/\/bringatrailer.com\/wp-content\/uploads\/2026\/07\/thing.jpg?w=470&h=318&crop=1",
+        "timestamp_end":1784739600,
+        "title":"1974 Volkswagen Thing",
+        "url":"https:\/\/bringatrailer.com\/listing\/1974-volkswagen-thing\/"
+      }]};
+      /* ]]> */
+    </script>
   `;
 }
 

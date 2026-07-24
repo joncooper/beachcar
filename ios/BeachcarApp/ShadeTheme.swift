@@ -57,7 +57,7 @@ enum BC {
   static let ink = Color(hex: 0xf3f1ec)       // primary text
   static let white = Color(hex: 0xffffff)
   static let sub = Color(hex: 0xa7a39b)       // secondary text
-  static let muted = Color(hex: 0x6e6b64)     // tertiary text
+  static let muted = Color(hex: 0x8a867e)     // tertiary text, kept legible on dark cards
 
   // Fills / lines
   static let faint = Color.white.opacity(0.06)

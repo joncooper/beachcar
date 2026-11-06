@@ -582,7 +582,7 @@ bearer_token_env_var = "BEACHCAR_MCP_TOKEN"</code></pre>
         <h2>Source Gathering</h2>
         <p>Beachcar has two source patterns today.</p>
         <ul>
-          <li><strong>Bring a Trailer cache first:</strong> BaT public RSS candidates are ingested into D1 every 15 minutes and are available through admin source-cache controls and MCP <code>search_bat_cache</code>.</li>
+          <li><strong>Bring a Trailer cache first:</strong> BaT public RSS candidates are ingested into D1 every 12 hours and are available through admin source-cache controls and MCP <code>search_bat_cache</code>.</li>
           <li><strong>Browser-capable agent for rendered sources:</strong> Cars &amp; Bids and other rendered/fragile sites should be handled by a user-authorized browser/cloud-agent environment when needed.</li>
         </ul>
         <p>Agents should respect source terms, rate limits, authentication boundaries, and bot controls. They should record blocked sources in <code>sourceSummary</code> rather than inventing listings.</p>

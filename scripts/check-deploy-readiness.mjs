@@ -47,7 +47,7 @@ check(
   "Add BeachcarRunnerContainer Durable Object binding.",
 );
 check("Workflow binding exists", hasClassBinding(wrangler?.workflows, "BeachcarRunWorkflow"), "Add BEACHCAR_RUN_WORKFLOW workflow binding.");
-check("Source cache cron trigger exists", Array.isArray(wrangler?.triggers?.crons) && wrangler.triggers.crons.includes("*/15 * * * *"), "Add a scheduled trigger to refresh public source caches.");
+check("Source cache cron trigger exists", Array.isArray(wrangler?.triggers?.crons) && wrangler.triggers.crons.includes("0 */12 * * *"), "Add a scheduled trigger to refresh public source caches.");
 check("Container image config exists", Array.isArray(wrangler?.containers) && wrangler.containers.some((entry) => entry.class_name === "BeachcarRunnerContainer"), "Add the BeachcarRunnerContainer containers config.");
 check("Local dev keeps containers disabled by default", wrangler?.dev?.enable_containers === false, "Set dev.enable_containers=false so local smoke stays Docker-free.");
 check("Bootstrap owner email is configured", bootstrapOwnerEmails.length > 0, "Set vars.BOOTSTRAP_OWNER_EMAILS, vars.ALLOWED_EMAILS, or vars.ALLOWED_EMAIL to at least one owner email.");

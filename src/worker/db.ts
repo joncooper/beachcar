@@ -455,9 +455,25 @@ export async function ensureUser(db: D1Database, authUser: AuthUser, input: { is
            WHEN ? = 1 AND users.status != 'disabled' THEN 'active'
            ELSE users.status
          END,
-         last_seen_at = excluded.last_seen_at`,
+         last_seen_at = excluded.last_seen_at
+       WHERE users.auth_provider IS NOT excluded.auth_provider
+          OR users.auth_subject IS NOT excluded.auth_subject
+          OR users.email IS NOT excluded.email
+          OR (? = 1 AND users.status NOT IN ('active', 'disabled'))
+          OR users.last_seen_at < ?`,
     )
-    .bind(authUser.id, authUser.provider, authUser.subject, authUser.email, insertStatus, now, now, input.isOwner ? 1 : 0)
+    .bind(
+      authUser.id,
+      authUser.provider,
+      authUser.subject,
+      authUser.email,
+      insertStatus,
+      now,
+      now,
+      input.isOwner ? 1 : 0,
+      input.isOwner ? 1 : 0,
+      new Date(Date.now() - userLastSeenRefreshMs).toISOString(),
+    )
     .run();
 
   return getUserPayload(db, authUser.id);
@@ -1308,6 +1324,32 @@ async function getAutomationToken(db: D1Database, userId: string, id: string): P
   return row ? automationTokenFromRow(row) : null;
 }
 
+// Skipping no-op upserts keeps D1 row writes (each also rewrites every index) within budget.
+const sourceItemLastSeenRefreshMs = 24 * 60 * 60 * 1000;
+const userLastSeenRefreshMs = 60 * 60 * 1000;
+const sourceItemReplacedColumns = ["source", "site", "source_url", "title", "summary", "image_urls_json", "payload_json"];
+const sourceItemCoalescedColumns = [
+  "published_at",
+  "bid_num",
+  "location",
+  "location_city",
+  "location_region",
+  "location_country",
+  "ends_at",
+  "no_reserve",
+  "last_detail_at",
+  "detail_status",
+  "detail_error",
+  "is_live",
+];
+const sourceItemChangedSql = [
+  ...sourceItemReplacedColumns.map((column) => `source_items.${column} IS NOT excluded.${column}`),
+  ...sourceItemCoalescedColumns.map(
+    (column) => `(excluded.${column} IS NOT NULL AND source_items.${column} IS NOT excluded.${column})`,
+  ),
+  "(excluded.dossier_json != '{}' AND source_items.dossier_json IS NOT excluded.dossier_json)",
+].join("\n            OR ");
+
 export async function upsertSourceCache(
   db: D1Database,
   input: { source: string; sourceUrl: string; candidates: SourceCandidate[]; startedAt?: string; finishedAt?: string },
@@ -1317,6 +1359,7 @@ export async function upsertSourceCache(
   const startedAt = input.startedAt || new Date().toISOString();
   const finishedAt = input.finishedAt || new Date().toISOString();
   let newItemCount = 0;
+  const lastSeenThreshold = new Date(new Date(finishedAt).getTime() - sourceItemLastSeenRefreshMs).toISOString();
 
   for (const candidate of input.candidates) {
     if (!candidate.url || !candidate.title) continue;
@@ -1358,7 +1401,9 @@ export async function upsertSourceCache(
              WHEN excluded.dossier_json != '{}' THEN excluded.dossier_json
              ELSE source_items.dossier_json
            END,
-           last_seen_at = excluded.last_seen_at`,
+           last_seen_at = excluded.last_seen_at
+         WHERE ${sourceItemChangedSql}
+            OR source_items.last_seen_at < ?`,
       )
       .bind(
         id,
@@ -1385,6 +1430,7 @@ export async function upsertSourceCache(
         JSON.stringify(dossier || {}),
         finishedAt,
         finishedAt,
+        lastSeenThreshold,
       )
       .run();
   }

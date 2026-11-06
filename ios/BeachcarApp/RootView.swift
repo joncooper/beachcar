@@ -242,6 +242,9 @@ struct RootView: View {
     if isUITesting {
       return nil
     }
+    guard let session = clerk.session else {
+      return nil
+    }
     // Right after OAuth sign-in the Clerk session can briefly reject token requests.
     var lastError: Error?
     for attempt in 0..<4 {
@@ -249,7 +252,7 @@ struct RootView: View {
         try await Task.sleep(nanoseconds: 400_000_000)
       }
       do {
-        if let token = try await clerk.session?.getToken() {
+        if let token = try await session.getToken() {
           return token
         }
       } catch {

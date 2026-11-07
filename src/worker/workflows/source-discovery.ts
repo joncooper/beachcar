@@ -77,7 +77,7 @@ export interface SourceDiscoveryDraft {
   aiScoring?: CandidateAiScoringResult | null;
 }
 
-interface DiscoveryOptions {
+export interface DiscoveryOptions {
   fetchImpl?: FetchLike;
   now?: Date;
   aiScorer?: CandidateAiScorer | null;
@@ -161,11 +161,17 @@ const AVOID_TERMS: Array<[RegExp, string, number]> = [
   [/\blifted\b|\b35\"|\b37\"|\bheavy off-road\b/, "heavy off-road build", 5],
 ];
 
-export async function discoverAndScoreCandidates(
+export interface HeuristicDiscoveryResult {
+  generatedAt: string;
+  scored: ScoredCandidate[];
+  checkedSources: SourceDiscoveryCheck[];
+  rawCandidateCount: number;
+}
+
+export async function discoverHeuristicCandidates(
   context: DiscoveryContext,
-  params: DiscoveryParams,
   options: DiscoveryOptions = {},
-): Promise<SourceDiscoveryDraft> {
+): Promise<HeuristicDiscoveryResult> {
   const generatedAt = (options.now || new Date()).toISOString();
   const fetchImpl = options.fetchImpl || fetch;
   const sources = normalizeSources(context.enabledSources);
@@ -232,9 +238,25 @@ export async function discoverAndScoreCandidates(
 
   scored = scored.slice(0, 8);
 
+  return { generatedAt, scored, checkedSources, rawCandidateCount: candidates.length };
+}
+
+export async function finalizeDiscoveryDraft(input: {
+  context: DiscoveryContext;
+  params: DiscoveryParams;
+  heuristic: HeuristicDiscoveryResult;
+  aiScorer?: CandidateAiScorer | null;
+}): Promise<SourceDiscoveryDraft> {
+  const { context, params, heuristic } = input;
+  const generatedAt = heuristic.generatedAt;
+  const sources = normalizeSources(context.enabledSources);
+  let scored = heuristic.scored;
+  const checkedSources = heuristic.checkedSources;
+  let aiScoring: CandidateAiScoringResult | null = null;
+
   if (scored.length) {
-    aiScoring = options.aiScorer
-      ? await runAiScoring(options.aiScorer, context, params, scored)
+    aiScoring = input.aiScorer
+      ? await runAiScoring(input.aiScorer, context, params, scored)
       : {
           status: "skipped",
           provider: "heuristic",
@@ -279,9 +301,18 @@ export async function discoverAndScoreCandidates(
     checkedSources,
     blockedSources,
     fallbackUsed,
-    rawCandidateCount: candidates.length,
+    rawCandidateCount: heuristic.rawCandidateCount,
     aiScoring,
   };
+}
+
+export async function discoverAndScoreCandidates(
+  context: DiscoveryContext,
+  params: DiscoveryParams,
+  options: DiscoveryOptions = {},
+): Promise<SourceDiscoveryDraft> {
+  const heuristic = await discoverHeuristicCandidates(context, options);
+  return finalizeDiscoveryDraft({ context, params, heuristic, aiScorer: options.aiScorer });
 }
 
 function normalizeSources(sources: string[]): string[] {

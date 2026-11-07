@@ -18,7 +18,8 @@ import { prewarmImportedImages } from "../image-cache";
 import { searchBringATrailerCache } from "../source-cache";
 import { createAiGatewayCandidateScorer } from "./ai-gateway-scoring";
 import {
-  discoverAndScoreCandidates,
+  discoverHeuristicCandidates,
+  finalizeDiscoveryDraft,
   SOURCE_DISCOVERY_PUBLISHER,
   type DiscoveryContext,
   type DiscoverySourceSetting,
@@ -89,19 +90,25 @@ export class BeachcarRunWorkflow extends AgentWorkflow<BeachcarAgent, BeachcarRu
       });
       await this.reportProgress({ stage: "context", status: "complete", percent: 0.35, agentRunId: params.runId });
 
-      const draft = await step.do("discover and score source candidates", async () => {
+      // Discovery and AI reranking run as separate workflow steps: each step is its own Worker
+      // invocation, and the fetch-heavy discovery would otherwise exhaust the subrequest budget
+      // before the AI Gateway call, silently falling back to heuristic scoring every run.
+      const heuristic = await step.do("discover source candidates", async () => {
+        return discoverHeuristicCandidates(context, {
+          sourceCache: {
+            searchBringATrailer: (input) => searchBringATrailerCache(this.env.DB, input),
+          },
+        });
+      });
+
+      const draft = await step.do("ai rerank finalists and build draft", async () => {
         const aiScorer = createAiGatewayCandidateScorer(this.env, {
           userId: params.userId,
           agentRunId: params.runId,
           mode: context.aiMode === "managed" || context.aiMode === "byok" ? context.aiMode : null,
           gatewayKeyRef: context.gatewayKeyRef,
         });
-        return discoverAndScoreCandidates(context, params, {
-          aiScorer,
-          sourceCache: {
-            searchBringATrailer: (input) => searchBringATrailerCache(this.env.DB, input),
-          },
-        });
+        return finalizeDiscoveryDraft({ context, params, heuristic, aiScorer });
       });
 
       const runnerTasks = await step.do("queue source runner tasks", async () => {

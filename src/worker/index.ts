@@ -548,7 +548,7 @@ async function handleAdmin(request: Request, env: Env, ctx: ExecutionContext, ur
     const body = await readJson<{ reason?: unknown; requestId?: unknown }>(request);
     try {
       const agent = await getBeachcarAgent(env, userId);
-      const queued = await agent.queueManualRun({ userId, reason: body.reason ?? "admin_manual", requestId: body.requestId });
+      const queued = (await agent.queueManualRun({ userId, reason: body.reason ?? "admin_manual", requestId: body.requestId })) as AgentRunRecord;
       return jsonResponse(queued, { status: queued.progress.idempotentReused === true ? 200 : 201 });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

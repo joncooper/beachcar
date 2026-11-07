@@ -548,12 +548,14 @@ async function handleAdmin(request: Request, env: Env, ctx: ExecutionContext, ur
     const body = await readJson<{ reason?: unknown; requestId?: unknown }>(request);
     try {
       const agent = await getBeachcarAgent(env, userId);
-      const queued = await agent.queueManualRun({ userId, reason: body.reason ?? "admin_manual", requestId: body.requestId });
-      return jsonResponse(queued, { status: 201 });
+      const queued = (await agent.queueManualRun({ userId, reason: body.reason ?? "admin_manual", requestId: body.requestId })) as AgentRunRecord;
+      return jsonResponse(queued, { status: queued.progress.idempotentReused === true ? 200 : 201 });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      if (message.includes(agentRunRequestConflictMessage)) return errorResponse(agentRunRequestConflictMessage, 409);
       if (message.includes("Active user required")) return errorResponse("Active user required", 404);
       if (message.includes("AI budget exceeded")) return errorResponse(message, 402);
+      if (message === missingByokAliasError || message === inactiveAiSettingsError) return errorResponse(message, 400);
       if (message.includes(invalidAgentRunRequestIdMessage)) return errorResponse(invalidAgentRunRequestIdMessage, 400);
       throw error;
     }

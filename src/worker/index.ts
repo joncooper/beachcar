@@ -542,6 +542,23 @@ async function handleAdmin(request: Request, env: Env, ctx: ExecutionContext, ur
     });
   }
 
+  const adminUserAgentRunsMatch = url.pathname.match(/^\/api\/admin\/users\/([^/]+)\/agent-runs$/);
+  if (adminUserAgentRunsMatch && request.method === "POST") {
+    const userId = decodeURIComponent(adminUserAgentRunsMatch[1]);
+    const body = await readJson<{ reason?: unknown; requestId?: unknown }>(request);
+    try {
+      const agent = await getBeachcarAgent(env, userId);
+      const queued = await agent.queueManualRun({ userId, reason: body.reason ?? "admin_manual", requestId: body.requestId });
+      return jsonResponse(queued, { status: 201 });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("Active user required")) return errorResponse("Active user required", 404);
+      if (message.includes("AI budget exceeded")) return errorResponse(message, 402);
+      if (message.includes(invalidAgentRunRequestIdMessage)) return errorResponse(invalidAgentRunRequestIdMessage, 400);
+      throw error;
+    }
+  }
+
   if (request.method === "POST" && url.pathname === "/api/admin/agent-runs/claim") {
     const body = await readJson<{ runId?: unknown; runnerId?: unknown }>(request);
     const runId = typeof body.runId === "string" && body.runId.trim() ? body.runId.trim() : null;
